@@ -1,6 +1,7 @@
 ﻿// ============================================================================
-// CLOUDFLARE PAGES WORKER (_worker.js) + CLOUDFLARE D1 (SQLite) BACKEND
-// Elaeis — Palm Basis Crop Monitoring System (Estate -> Division -> Field -> Block -> Tree)
+// ELAEIS CLOUDFLARE WORKER (worker.js) + CLOUDFLARE D1 (SQLite) BACKEND
+// Hierarchy: Estate > Division > Field > Block > Geo-Tagged Palm Tree
+// 3 Monthly Rounds: Round 1 (Days 1-10), Round 2 (Days 11-20), Round 3 (Days 21-End)
 // ============================================================================
 
 function computeHarvestRound(dateStr) {
@@ -11,13 +12,13 @@ function computeHarvestRound(dateStr) {
     const day = parseInt(parts[2], 10) || 1;
 
     let roundNumber = 1;
-    let roundLabel = "Round 1 (Days 1â€“10)";
+    let roundLabel = "Round 1 (Days 1-10)";
     if (day >= 11 && day <= 20) {
         roundNumber = 2;
-        roundLabel = "Round 2 (Days 11â€“20)";
+        roundLabel = "Round 2 (Days 11-20)";
     } else if (day >= 21) {
         roundNumber = 3;
-        roundLabel = "Round 3 (Days 21â€“End)";
+        roundLabel = "Round 3 (Days 21-End)";
     }
     return {
         date: clean,
@@ -42,7 +43,7 @@ function jsonResponse(data, status = 200) {
 }
 
 // ----------------------------------------------------------------------------
-// CLOUDFLARE D1 AUTO-INITIALIZATION & SEEDING
+// CLOUDFLARE D1 AUTO-INITIALIZATION & CLEAN ENGLISH / SRI LANKAN DATA MIGRATION
 // ----------------------------------------------------------------------------
 let d1Initialized = false;
 
@@ -71,8 +72,8 @@ async function ensureD1Initialized(db) {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             code TEXT UNIQUE NOT NULL,
             name TEXT NOT NULL,
-            crop_type TEXT NOT NULL DEFAULT 'Oil Palm (DxP Tenera)',
-            location_region TEXT DEFAULT 'Johor, Malaysia',
+            crop_type TEXT NOT NULL DEFAULT 'Oil Palm (Tenera)',
+            location_region TEXT DEFAULT 'Southern Province, Sri Lanka',
             total_area_ha REAL DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )`),
@@ -96,7 +97,7 @@ async function ensureD1Initialized(db) {
             field_id INTEGER NOT NULL,
             code TEXT NOT NULL,
             name TEXT NOT NULL,
-            palm_variety TEXT DEFAULT 'DxP Tenera',
+            palm_variety TEXT DEFAULT 'Tenera Hybrid',
             area_ha REAL DEFAULT 10.0,
             target_stands INTEGER DEFAULT 20
         )`),
@@ -111,7 +112,7 @@ async function ensureD1Initialized(db) {
             planting_year INTEGER DEFAULT 2018,
             health_status TEXT DEFAULT 'Healthy',
             weed_status TEXT DEFAULT 'Clean Circle',
-            last_fertilizer_type TEXT DEFAULT 'NPK 12:12:17:2',
+            last_fertilizer_type TEXT DEFAULT 'YPM Palm Mixture',
             last_fertilizer_kg REAL DEFAULT 2.5,
             last_fertilizer_date TEXT DEFAULT '',
             notes TEXT DEFAULT '',
@@ -153,46 +154,60 @@ async function ensureD1Initialized(db) {
         )`),
     ]);
 
-    const userCount = await db.prepare("SELECT COUNT(*) AS cnt FROM users").first("cnt");
-    if (!userCount) {
+    const estateCount = await db.prepare("SELECT COUNT(*) AS cnt FROM estates").first("cnt");
+    if (!estateCount) {
         const ym = new Date().toISOString().slice(0, 7);
         const stmts = [
-            db.prepare("INSERT INTO users (username, email, phone, full_name, role, assigned_estate_id, password_hash) VALUES ('admin', 'admin@elaeis.my', '+60123456789', 'Ahmad Razak (Estate Manager)', 'Admin', 1, 'admin123')"),
-            db.prepare("INSERT INTO users (username, email, phone, full_name, role, assigned_estate_id, password_hash) VALUES ('supervisor1', 'kumar@elaeis.my', '+60198765432', 'S. Kumar (Field Conductor)', 'Supervisor', 1, 'super123')"),
-            db.prepare("INSERT INTO users (username, email, phone, full_name, role, assigned_estate_id, password_hash) VALUES ('harvester1', 'faizal@elaeis.my', '+60172233445', 'Mohd Faizal (Harvesting Team Lead)', 'Harvester', 1, 'harvest123')"),
-            db.prepare("INSERT INTO custom_field_defs (field_key, field_label, field_type, options_csv) VALUES ('circle_raking', 'Circle Raking / Mulching', 'select', 'Done,Partial,Pending,EFB Mulched')"),
-            db.prepare("INSERT INTO custom_field_defs (field_key, field_label, field_type, options_csv) VALUES ('soil_moisture', 'Soil Moisture Condition', 'select', 'Optimal,Moist,Dry,Waterlogged')"),
-            db.prepare("INSERT INTO estates (id, code, name, crop_type, location_region, total_area_ha) VALUES (1, 'EST-01', 'Seri Sawit Makmur Estate', 'Oil Palm (DxP Tenera)', 'Kluang, Johor', 1250.0)"),
-            db.prepare("INSERT INTO estates (id, code, name, crop_type, location_region, total_area_ha) VALUES (2, 'EST-02', 'Bagan Golden Coconut & Palm Estate', 'Coconut & Oil Palm Mixed', 'Bagan Datuk, Perak', 640.0)"),
-            db.prepare("INSERT INTO divisions (id, estate_id, code, name, supervisor_name) VALUES (1, 1, 'DIV-A', 'Division A (North Valley)', 'En. Zainal Abidin')"),
-            db.prepare("INSERT INTO divisions (id, estate_id, code, name, supervisor_name) VALUES (2, 1, 'DIV-B', 'Division B (South Terrace)', 'Mr. S. Kumar')"),
-            db.prepare("INSERT INTO fields (id, division_id, code, name, planting_year, area_ha) VALUES (1, 1, 'FLD-01', 'Field 01 - Mature Prime (2017)', 2017, 45.0)"),
-            db.prepare("INSERT INTO blocks (id, field_id, code, name, palm_variety, area_ha, target_stands) VALUES (1, 1, 'BLK-101', 'Block 101 (Main Harvesting Plot)', 'Yangambi DxP Tenera', 15.0, 20)"),
+            db.prepare("INSERT OR IGNORE INTO users (username, email, phone, full_name, role, assigned_estate_id, password_hash) VALUES ('admin', 'admin@elaeis.lk', '+94771234567', 'Estate Administrator', 'Admin', 1, 'admin123')"),
+            db.prepare("INSERT OR IGNORE INTO users (username, email, phone, full_name, role, assigned_estate_id, password_hash) VALUES ('supervisor1', 'supervisor@elaeis.lk', '+94772345678', 'Field Supervisor', 'Supervisor', 1, 'super123')"),
+            db.prepare("INSERT OR IGNORE INTO users (username, email, phone, full_name, role, assigned_estate_id, password_hash) VALUES ('harvester1', 'officer@elaeis.lk', '+94773456789', 'Field Officer', 'Harvester', 1, 'harvest123')"),
+            db.prepare("INSERT OR IGNORE INTO custom_field_defs (field_key, field_label, field_type, options_csv) VALUES ('circle_mulching', 'Circle Mulching', 'select', 'Completed,Partial,Pending')"),
+            db.prepare("INSERT OR IGNORE INTO custom_field_defs (field_key, field_label, field_type, options_csv) VALUES ('soil_moisture', 'Soil Moisture', 'select', 'Optimal,Moist,Dry,Waterlogged')"),
+            db.prepare("INSERT INTO estates (id, code, name, crop_type, location_region, total_area_ha) VALUES (1, 'EST-01', 'Southern Valley Estate', 'Oil Palm (Tenera)', 'Galle District, Sri Lanka', 450.0)"),
+            db.prepare("INSERT INTO estates (id, code, name, crop_type, location_region, total_area_ha) VALUES (2, 'EST-02', 'Western Hills Estate', 'Coconut & Oil Palm', 'Kalutara District, Sri Lanka', 320.0)"),
+            db.prepare("INSERT INTO divisions (id, estate_id, code, name, supervisor_name) VALUES (1, 1, 'DIV-A', 'North Division', 'N. Perera')"),
+            db.prepare("INSERT INTO divisions (id, estate_id, code, name, supervisor_name) VALUES (2, 1, 'DIV-B', 'South Division', 'K. Silva')"),
+            db.prepare("INSERT INTO fields (id, division_id, code, name, planting_year, area_ha) VALUES (1, 1, 'FLD-01', 'Field 01 - Mature Block (2018)', 2018, 25.0)"),
+            db.prepare("INSERT INTO blocks (id, field_id, code, name, palm_variety, area_ha, target_stands) VALUES (1, 1, 'BLK-101', 'Block 101 (Main Section)', 'Tenera Hybrid', 12.0, 20)"),
         ];
 
         for (let i = 1; i <= 20; i++) {
             const rowNo = Math.floor((i - 1) / 5) + 1;
             const colNo = (i - 1) % 5;
-            const lat = Number((2.0325 + (rowNo - 1) * 0.000075).toFixed(6));
-            const lng = Number((103.3185 + colNo * 0.000085 + (rowNo % 2 === 0 ? 0.000042 : 0)).toFixed(6));
+            const lat = Number((6.1425 + (rowNo - 1) * 0.000075).toFixed(6));
+            const lng = Number((80.3652 + colNo * 0.000085 + (rowNo % 2 === 0 ? 0.000042 : 0)).toFixed(6));
             const code = `T-${String(i).padStart(3, "0")}`;
             stmts.push(
-                db.prepare("INSERT INTO trees (id, block_id, tree_number, tree_code, row_number, latitude, longitude, planting_year, health_status, weed_status, last_fertilizer_type, last_fertilizer_kg, last_fertilizer_date) VALUES (?, 1, ?, ?, ?, ?, ?, 2017, 'Healthy', 'Clean Circle', 'NPK 12:12:17:2', 2.5, ?)").bind(i, i, code, rowNo, lat, lng, `${ym}-02`)
+                db.prepare("INSERT INTO trees (id, block_id, tree_number, tree_code, row_number, latitude, longitude, planting_year, health_status, weed_status, last_fertilizer_type, last_fertilizer_kg, last_fertilizer_date) VALUES (?, 1, ?, ?, ?, ?, ?, 2018, 'Healthy', 'Clean Circle', 'YPM Palm Mixture', 2.5, ?)").bind(i, i, code, rowNo, lat, lng, `${ym}-02`)
             );
             const r1b = (i % 3) + 1;
             const r1f = r1b + 1;
             stmts.push(
-                db.prepare("INSERT INTO harvest_logs (tree_id, block_id, harvest_date, year_month, day_of_month, round_number, bunches_cut, fronds_cut, bunch_weight_kg, weed_growth, fertilizer_type, fertilizer_kg, latitude, longitude, recorded_by_name) VALUES (?, 1, ?, ?, 4, 1, ?, ?, ?, 'Clean Circle', 'NPK 12:12:17:2', 2.5, ?, ?, 'S. Kumar')").bind(i, `${ym}-04`, ym, r1b, r1f, Number((r1b * 18.5).toFixed(1)), lat, lng)
+                db.prepare("INSERT INTO harvest_logs (tree_id, block_id, harvest_date, year_month, day_of_month, round_number, bunches_cut, fronds_cut, bunch_weight_kg, weed_growth, fertilizer_type, fertilizer_kg, latitude, longitude, recorded_by_name) VALUES (?, 1, ?, ?, 4, 1, ?, ?, ?, 'Clean Circle', 'YPM Palm Mixture', 2.5, ?, ?, 'Field Supervisor')").bind(i, `${ym}-04`, ym, r1b, r1f, Number((r1b * 18.0).toFixed(1)), lat, lng)
             );
             if (i <= 15) {
                 const r2b = ((i + 1) % 3) + 1;
                 const r2f = r2b + 1;
                 stmts.push(
-                    db.prepare("INSERT INTO harvest_logs (tree_id, block_id, harvest_date, year_month, day_of_month, round_number, bunches_cut, fronds_cut, bunch_weight_kg, weed_growth, fertilizer_type, fertilizer_kg, latitude, longitude, recorded_by_name) VALUES (?, 1, ?, ?, 14, 2, ?, ?, ?, 'Clean Circle', 'None', 0, ?, ?, 'Mohd Faizal')").bind(i, `${ym}-14`, ym, r2b, r2f, Number((r2b * 18.5).toFixed(1)), lat, lng)
+                    db.prepare("INSERT INTO harvest_logs (tree_id, block_id, harvest_date, year_month, day_of_month, round_number, bunches_cut, fronds_cut, bunch_weight_kg, weed_growth, fertilizer_type, fertilizer_kg, latitude, longitude, recorded_by_name) VALUES (?, 1, ?, ?, 14, 2, ?, ?, ?, 'Clean Circle', 'None', 0, ?, ?, 'Field Officer')").bind(i, `${ym}-14`, ym, r2b, r2f, Number((r2b * 18.0).toFixed(1)), lat, lng)
                 );
             }
         }
         await db.batch(stmts);
+    } else {
+        // Ensure existing D1 database seed rows are updated to clean English & Sri Lankan coordinates
+        await db.batch([
+            db.prepare("UPDATE estates SET name = 'Southern Valley Estate', crop_type = 'Oil Palm (Tenera)', location_region = 'Galle District, Sri Lanka' WHERE code = 'EST-01'"),
+            db.prepare("UPDATE estates SET name = 'Western Hills Estate', crop_type = 'Coconut & Oil Palm', location_region = 'Kalutara District, Sri Lanka' WHERE code = 'EST-02'"),
+            db.prepare("UPDATE divisions SET name = 'North Division', supervisor_name = 'N. Perera' WHERE code = 'DIV-A'"),
+            db.prepare("UPDATE divisions SET name = 'South Division', supervisor_name = 'K. Silva' WHERE code = 'DIV-B'"),
+            db.prepare("UPDATE fields SET name = 'Field 01 - Mature Block (2018)' WHERE code = 'FLD-01'"),
+            db.prepare("UPDATE blocks SET name = 'Block 101 (Main Section)', palm_variety = 'Tenera Hybrid' WHERE code = 'BLK-101'"),
+            db.prepare("UPDATE users SET full_name = 'Estate Administrator', email = 'admin@elaeis.lk', phone = '+94771234567' WHERE username = 'admin'"),
+            db.prepare("UPDATE users SET full_name = 'Field Supervisor', email = 'supervisor@elaeis.lk', phone = '+94772345678' WHERE username = 'supervisor1'"),
+            db.prepare("UPDATE users SET full_name = 'Field Officer', email = 'officer@elaeis.lk', phone = '+94773456789' WHERE username = 'harvester1'"),
+            db.prepare("UPDATE trees SET latitude = ROUND(6.1425 + (row_number - 1) * 0.000075, 6), longitude = ROUND(80.3652 + ((tree_number - 1) % 5) * 0.000085, 6) WHERE latitude < 4.0"),
+        ]);
     }
     d1Initialized = true;
 }
@@ -213,7 +228,7 @@ export default {
         if (!env.DB) {
             return jsonResponse(
                 {
-                    error: "Please bind a Cloudflare D1 database named 'DB' in Cloudflare Pages -> Settings -> Functions -> D1 database bindings.",
+                    error: "Please bind a Cloudflare D1 database named 'DB' in wrangler.toml.",
                 },
                 500
             );
@@ -298,8 +313,8 @@ async function handleD1Api(request, url, path, db) {
                     exists: false,
                     tree_number: treeNumber,
                     tree_code: `T-${String(treeNumber).padStart(3, "0")}`,
-                    suggested_latitude: 2.0328,
-                    suggested_longitude: 103.3189,
+                    suggested_latitude: 6.1428,
+                    suggested_longitude: 80.3655,
                     round_info: roundInfo,
                     block_total_trees: blkMeta?.total || 0,
                     max_tree_number: blkMeta?.max_num || 0,
@@ -635,7 +650,7 @@ async function handleD1Api(request, url, path, db) {
                 .first();
 
             if (!user || (user.password_hash !== pwd && !user.password_hash.endsWith(pwd))) {
-                return jsonResponse({ error: "Invalid credentials." }, 401);
+                return jsonResponse({ error: "Invalid login credentials." }, 401);
             }
             const token = crypto.randomUUID();
             await db.prepare("INSERT INTO sessions (token, user_id) VALUES (?, ?)").bind(token, user.id).run();
@@ -657,7 +672,7 @@ async function handleD1Api(request, url, path, db) {
                     data.password
                 )
                 .run();
-            return jsonResponse({ message: `User '${data.full_name}' created!` });
+            return jsonResponse({ message: `User '${data.full_name}' created.` });
         }
 
         if (path === "/api/auth/forgot-password") {
@@ -666,11 +681,11 @@ async function handleD1Api(request, url, path, db) {
                 .prepare("SELECT * FROM users WHERE LOWER(username)=LOWER(?) OR LOWER(email)=LOWER(?) OR phone=?")
                 .bind(idf, idf, idf)
                 .first();
-            if (!user) return jsonResponse({ error: "No matching user found" }, 404);
+            if (!user) return jsonResponse({ error: "No matching user found." }, 404);
             const otp = String(Math.floor(100000 + Math.random() * 900000));
             await db.prepare("UPDATE users SET reset_token = ? WHERE id = ?").bind(otp, user.id).run();
             return jsonResponse({
-                message: "Recovery code generated",
+                message: "Recovery code generated.",
                 recovery_code_demo: otp,
                 user_hint: `${user.username} (${user.phone})`,
             });
@@ -684,20 +699,20 @@ async function handleD1Api(request, url, path, db) {
                 )
                 .bind(idf, idf, idf, String(data.reset_token || "").trim())
                 .first();
-            if (!user) return jsonResponse({ error: "Invalid recovery code" }, 400);
+            if (!user) return jsonResponse({ error: "Invalid recovery code." }, 400);
             await db
                 .prepare("UPDATE users SET password_hash = ?, reset_token = NULL WHERE id = ?")
                 .bind(data.new_password, user.id)
                 .run();
-            return jsonResponse({ message: "Password updated!" });
+            return jsonResponse({ message: "Password updated." });
         }
 
         if (path === "/api/harvest") {
             const blockId = Number(data.block_id);
             const treeNumber = Number(data.tree_number);
             const rInfo = computeHarvestRound(data.harvest_date);
-            const lat = Number(data.latitude || 2.0325);
-            const lng = Number(data.longitude || 103.3185);
+            const lat = Number(data.latitude || 6.1425);
+            const lng = Number(data.longitude || 80.3652);
 
             let tree = await db
                 .prepare("SELECT * FROM trees WHERE block_id = ? AND tree_number = ?")
@@ -720,7 +735,7 @@ async function handleD1Api(request, url, path, db) {
                         lng,
                         data.pest_disease || "Healthy",
                         data.weed_growth || "Clean Circle",
-                        data.fertilizer_type || "NPK 12:12:17:2",
+                        data.fertilizer_type || "YPM Palm Mixture",
                         Number(data.fertilizer_kg || 0)
                     )
                     .run();
@@ -803,19 +818,19 @@ async function handleD1Api(request, url, path, db) {
             if (data.level === "block") {
                 const res = await db
                     .prepare(
-                        "INSERT INTO blocks (field_id, code, name, palm_variety, area_ha, target_stands) VALUES (?, ?, ?, 'DxP Tenera', 15.0, ?)"
+                        "INSERT INTO blocks (field_id, code, name, palm_variety, area_ha, target_stands) VALUES (?, ?, ?, 'Tenera Hybrid', 12.0, ?)"
                     )
                     .bind(
                         Number(data.field_id || 1),
                         data.code,
                         data.name,
-                        Number(data.auto_generate_trees || 15)
+                        Number(data.auto_generate_trees || 20)
                     )
                     .run();
                 const blkId = res.meta?.last_row_id || 2;
-                const count = Number(data.auto_generate_trees || 15);
-                const baseLat = Number(data.base_latitude || 2.0355);
-                const baseLng = Number(data.base_longitude || 103.3205);
+                const count = Number(data.auto_generate_trees || 20);
+                const baseLat = Number(data.base_latitude || 6.1425);
+                const baseLng = Number(data.base_longitude || 80.3652);
                 const stmts = [];
                 for (let i = 1; i <= count; i++) {
                     const rNo = Math.floor((i - 1) / 5) + 1;
@@ -832,7 +847,7 @@ async function handleD1Api(request, url, path, db) {
                 }
                 if (stmts.length) await db.batch(stmts);
             }
-            return jsonResponse({ message: "Block and geo-tagged palms created!" });
+            return jsonResponse({ message: "Block and geo-tagged palms created." });
         }
 
         if (path === "/api/custom-fields") {
@@ -844,10 +859,9 @@ async function handleD1Api(request, url, path, db) {
                 )
                 .bind(key, label, data.field_type || "select", data.options_csv || "")
                 .run();
-            return jsonResponse({ message: `Custom field '${label}' added!` });
+            return jsonResponse({ message: `Custom field '${label}' added.` });
         }
     }
 
     return jsonResponse({ error: "Endpoint not found" }, 404);
 }
-

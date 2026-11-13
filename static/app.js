@@ -1,7 +1,7 @@
 ﻿// ============================================================================
-// ELAEIS — PALM BASIS CROP MONITORING SYSTEM â€” FRONTEND APPLICATION LOGIC
-// Hierarchy: Estate -> Division -> Field -> Block -> Geo-Tagged Tree
-// 3 Monthly Rounds: Round 1 (1-10), Round 2 (11-20), Round 3 (21-28/29/30/31)
+// ELAEIS - PLANTATION & CROP MONITORING PLATFORM
+// Hierarchy: Estate > Division > Field > Block > Geo-Tagged Palm Tree
+// 3 Monthly Rounds: Round 1 (Days 1-10), Round 2 (Days 11-20), Round 3 (Days 21-End)
 // ============================================================================
 
 let authToken = localStorage.getItem("elaeis_auth_token") || "";
@@ -18,9 +18,6 @@ let customFieldDefs = [];
 let currentBlockMatrix = null;
 let mapTreeHitboxes = [];
 
-// ----------------------------------------------------------------------------
-// INITIALIZATION
-// ----------------------------------------------------------------------------
 window.addEventListener("DOMContentLoaded", async () => {
     const todayIso = new Date().toISOString().slice(0, 10);
     const currentYm = todayIso.slice(0, 7);
@@ -44,9 +41,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     showAuthScreen();
 });
 
-// ----------------------------------------------------------------------------
-// API HELPERS
-// ----------------------------------------------------------------------------
 async function apiGet(url) {
     try {
         const resp = await fetch(url, {
@@ -79,16 +73,16 @@ async function apiPost(url, payload) {
 function showToast(msg, isError = false) {
     const el = document.getElementById("toast");
     el.textContent = msg;
-    el.style.background = isError ? "#dc2626" : "#14532d";
+    el.style.background = isError ? "#dc2626" : "#0f5132";
     el.classList.remove("hidden");
     clearTimeout(window._toastTimer);
     window._toastTimer = setTimeout(() => {
         el.classList.add("hidden");
-    }, 3600);
+    }, 3400);
 }
 
 // ----------------------------------------------------------------------------
-// AUTHENTICATION (USERNAME / EMAIL / PHONE LOGIN + FORGOT PASSWORD)
+// AUTHENTICATION
 // ----------------------------------------------------------------------------
 function showAuthScreen() {
     document.getElementById("auth-screen").classList.remove("hidden");
@@ -101,11 +95,6 @@ function showAuthPanel(panel) {
     document.getElementById("register-panel").classList.toggle("hidden", panel !== "register");
 }
 
-function fillDemoLogin(identifier, password) {
-    document.getElementById("login-identifier").value = identifier;
-    document.getElementById("login-password").value = password;
-}
-
 async function handleLogin(e) {
     e.preventDefault();
     const identifier = document.getElementById("login-identifier").value.trim();
@@ -115,7 +104,7 @@ async function handleLogin(e) {
 
     const res = await apiPost("/api/auth/login", { identifier, password });
     if (!res.ok) {
-        errEl.textContent = res.data.error || "Sign in failed";
+        errEl.textContent = res.data.error || "Invalid login credentials.";
         errEl.classList.remove("hidden");
         return;
     }
@@ -123,29 +112,25 @@ async function handleLogin(e) {
     authToken = res.data.token;
     currentUser = res.data.user;
     localStorage.setItem("elaeis_auth_token", authToken);
-    showToast(`Welcome, ${currentUser.full_name}!`);
+    showToast(`Welcome, ${currentUser.full_name}`);
     enterAppShell();
 }
 
 async function requestPasswordReset() {
     const identifier = document.getElementById("forgot-identifier").value.trim();
     if (!identifier) {
-        showToast("Please enter your Username, Email, or Phone Number", true);
+        showToast("Please enter your username, email, or phone number.", true);
         return;
     }
     const res = await apiPost("/api/auth/forgot-password", { identifier });
     if (!res.ok) {
-        showToast(res.data.error || "Account not found", true);
+        showToast(res.data.error || "Account not found.", true);
         return;
     }
 
     document.getElementById("reset-step-2").classList.remove("hidden");
     const banner = document.getElementById("recovery-code-banner");
-    banner.innerHTML = `
-        <strong>Recovery OTP Sent!</strong>
-        Account: ${res.data.user_hint}<br/>
-        Demo OTP Code: <span style="font-size:1.1rem;font-weight:800;color:#b45309;">${res.data.recovery_code_demo}</span>
-    `;
+    banner.innerHTML = `Recovery code for <strong>${res.data.user_hint}</strong>: <strong>${res.data.recovery_code_demo}</strong>`;
     document.getElementById("reset-token-input").value = res.data.recovery_code_demo;
 }
 
@@ -159,7 +144,7 @@ async function confirmPasswordReset() {
         new_password,
     });
     if (!res.ok) {
-        showToast(res.data.error || "Reset failed", true);
+        showToast(res.data.error || "Password reset failed.", true);
         return;
     }
     showToast(res.data.message);
@@ -179,12 +164,14 @@ async function handleSelfRegister(e) {
     };
     const res = await apiPost("/api/auth/register", payload);
     if (!res.ok) {
-        showToast(res.data.error || "Registration failed", true);
+        showToast(res.data.error || "Registration failed.", true);
         return;
     }
-    showToast("Account created! Signing you in...");
-    fillDemoLogin(payload.username, payload.password);
+    showToast("Account created! Signing in...");
+    document.getElementById("login-identifier").value = payload.username;
+    document.getElementById("login-password").value = payload.password;
     showAuthPanel("login");
+    await handleLogin(new Event("submit"));
 }
 
 function logoutUser() {
@@ -195,7 +182,7 @@ function logoutUser() {
 }
 
 // ----------------------------------------------------------------------------
-// ENTER MAIN APP SHELL & LOAD HIERARCHY
+// APP SHELL & TABS
 // ----------------------------------------------------------------------------
 async function enterAppShell() {
     document.getElementById("auth-screen").classList.add("hidden");
@@ -203,7 +190,7 @@ async function enterAppShell() {
 
     if (currentUser) {
         document.getElementById("current-user-label").textContent =
-            `${currentUser.full_name} [${currentUser.role}]`;
+            `${currentUser.full_name} (${currentUser.role})`;
     }
 
     await loadCustomFields();
@@ -232,7 +219,7 @@ function switchTab(tabName) {
 }
 
 // ----------------------------------------------------------------------------
-// 5-LEVEL CASCADING HIERARCHY (ESTATE -> DIVISION -> FIELD -> BLOCK -> TREE)
+// CASCADING HIERARCHY: ESTATE > DIVISION > FIELD > BLOCK > TREE
 // ----------------------------------------------------------------------------
 async function loadHierarchy() {
     const data = await apiGet("/api/hierarchy");
@@ -241,7 +228,7 @@ async function loadHierarchy() {
 
     const estSel = document.getElementById("sel-estate");
     estSel.innerHTML = hierarchyData.estates
-        .map((e) => `<option value="${e.id}">${e.code} â€” ${e.name}</option>`)
+        .map((e) => `<option value="${e.id}">${e.code} - ${e.name}</option>`)
         .join("");
 
     onEstateChange();
@@ -252,7 +239,7 @@ function onEstateChange() {
     const divs = hierarchyData.divisions.filter((d) => d.estate_id === estateId);
     const divSel = document.getElementById("sel-division");
     divSel.innerHTML = divs
-        .map((d) => `<option value="${d.id}">${d.code} â€” ${d.name}</option>`)
+        .map((d) => `<option value="${d.id}">${d.code} - ${d.name}</option>`)
         .join("");
     onDivisionChange();
 }
@@ -262,7 +249,7 @@ function onDivisionChange() {
     const flds = hierarchyData.fields.filter((f) => f.division_id === divId);
     const fldSel = document.getElementById("sel-field");
     fldSel.innerHTML = flds
-        .map((f) => `<option value="${f.id}">${f.code} â€” ${f.name}</option>`)
+        .map((f) => `<option value="${f.id}">${f.code} - ${f.name}</option>`)
         .join("");
     onFieldChange();
 }
@@ -274,7 +261,7 @@ function onFieldChange() {
     blkSel.innerHTML = blks
         .map(
             (b) =>
-                `<option value="${b.id}">${b.code} â€” ${b.name} (${b.registered_trees} Palms)</option>`
+                `<option value="${b.id}">${b.code} - ${b.name} (${b.registered_trees} Palms)</option>`
         )
         .join("");
     updateNewBlockParentInfo();
@@ -296,7 +283,7 @@ function updateNewBlockParentInfo() {
     const fldSel = document.getElementById("sel-field");
     const infoEl = document.getElementById("new-blk-parent-info");
     if (infoEl && estSel.selectedOptions[0] && divSel.selectedOptions[0] && fldSel.selectedOptions[0]) {
-        infoEl.value = `${estSel.selectedOptions[0].text} â†’ ${divSel.selectedOptions[0].text} â†’ ${fldSel.selectedOptions[0].text}`;
+        infoEl.value = `${estSel.selectedOptions[0].text} > ${divSel.selectedOptions[0].text} > ${fldSel.selectedOptions[0].text}`;
     }
 }
 
@@ -309,29 +296,41 @@ function computeClientRound(dateStr) {
     const ym = parts.length >= 2 ? `${parts[0]}-${parts[1]}` : new Date().toISOString().slice(0, 7);
 
     let roundNumber = 1;
-    let roundLabel = "Round 1 (Days 1â€“10)";
+    let roundLabel = "Round 1 (Days 1-10)";
     if (day >= 11 && day <= 20) {
         roundNumber = 2;
-        roundLabel = "Round 2 (Days 11â€“20)";
+        roundLabel = "Round 2 (Days 11-20)";
     } else if (day >= 21) {
         roundNumber = 3;
-        roundLabel = "Round 3 (Days 21â€“End)";
+        roundLabel = "Round 3 (Days 21-End)";
     }
     return { day, yearMonth: ym, roundNumber, roundLabel };
+}
+
+function updateRoundLabelsUI(rInfo) {
+    const monthInp = document.getElementById("inp-auto-month");
+    const roundInp = document.getElementById("inp-auto-round");
+    const monthLbl = document.getElementById("inp-auto-month-label");
+    const roundLbl = document.getElementById("inp-auto-round-label");
+    const badge = document.getElementById("form-round-badge");
+
+    if (monthInp) monthInp.value = rInfo.yearMonth;
+    if (roundInp) roundInp.value = rInfo.roundLabel;
+    if (monthLbl) monthLbl.textContent = rInfo.yearMonth;
+    if (roundLbl) roundLbl.textContent = rInfo.roundLabel;
+    if (badge) badge.textContent = `${rInfo.yearMonth} | ${rInfo.roundLabel}`;
 }
 
 function onHarvestDateChange() {
     const dateVal = document.getElementById("inp-harvest-date").value;
     const r = computeClientRound(dateVal);
-    document.getElementById("inp-auto-month").value = r.yearMonth;
-    document.getElementById("inp-auto-round").value = r.roundLabel;
-    document.getElementById("form-round-badge").textContent = `${r.yearMonth} â€¢ ${r.roundLabel}`;
+    updateRoundLabelsUI(r);
     lookupCurrentTree();
     refreshBlockRightPanel();
 }
 
 // ----------------------------------------------------------------------------
-// TREE LOOKUP & RAPID TREE-BY-TREE HARVESTING WORKFLOW
+// TREE LOOKUP & SAVE-AND-NEXT WORKFLOW
 // ----------------------------------------------------------------------------
 async function lookupCurrentTree() {
     const blockId = Number(document.getElementById("sel-block").value || 0);
@@ -341,9 +340,7 @@ async function lookupCurrentTree() {
     if (!blockId || treeNumber < 1) return;
 
     const rInfo = computeClientRound(dateVal);
-    document.getElementById("inp-auto-month").value = rInfo.yearMonth;
-    document.getElementById("inp-auto-round").value = rInfo.roundLabel;
-    document.getElementById("form-round-badge").textContent = `${rInfo.yearMonth} â€¢ ${rInfo.roundLabel}`;
+    updateRoundLabelsUI(rInfo);
 
     const data = await apiGet(
         `/api/trees/lookup?block_id=${blockId}&tree_number=${treeNumber}&date=${dateVal}`
@@ -355,16 +352,16 @@ async function lookupCurrentTree() {
 
     if (data.exists) {
         const t = data.tree;
-        statusTag.textContent = `${t.tree_code} (Row ${t.row_number}) â€¢ Registered GPS`;
+        statusTag.textContent = `${t.tree_code} (Row ${t.row_number})`;
         statusTag.className = "badge badge-green";
         document.getElementById("inp-latitude").value = t.latitude;
         document.getElementById("inp-longitude").value = t.longitude;
 
         const mr = data.month_rounds || {};
-        const r1Txt = mr[1] ? `${mr[1].bunches_cut}B/${mr[1].fronds_cut}F` : "â€”";
-        const r2Txt = mr[2] ? `${mr[2].bunches_cut}B/${mr[2].fronds_cut}F` : "â€”";
-        const r3Txt = mr[3] ? `${mr[3].bunches_cut}B/${mr[3].fronds_cut}F` : "â€”";
-        miniHist.textContent = `This Month â†’ R1(1-10): ${r1Txt} | R2(11-20): ${r2Txt} | R3(21-End): ${r3Txt}`;
+        const r1Txt = mr[1] ? `${mr[1].bunches_cut}B/${mr[1].fronds_cut}F` : "-";
+        const r2Txt = mr[2] ? `${mr[2].bunches_cut}B/${mr[2].fronds_cut}F` : "-";
+        const r3Txt = mr[3] ? `${mr[3].bunches_cut}B/${mr[3].fronds_cut}F` : "-";
+        miniHist.textContent = `R1: ${r1Txt} | R2: ${r2Txt} | R3: ${r3Txt}`;
 
         if (data.existing_log) {
             const lg = data.existing_log;
@@ -379,10 +376,9 @@ async function lookupCurrentTree() {
             document.getElementById("inp-remarks").value = lg.remarks || "";
             populateCustomFieldValues(lg.custom_data_json);
         } else {
-            // Default fresh entry for this round
             document.getElementById("inp-bunches-cut").value = 1;
             document.getElementById("inp-fronds-cut").value = 2;
-            document.getElementById("inp-bunch-weight").value = 18.5;
+            document.getElementById("inp-bunch-weight").value = 18.0;
             document.getElementById("inp-weed-growth").value = t.weed_status || "Clean Circle";
             document.getElementById("inp-fertilizer-type").value = "None";
             document.getElementById("inp-fertilizer-kg").value = 0.0;
@@ -391,14 +387,14 @@ async function lookupCurrentTree() {
             populateCustomFieldValues("{}");
         }
     } else {
-        statusTag.textContent = `New Tree #${treeNumber} (Will Auto-Register with GPS)`;
+        statusTag.textContent = `New Tree #${treeNumber}`;
         statusTag.className = "badge badge-amber";
         document.getElementById("inp-latitude").value = data.suggested_latitude;
         document.getElementById("inp-longitude").value = data.suggested_longitude;
-        miniHist.textContent = "New palm number in this block â€” saving will register its GPS.";
+        miniHist.textContent = "New tree number - saving will register its GPS coordinates.";
         document.getElementById("inp-bunches-cut").value = 1;
         document.getElementById("inp-fronds-cut").value = 2;
-        document.getElementById("inp-bunch-weight").value = 18.5;
+        document.getElementById("inp-bunch-weight").value = 18.0;
         document.getElementById("inp-remarks").value = "";
     }
 
@@ -416,25 +412,25 @@ function adjustCounter(inputId, delta) {
 
 function autoCalcWeight() {
     const bunches = Number(document.getElementById("inp-bunches-cut").value || 0);
-    document.getElementById("inp-bunch-weight").value = (bunches * 18.5).toFixed(1);
+    document.getElementById("inp-bunch-weight").value = (bunches * 18.0).toFixed(1);
 }
 
 function captureDeviceGPS() {
     if (!navigator.geolocation) {
-        showToast("Geolocation is not supported by this browser", true);
+        showToast("Geolocation is not supported on this device.", true);
         return;
     }
-    showToast("Acquiring high-accuracy satellite GPS coordinates...");
+    showToast("Reading live device GPS location...");
     navigator.geolocation.getCurrentPosition(
         (pos) => {
             document.getElementById("inp-latitude").value = pos.coords.latitude.toFixed(6);
             document.getElementById("inp-longitude").value = pos.coords.longitude.toFixed(6);
             showToast(
-                `Live GPS Locked: ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`
+                `GPS Locked: ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`
             );
         },
         () => {
-            showToast("Using block grid interpolated GPS coordinates.", false);
+            showToast("Could not read live GPS; using block coordinates.", true);
         },
         { enableHighAccuracy: true, timeout: 6000 }
     );
@@ -472,23 +468,15 @@ async function submitTreeHarvest(e) {
 
     const res = await apiPost("/api/harvest", payload);
     if (!res.ok) {
-        showToast(res.data.error || "Failed to save tree harvest", true);
+        showToast(res.data.error || "Failed to save tree record.", true);
         return;
     }
 
-    showToast(`âœ… ${res.data.message} â†’ Advancing to Tree #${res.data.next_tree_number}`);
+    showToast(`Saved Tree #${treeNumber}. Loaded Tree #${res.data.next_tree_number}.`);
 
-    // Auto-advance to Next Tree Number!
     document.getElementById("inp-tree-number").value = res.data.next_tree_number;
     await lookupCurrentTree();
     await refreshBlockRightPanel();
-
-    // Focus Bunches Cut input for rapid entry
-    const bunchInput = document.getElementById("inp-bunches-cut");
-    if (bunchInput) {
-        bunchInput.focus();
-        bunchInput.select();
-    }
 }
 
 function stepTreeNumber(delta) {
@@ -526,7 +514,7 @@ async function refreshBlockRightPanel() {
 
     const s = data.summary;
     document.getElementById("right-block-title").textContent =
-        `${data.block.code || "Block"} â€” ${rInfo.yearMonth} Progress`;
+        `${data.block.code || "Block"} - ${rInfo.yearMonth}`;
 
     const currentRoundHarvested =
         rInfo.roundNumber === 1
@@ -536,7 +524,7 @@ async function refreshBlockRightPanel() {
             : s.r3_trees_harvested;
 
     document.getElementById("block-round-progress-badge").textContent =
-        `Round ${rInfo.roundNumber}: ${currentRoundHarvested} / ${s.total_trees} Trees Cut`;
+        `Round ${rInfo.roundNumber}: ${currentRoundHarvested} / ${s.total_trees} Trees`;
 
     document.getElementById("blk-stat-r1").textContent = `${s.r1_bunches}B / ${s.r1_fronds}F`;
     document.getElementById("blk-trees-r1").textContent = `${s.r1_trees_harvested}/${s.total_trees} palms`;
@@ -558,7 +546,7 @@ async function refreshBlockRightPanel() {
                     ? t.round_2
                     : t.round_3;
             const isDone = Boolean(roundObj);
-            const subText = isDone ? `${roundObj.bunches_cut}BÂ·${roundObj.fronds_cut}F` : "Pending";
+            const subText = isDone ? `${roundObj.bunches_cut}B / ${roundObj.fronds_cut}F` : "Pending";
             const activeCls = t.tree_number === activeTreeNo ? "active-tree" : "";
             return `
                 <div class="tree-pill ${isDone ? "done" : ""} ${activeCls}"
@@ -574,7 +562,7 @@ async function refreshBlockRightPanel() {
 }
 
 // ----------------------------------------------------------------------------
-// TAB 2: 3-ROUND BLOCK REPORT, MATRIX TABLE & INTERACTIVE GPS CANVAS MAP
+// TAB 2: 3-ROUND BLOCK REPORT & INTERACTIVE GPS MAP
 // ----------------------------------------------------------------------------
 async function loadBlockRoundReport() {
     const blockId = Number(document.getElementById("sel-block").value || 1);
@@ -590,68 +578,68 @@ async function loadBlockRoundReport() {
     const s = data.summary;
 
     document.getElementById("report-header-title").textContent =
-        `3-Round Harvesting & Geo-Location Report â€” ${b.code}: ${b.name} (${ym})`;
+        `3-Round Block Report - ${b.code}: ${b.name} (${ym})`;
     document.getElementById("report-hierarchy-subtitle").textContent =
-        `${b.estate_name} â†’ ${b.division_name} â†’ ${b.field_name} â†’ ${b.name} â€¢ Variety: ${b.palm_variety} â€¢ Total Registered Palms: ${s.total_trees}`;
+        `${b.estate_name} > ${b.division_name} > ${b.field_name} > ${b.name} | Total Registered Palms: ${s.total_trees}`;
 
     document.getElementById("report-rounds-summary").innerHTML = `
         <div class="round-card">
             <div class="round-card-header">
-                <h3>Round 1 Cycle</h3>
-                <span class="round-days-tag">Days 1 â€“ 10</span>
+                <h3>Round 1</h3>
+                <span class="round-days-tag">Days 1 - 10</span>
             </div>
             <div class="round-metrics">
                 <div>
                     <div class="round-metric-val">${s.r1_trees_harvested}/${s.total_trees}</div>
-                    <div class="round-metric-lbl">Palms Harvested</div>
+                    <div class="round-metric-lbl">Palms Cut</div>
                 </div>
                 <div>
-                    <div class="round-metric-val" style="color:#16a34a;">${s.r1_bunches}</div>
-                    <div class="round-metric-lbl">Bunches Cut</div>
+                    <div class="round-metric-val" style="color:var(--brand);">${s.r1_bunches}</div>
+                    <div class="round-metric-lbl">Bunches</div>
                 </div>
                 <div>
-                    <div class="round-metric-val" style="color:#d97706;">${s.r1_fronds}</div>
-                    <div class="round-metric-lbl">Fronds Cut</div>
+                    <div class="round-metric-val" style="color:var(--amber);">${s.r1_fronds}</div>
+                    <div class="round-metric-lbl">Fronds</div>
                 </div>
             </div>
         </div>
         <div class="round-card">
             <div class="round-card-header">
-                <h3>Round 2 Cycle</h3>
-                <span class="round-days-tag">Days 11 â€“ 20</span>
+                <h3>Round 2</h3>
+                <span class="round-days-tag">Days 11 - 20</span>
             </div>
             <div class="round-metrics">
                 <div>
                     <div class="round-metric-val">${s.r2_trees_harvested}/${s.total_trees}</div>
-                    <div class="round-metric-lbl">Palms Harvested</div>
+                    <div class="round-metric-lbl">Palms Cut</div>
                 </div>
                 <div>
-                    <div class="round-metric-val" style="color:#16a34a;">${s.r2_bunches}</div>
-                    <div class="round-metric-lbl">Bunches Cut</div>
+                    <div class="round-metric-val" style="color:var(--brand);">${s.r2_bunches}</div>
+                    <div class="round-metric-lbl">Bunches</div>
                 </div>
                 <div>
-                    <div class="round-metric-val" style="color:#d97706;">${s.r2_fronds}</div>
-                    <div class="round-metric-lbl">Fronds Cut</div>
+                    <div class="round-metric-val" style="color:var(--amber);">${s.r2_fronds}</div>
+                    <div class="round-metric-lbl">Fronds</div>
                 </div>
             </div>
         </div>
         <div class="round-card">
             <div class="round-card-header">
-                <h3>Round 3 Cycle</h3>
-                <span class="round-days-tag">Days 21 â€“ 28/29/30/31</span>
+                <h3>Round 3</h3>
+                <span class="round-days-tag">Days 21 - End</span>
             </div>
             <div class="round-metrics">
                 <div>
                     <div class="round-metric-val">${s.r3_trees_harvested}/${s.total_trees}</div>
-                    <div class="round-metric-lbl">Palms Harvested</div>
+                    <div class="round-metric-lbl">Palms Cut</div>
                 </div>
                 <div>
-                    <div class="round-metric-val" style="color:#16a34a;">${s.r3_bunches}</div>
-                    <div class="round-metric-lbl">Bunches Cut</div>
+                    <div class="round-metric-val" style="color:var(--brand);">${s.r3_bunches}</div>
+                    <div class="round-metric-lbl">Bunches</div>
                 </div>
                 <div>
-                    <div class="round-metric-val" style="color:#d97706;">${s.r3_fronds}</div>
-                    <div class="round-metric-lbl">Fronds Cut</div>
+                    <div class="round-metric-val" style="color:var(--amber);">${s.r3_fronds}</div>
+                    <div class="round-metric-lbl">Fronds</div>
                 </div>
             </div>
         </div>
@@ -659,10 +647,10 @@ async function loadBlockRoundReport() {
 
     const tbody = document.getElementById("report-matrix-tbody");
     const fmtRoundCell = (r) => {
-        if (!r) return `<span class="badge badge-gray">Not Cut</span>`;
+        if (!r) return `<span class="badge badge-gray">Pending</span>`;
         return `
-            <div><strong>${r.bunches_cut} Bunches</strong> | <span>${r.fronds_cut} Fronds</span></div>
-            <div style="font-size:0.72rem;color:var(--text-muted);">ðŸ“… ${r.harvest_date}</div>
+            <div><strong>${r.bunches_cut} Bunches</strong> | ${r.fronds_cut} Fronds</div>
+            <div style="font-size:0.72rem;color:var(--text-muted);">${r.harvest_date}</div>
         `;
     };
 
@@ -676,22 +664,22 @@ async function loadBlockRoundReport() {
                     <div style="font-size:0.74rem;color:var(--text-muted);">${t.tree_code} (Row ${t.row_number})</div>
                 </td>
                 <td style="font-family:monospace;font-size:0.8rem;">
-                    ðŸ“ ${t.latitude.toFixed(6)}, ${t.longitude.toFixed(6)}
+                    ${t.latitude.toFixed(6)}, ${t.longitude.toFixed(6)}
                 </td>
-                <td style="background:#f9fefb;">${fmtRoundCell(t.round_1)}</td>
-                <td style="background:#f8fbff;">${fmtRoundCell(t.round_2)}</td>
-                <td style="background:#fffdf7;">${fmtRoundCell(t.round_3)}</td>
-                <td><span class="badge badge-green" style="font-size:0.85rem;">${t.total_bunches} Bunches</span></td>
-                <td><span class="badge badge-amber" style="font-size:0.85rem;">${t.total_fronds} Fronds</span></td>
+                <td>${fmtRoundCell(t.round_1)}</td>
+                <td>${fmtRoundCell(t.round_2)}</td>
+                <td>${fmtRoundCell(t.round_3)}</td>
+                <td><span class="badge badge-green">${t.total_bunches} Bunches</span></td>
+                <td><span class="badge badge-amber">${t.total_fronds} Fronds</span></td>
                 <td><strong>${t.total_weight_kg} kg</strong></td>
                 <td>${t.weed_status}</td>
                 <td>
-                    <div><strong>${t.last_fertilizer_type}</strong> (${t.last_fertilizer_kg}kg)</div>
+                    <div><strong>${t.last_fertilizer_type}</strong> (${t.last_fertilizer_kg} kg)</div>
                     <div style="font-size:0.74rem;color:var(--text-muted);">${t.health_status}</div>
                 </td>
                 <td class="no-print">
                     <button class="btn btn-sm btn-outline" onclick="jumpToEditTree(${t.tree_number})">
-                        Edit Tree
+                        Edit
                     </button>
                 </td>
             </tr>
@@ -699,11 +687,11 @@ async function loadBlockRoundReport() {
             )
             .join("") +
         `
-        <tr style="background:#e9f0ec;font-weight:800;">
-            <td colspan="2">BLOCK MONTHLY TOTAL (${s.total_trees} Geo-Tagged Palms)</td>
-            <td>${s.r1_bunches} Bunches | ${s.r1_fronds} Fronds (${s.r1_trees_harvested} trees)</td>
-            <td>${s.r2_bunches} Bunches | ${s.r2_fronds} Fronds (${s.r2_trees_harvested} trees)</td>
-            <td>${s.r3_bunches} Bunches | ${s.r3_fronds} Fronds (${s.r3_trees_harvested} trees)</td>
+        <tr style="background:#f0fdf4;font-weight:700;">
+            <td colspan="2">BLOCK TOTAL (${s.total_trees} Palms)</td>
+            <td>${s.r1_bunches}B | ${s.r1_fronds}F (${s.r1_trees_harvested} trees)</td>
+            <td>${s.r2_bunches}B | ${s.r2_fronds}F (${s.r2_trees_harvested} trees)</td>
+            <td>${s.r3_bunches}B | ${s.r3_fronds}F (${s.r3_trees_harvested} trees)</td>
             <td>${s.total_bunches} Bunches</td>
             <td>${s.total_fronds} Fronds</td>
             <td>${s.total_weight_kg} kg</td>
@@ -729,7 +717,7 @@ function downloadBlockCSV() {
 }
 
 // ----------------------------------------------------------------------------
-// INTERACTIVE GEO-LOCATION PALM MAP ON HTML5 CANVAS
+// INTERACTIVE BLOCK GPS MAP (CANVAS)
 // ----------------------------------------------------------------------------
 function renderBlockGisCanvas(trees) {
     const canvas = document.getElementById("block-map-canvas");
@@ -740,10 +728,9 @@ function renderBlockGisCanvas(trees) {
     ctx.clearRect(0, 0, W, H);
     mapTreeHitboxes = [];
 
-    // Draw background grid
-    ctx.fillStyle = "#ecfdf5";
+    ctx.fillStyle = "#f0fdf4";
     ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = "#d1fae5";
+    ctx.strokeStyle = "#dcfce7";
     ctx.lineWidth = 1;
     for (let x = 40; x < W; x += 55) {
         ctx.beginPath();
@@ -759,9 +746,9 @@ function renderBlockGisCanvas(trees) {
     }
 
     if (!trees || trees.length === 0) {
-        ctx.fillStyle = "#14532d";
-        ctx.font = "bold 16px sans-serif";
-        ctx.fillText("No trees registered in this block yet.", 40, 60);
+        ctx.fillStyle = "#0f5132";
+        ctx.font = "bold 15px sans-serif";
+        ctx.fillText("No palm trees registered in this block yet.", 40, 60);
         return;
     }
 
@@ -773,7 +760,7 @@ function renderBlockGisCanvas(trees) {
     const maxLng = Math.max(...lngs);
 
     const padX = 95;
-    const padY = 58;
+    const padY = 56;
     const spanLat = Math.max(maxLat - minLat, 0.0001);
     const spanLng = Math.max(maxLng - minLng, 0.0001);
 
@@ -781,59 +768,50 @@ function renderBlockGisCanvas(trees) {
         const x = padX + ((t.longitude - minLng) / spanLng) * (W - padX * 2);
         const y = H - padY - ((t.latitude - minLat) / spanLat) * (H - padY * 2);
 
-        // Color based on how many rounds harvested (0, 1, 2, or 3 rounds)
         let fill = "#94a3b8";
-        if (t.rounds_done === 3) fill = "#15803d";
+        if (t.rounds_done === 3) fill = "#16a34a";
         else if (t.rounds_done === 2) fill = "#0284c7";
         else if (t.rounds_done === 1) fill = "#d97706";
 
-        // Outer halo
         ctx.beginPath();
-        ctx.arc(x, y, 21, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255,255,255,0.85)";
+        ctx.arc(x, y, 20, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
         ctx.fill();
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2.5;
         ctx.strokeStyle = fill;
         ctx.stroke();
 
-        // Inner palm circle
         ctx.beginPath();
-        ctx.arc(x, y, 16, 0, Math.PI * 2);
+        ctx.arc(x, y, 15, 0, Math.PI * 2);
         ctx.fillStyle = fill;
         ctx.fill();
 
-        // Tree number label
         ctx.fillStyle = "#ffffff";
         ctx.font = "bold 11px sans-serif";
         ctx.textAlign = "center";
         ctx.fillText(`#${t.tree_number}`, x, y + 4);
 
-        // GPS & Bunches/Fronds caption below pin
-        ctx.fillStyle = "#0f172a";
+        ctx.fillStyle = "#1c1e21";
         ctx.font = "600 10px monospace";
-        ctx.fillText(`${t.total_bunches}B/${t.total_fronds}F`, x, y + 34);
-        ctx.fillStyle = "#475569";
-        ctx.font = "9px monospace";
-        ctx.fillText(`${t.latitude.toFixed(5)},${t.longitude.toFixed(5)}`, x, y + 45);
+        ctx.fillText(`${t.total_bunches}B/${t.total_fronds}F`, x, y + 32);
 
         mapTreeHitboxes.push({ x, y, r: 22, tree_number: t.tree_number });
     });
 
-    // Legend
     ctx.textAlign = "left";
-    ctx.fillStyle = "rgba(255,255,255,0.92)";
-    ctx.fillRect(14, 12, 540, 28);
+    ctx.fillStyle = "rgba(255,255,255,0.94)";
+    ctx.fillRect(14, 12, 480, 26);
     ctx.strokeStyle = "#cbd5e1";
-    ctx.strokeRect(14, 12, 540, 28);
+    ctx.strokeRect(14, 12, 480, 26);
     ctx.font = "bold 11px sans-serif";
-    ctx.fillStyle = "#15803d";
-    ctx.fillText("â— 3 Rounds Done", 26, 30);
+    ctx.fillStyle = "#16a34a";
+    ctx.fillText("[3 Rounds Done]", 24, 29);
     ctx.fillStyle = "#0284c7";
-    ctx.fillText("â— 2 Rounds Done", 145, 30);
+    ctx.fillText("[2 Rounds Done]", 140, 29);
     ctx.fillStyle = "#d97706";
-    ctx.fillText("â— 1 Round Done", 265, 30);
+    ctx.fillText("[1 Round Done]", 255, 29);
     ctx.fillStyle = "#64748b";
-    ctx.fillText("â— 0 Rounds (Pending)", 380, 30);
+    ctx.fillText("[0 Rounds Pending]", 365, 29);
 }
 
 function setupMapClickHandler() {
@@ -849,7 +827,7 @@ function setupMapClickHandler() {
         for (const item of mapTreeHitboxes) {
             const dist = Math.hypot(cx - item.x, cy - item.y);
             if (dist <= item.r) {
-                showToast(`Opening Tree #${item.tree_number} in Harvest Editor...`);
+                showToast(`Opening Tree #${item.tree_number}...`);
                 jumpToEditTree(item.tree_number);
                 break;
             }
@@ -866,7 +844,7 @@ async function loadDashboard() {
 
     const tr = data.today_round;
     document.getElementById("live-round-pill").textContent =
-        `ðŸ“… ${tr.date} â€¢ ${tr.round_label}`;
+        `${tr.date} | ${tr.round_label.replace(/\u2013/g, "-")}`;
 
     const r1 = data.rounds[1];
     const r2 = data.rounds[2];
@@ -877,24 +855,24 @@ async function loadDashboard() {
 
     document.getElementById("dashboard-kpi-grid").innerHTML = `
         <div class="kpi-card">
-            <div class="kpi-label">Plantation Hierarchy</div>
+            <div class="kpi-label">Plantation Structure</div>
             <div class="kpi-value">${data.counts.estates} Estates</div>
-            <div class="kpi-sub">${data.counts.divisions} Divisions â€¢ ${data.counts.fields} Fields â€¢ ${data.counts.blocks} Blocks</div>
+            <div class="kpi-sub">${data.counts.divisions} Divisions | ${data.counts.fields} Fields | ${data.counts.blocks} Blocks</div>
         </div>
         <div class="kpi-card">
-            <div class="kpi-label">Geo-Tagged Palms</div>
+            <div class="kpi-label">Registered Palms</div>
             <div class="kpi-value">${data.counts.trees} Trees</div>
-            <div class="kpi-sub">100% Exact GPS Latitude &amp; Longitude</div>
+            <div class="kpi-sub">Geo-tagged with GPS coordinates</div>
         </div>
         <div class="kpi-card">
             <div class="kpi-label">Monthly Bunches Cut</div>
-            <div class="kpi-value" style="color:#16a34a;">${totBunches} FFB</div>
-            <div class="kpi-sub">Est. Weight: ${totWeight} kg (${(totWeight / 1000).toFixed(2)} MT)</div>
+            <div class="kpi-value" style="color:var(--brand);">${totBunches}</div>
+            <div class="kpi-sub">Est. Yield: ${totWeight} kg (${(totWeight / 1000).toFixed(2)} MT)</div>
         </div>
         <div class="kpi-card">
             <div class="kpi-label">Monthly Fronds Cut</div>
-            <div class="kpi-value" style="color:#d97706;">${totFronds} Fronds</div>
-            <div class="kpi-sub">Subtending Fronds Pruned &amp; Stacked</div>
+            <div class="kpi-value" style="color:var(--amber);">${totFronds}</div>
+            <div class="kpi-sub">Pruned &amp; stacked fronds</div>
         </div>
     `;
 
@@ -902,11 +880,11 @@ async function loadDashboard() {
         .map((rn) => {
             const rd = data.rounds[rn];
             const isCurrent = tr.round_number === rn;
-            const daySpan = rn === 1 ? "Days 1 â€“ 10" : rn === 2 ? "Days 11 â€“ 20" : "Days 21 â€“ 28/29/30/31";
+            const daySpan = rn === 1 ? "Days 1 - 10" : rn === 2 ? "Days 11 - 20" : "Days 21 - End";
             return `
                 <div class="round-card ${isCurrent ? "active-round" : ""}">
                     <div class="round-card-header">
-                        <h3>Round ${rn} ${isCurrent ? "â€¢ (ACTIVE CYCLE)" : ""}</h3>
+                        <h3>Round ${rn} ${isCurrent ? "(Active)" : ""}</h3>
                         <span class="round-days-tag">${daySpan}</span>
                     </div>
                     <div class="round-metrics">
@@ -915,12 +893,12 @@ async function loadDashboard() {
                             <div class="round-metric-lbl">Trees Cut</div>
                         </div>
                         <div>
-                            <div class="round-metric-val" style="color:#16a34a;">${rd.bunches}</div>
-                            <div class="round-metric-lbl">Bunches Cut</div>
+                            <div class="round-metric-val" style="color:var(--brand);">${rd.bunches}</div>
+                            <div class="round-metric-lbl">Bunches</div>
                         </div>
                         <div>
-                            <div class="round-metric-val" style="color:#d97706;">${rd.fronds}</div>
-                            <div class="round-metric-lbl">Fronds Cut</div>
+                            <div class="round-metric-val" style="color:var(--amber);">${rd.fronds}</div>
+                            <div class="round-metric-lbl">Fronds</div>
                         </div>
                     </div>
                 </div>
@@ -934,16 +912,16 @@ async function loadDashboard() {
             <tr>
                 <td>
                     <strong>${b.estate_name}</strong>
-                    <div style="font-size:0.76rem;color:var(--text-muted);">${b.division_name} â†’ ${b.field_name}</div>
+                    <div style="font-size:0.76rem;color:var(--text-muted);">${b.division_name} &gt; ${b.field_name}</div>
                 </td>
                 <td><strong>${b.block_code}</strong><div style="font-size:0.75rem;">${b.block_name}</div></td>
                 <td><span class="badge badge-blue">${b.total_trees} Palms</span></td>
-                <td>${b.r1_trees}/${b.total_trees} trees â€¢ <strong>${b.r1_bunches}B</strong> â€¢ ${b.r1_fronds}F</td>
-                <td>${b.r2_trees}/${b.total_trees} trees â€¢ <strong>${b.r2_bunches}B</strong> â€¢ ${b.r2_fronds}F</td>
-                <td>${b.r3_trees}/${b.total_trees} trees â€¢ <strong>${b.r3_bunches}B</strong> â€¢ ${b.r3_fronds}F</td>
+                <td>${b.r1_trees}/${b.total_trees} trees | <strong>${b.r1_bunches}B</strong> | ${b.r1_fronds}F</td>
+                <td>${b.r2_trees}/${b.total_trees} trees | <strong>${b.r2_bunches}B</strong> | ${b.r2_fronds}F</td>
+                <td>${b.r3_trees}/${b.total_trees} trees | <strong>${b.r3_bunches}B</strong> | ${b.r3_fronds}F</td>
                 <td><span class="badge badge-green">${b.total_bunches} Bunches</span></td>
                 <td><span class="badge badge-amber">${b.total_fronds} Fronds</span></td>
-                <td><strong>${b.total_weight_kg.toFixed(1)} kg</strong></td>
+                <td><strong>${Number(b.total_weight_kg || 0).toFixed(1)} kg</strong></td>
             </tr>
         `
         )
@@ -958,15 +936,15 @@ async function loadDashboard() {
                     <div><span class="badge badge-green">Round ${lg.round_number}</span></div>
                 </td>
                 <td>
-                    <strong>${lg.block_code} â†’ Tree #${lg.tree_number} (${lg.tree_code})</strong>
+                    <strong>${lg.block_code} &gt; Tree #${lg.tree_number} (${lg.tree_code})</strong>
                     <div style="font-size:0.74rem;color:var(--text-muted);">${lg.estate_name}</div>
                 </td>
-                <td style="font-family:monospace;font-size:0.78rem;">${lg.latitude.toFixed(6)}, ${lg.longitude.toFixed(6)}</td>
+                <td style="font-family:monospace;font-size:0.78rem;">${Number(lg.latitude).toFixed(6)}, ${Number(lg.longitude).toFixed(6)}</td>
                 <td><strong>${lg.bunches_cut} Bunches</strong> (${lg.bunch_weight_kg} kg)</td>
                 <td><strong>${lg.fronds_cut} Fronds</strong></td>
                 <td>
                     <div>Weed: ${lg.weed_growth}</div>
-                    <div style="font-size:0.74rem;color:var(--text-muted);">Fert: ${lg.fertilizer_type} (${lg.fertilizer_kg}kg)</div>
+                    <div style="font-size:0.74rem;color:var(--text-muted);">Fert: ${lg.fertilizer_type} (${lg.fertilizer_kg} kg)</div>
                 </td>
                 <td>${lg.recorded_by_name}</td>
             </tr>
@@ -976,7 +954,7 @@ async function loadDashboard() {
 }
 
 // ----------------------------------------------------------------------------
-// TAB 4: DYNAMIC CUSTOM AGRONOMIC FIELDS & HIERARCHY BUILDER
+// TAB 4: DYNAMIC CUSTOM FIELDS & BLOCK CREATION
 // ----------------------------------------------------------------------------
 async function loadCustomFields() {
     const res = await apiGet("/api/custom-fields");
@@ -1016,8 +994,8 @@ async function loadCustomFields() {
         listEl.innerHTML = customFieldDefs
             .map(
                 (cf) => `
-                <span class="badge badge-green" style="margin: 3px; padding: 6px 10px;">
-                    âœ“ ${cf.field_label} (${cf.field_type})
+                <span class="badge badge-green" style="margin: 3px; padding: 5px 10px;">
+                    ${cf.field_label} (${cf.field_type})
                 </span>
             `
             )
@@ -1049,7 +1027,7 @@ async function handleAddCustomField(e) {
     };
     const res = await apiPost("/api/custom-fields", payload);
     if (!res.ok) {
-        showToast(res.data.error || "Could not add custom field", true);
+        showToast(res.data.error || "Could not add custom field.", true);
         return;
     }
     showToast(res.data.message);
@@ -1071,15 +1049,15 @@ async function handleCreateBlock(e) {
     };
     const res = await apiPost("/api/hierarchy/create", payload);
     if (!res.ok) {
-        showToast(res.data.error || "Could not create block", true);
+        showToast(res.data.error || "Could not create block.", true);
         return;
     }
-    showToast("New Block & Geo-Tagged Palm Grid created!");
+    showToast("New block and geo-tagged palms created.");
     await loadHierarchy();
 }
 
 // ----------------------------------------------------------------------------
-// TAB 5: USER MANAGEMENT & ASSIGNMENT
+// TAB 5: TEAM & USER ACCOUNTS
 // ----------------------------------------------------------------------------
 async function loadUsersList() {
     const res = await apiGet("/api/users");
@@ -1112,10 +1090,9 @@ async function handleAdminCreateUser(e) {
     };
     const res = await apiPost("/api/users", payload);
     if (!res.ok) {
-        showToast(res.data.error || "Failed to create user", true);
+        showToast(res.data.error || "Failed to create user.", true);
         return;
     }
     showToast(res.data.message);
     await loadUsersList();
 }
-
