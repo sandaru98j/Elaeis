@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: elaeis
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: elaeis-sqlite-data
+      mountPath: /var/data
+      sizeGB: 1

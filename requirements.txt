@@ -1,0 +1,2 @@
+# Pure Python 3 Standard Library (sqlite3, http.server, json, hashlib)
+# No external pip packages required to run server.py

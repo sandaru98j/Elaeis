@@ -1,0 +1,753 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Elaeis — Palm Basis Crop Monitoring System | Estate â†’ Division â†’ Field â†’ Block â†’ Tree</title>
+    <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+    <!-- =================================================================== -->
+    <!-- AUTHENTICATION SCREEN (LOGIN / FORGOT PASSWORD / REGISTER)          -->
+    <!-- =================================================================== -->
+    <div id="auth-screen" class="auth-wrapper">
+        <div class="auth-card">
+            <div class="brand-header">
+                <div class="brand-icon">ðŸŒ´</div>
+                <div>
+                    <h1>Elaeis — Palm Basis Crop Monitoring System</h1>
+                    <p>Malaysian 3-Round Estate Harvesting &amp; Geo-Tagged Palm Census</p>
+                </div>
+            </div>
+
+            <!-- LOGIN PANEL -->
+            <div id="login-panel">
+                <div class="demo-credentials">
+                    <strong>Quick Demo Sign-In (Click to Fill):</strong>
+                    <div class="demo-pills">
+                        <button type="button" class="demo-pill" onclick="fillDemoLogin('admin', 'admin123')">
+                            Admin (Username: admin)
+                        </button>
+                        <button type="button" class="demo-pill" onclick="fillDemoLogin('kumar@elaeis.my', 'super123')">
+                            Supervisor (Email)
+                        </button>
+                        <button type="button" class="demo-pill" onclick="fillDemoLogin('+60172233445', 'harvest123')">
+                            Harvester (Phone No)
+                        </button>
+                    </div>
+                </div>
+
+                <form onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label>Username, Email Address, or Phone Number</label>
+                        <input type="text" id="login-identifier" placeholder="e.g. admin OR kumar@elaeis.my OR +60172233445" required />
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="login-password" placeholder="Enter your password" required />
+                    </div>
+                    <div id="login-error" class="hidden" style="color: var(--danger); font-size: 0.84rem; margin-bottom: 10px;"></div>
+                    <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">
+                        Sign In to Estate Portal â†’
+                    </button>
+                </form>
+
+                <div style="display: flex; justify-content: space-between; margin-top: 16px; font-size: 0.85rem;">
+                    <a href="#" onclick="showAuthPanel('forgot'); return false;" style="color: var(--primary); font-weight: 600;">
+                        Forgot Password?
+                    </a>
+                    <a href="#" onclick="showAuthPanel('register'); return false;" style="color: var(--accent); font-weight: 600;">
+                        Create / Assign New User
+                    </a>
+                </div>
+            </div>
+
+            <!-- FORGOT PASSWORD PANEL -->
+            <div id="forgot-panel" class="hidden">
+                <h3 style="margin-bottom: 8px; color: var(--primary);">Password Recovery</h3>
+                <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 14px;">
+                    Enter your assigned <strong>Username</strong>, <strong>Email</strong>, or <strong>Phone Number</strong> to receive a 6-digit recovery code.
+                </p>
+                <div class="form-group">
+                    <label>Username / Email / Phone Number</label>
+                    <input type="text" id="forgot-identifier" placeholder="e.g. admin or +60123456789" />
+                </div>
+                <button type="button" class="btn btn-accent" style="width: 100%; margin-bottom: 14px;" onclick="requestPasswordReset()">
+                    Send Recovery OTP Code
+                </button>
+
+                <div id="reset-step-2" class="hidden" style="border-top: 1px solid var(--border); padding-top: 14px;">
+                    <div id="recovery-code-banner" class="demo-credentials"></div>
+                    <div class="form-group">
+                        <label>6-Digit Recovery Code</label>
+                        <input type="text" id="reset-token-input" placeholder="Enter 6-digit code" />
+                    </div>
+                    <div class="form-group">
+                        <label>New Password</label>
+                        <input type="password" id="reset-new-password" placeholder="Enter new password" />
+                    </div>
+                    <button type="button" class="btn btn-primary" style="width: 100%;" onclick="confirmPasswordReset()">
+                        Verify &amp; Update Password
+                    </button>
+                </div>
+
+                <div style="margin-top: 14px; text-align: center;">
+                    <a href="#" onclick="showAuthPanel('login'); return false;" style="font-size: 0.85rem; color: var(--text-muted);">
+                        â† Back to Sign In
+                    </a>
+                </div>
+            </div>
+
+            <!-- REGISTER PANEL -->
+            <div id="register-panel" class="hidden">
+                <h3 style="margin-bottom: 10px; color: var(--primary);">Register Field User Account</h3>
+                <form onsubmit="handleSelfRegister(event)">
+                    <div class="form-group">
+                        <label>Full Name</label>
+                        <input type="text" id="reg-fullname" placeholder="e.g. Razali Bin Ismail" required />
+                    </div>
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="reg-username" placeholder="e.g. razali01" required />
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div class="form-group">
+                            <label>Email Address</label>
+                            <input type="email" id="reg-email" placeholder="razali@estate.my" required />
+                        </div>
+                        <div class="form-group">
+                            <label>Phone Number</label>
+                            <input type="text" id="reg-phone" placeholder="+60135566778" required />
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Role</label>
+                        <select id="reg-role">
+                            <option value="Harvester">Harvester / Field Worker</option>
+                            <option value="Supervisor">Field Supervisor / Conductor</option>
+                            <option value="Admin">Estate Manager / Admin</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="reg-password" placeholder="Create password" required />
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">
+                        Create Account &amp; Sign In
+                    </button>
+                </form>
+                <div style="margin-top: 12px; text-align: center;">
+                    <a href="#" onclick="showAuthPanel('login'); return false;" style="font-size: 0.85rem; color: var(--text-muted);">
+                        â† Back to Sign In
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- MAIN APPLICATION SHELL                                              -->
+    <!-- =================================================================== -->
+    <div id="app-shell" class="hidden">
+        <header class="topbar">
+            <div class="topbar-brand">
+                <div class="brand-icon" style="width: 40px; height: 40px; font-size: 20px;">ðŸŒ´</div>
+                <div>
+                    <h2>Elaeis — Palm Basis Crop Monitoring System</h2>
+                    <span>Estate â†’ Division â†’ Field â†’ Block â†’ Geo-Tagged Palm Tree</span>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <div id="live-round-pill" class="round-badge-live">
+                    Loading Round Calendar...
+                </div>
+                <div class="user-chip">
+                    <span id="current-user-label">User</span>
+                    <button type="button" class="btn btn-sm btn-outline" style="padding: 4px 10px;" onclick="logoutUser()">
+                        Logout
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- NAVIGATION BAR -->
+        <nav class="nav-tabs">
+            <button class="nav-tab active" data-tab="harvest" onclick="switchTab('harvest')">
+                âš¡ 1. Tree-by-Tree Harvest Entry
+            </button>
+            <button class="nav-tab" data-tab="report" onclick="switchTab('report')">
+                ðŸ“Š 2. 3-Round Block Report &amp; GPS Map
+            </button>
+            <button class="nav-tab" data-tab="dashboard" onclick="switchTab('dashboard')">
+                ðŸ›ï¸ 3. Estate Dashboard
+            </button>
+            <button class="nav-tab" data-tab="hierarchy" onclick="switchTab('hierarchy')">
+                ðŸŒ± 4. Hierarchy &amp; Custom Inputs (Fertilizer/Weed)
+            </button>
+            <button class="nav-tab" data-tab="users" onclick="switchTab('users')">
+                ðŸ‘¥ 5. User Accounts &amp; Roles
+            </button>
+        </nav>
+
+        <main class="container">
+            <!-- GLOBAL CASCADING HIERARCHY BAR: ESTATE -> DIVISION -> FIELD -> BLOCK -->
+            <section class="hierarchy-bar no-print">
+                <div class="hierarchy-step">
+                    <label>1. Estate</label>
+                    <select id="sel-estate" onchange="onEstateChange()"></select>
+                </div>
+                <div class="hierarchy-step">
+                    <label>2. Division</label>
+                    <select id="sel-division" onchange="onDivisionChange()"></select>
+                </div>
+                <div class="hierarchy-step">
+                    <label>3. Field</label>
+                    <select id="sel-field" onchange="onFieldChange()"></select>
+                </div>
+                <div class="hierarchy-step">
+                    <label>4. Block (3 Rounds / Month)</label>
+                    <select id="sel-block" onchange="onBlockChange()"></select>
+                </div>
+            </section>
+
+            <!-- =============================================================== -->
+            <!-- TAB 1: RAPID TREE-BY-TREE HARVEST & UPKEEP WORKSTATION           -->
+            <!-- =============================================================== -->
+            <section id="tab-harvest" class="tab-panel">
+                <div class="workstation-grid">
+                    <!-- LEFT: TREE ENTRY FORM -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <h3>Tree-by-Tree Harvesting &amp; Upkeep Logger</h3>
+                                <p style="font-size: 0.82rem; color: var(--text-muted);">
+                                    Insert Tree Number â†’ Auto-detects Date, Month &amp; Round (1â€“10, 11â€“20, 21â€“End) â†’ Save &amp; Advance to Next Tree
+                                </p>
+                            </div>
+                            <span id="form-round-badge" class="badge badge-green" style="font-size: 0.85rem; padding: 6px 12px;">
+                                Round 1 (Days 1â€“10)
+                            </span>
+                        </div>
+
+                        <form id="harvest-entry-form" onsubmit="submitTreeHarvest(event)">
+                            <!-- ROW 1: TREE NUMBER + AUTO DATE + AUTO MONTH + AUTO ROUND -->
+                            <div style="display: grid; grid-template-columns: 1.1fr 1.1fr 1fr 1.2fr; gap: 12px; margin-bottom: 14px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label style="color: var(--primary); font-weight: 800;">Tree Number #</label>
+                                    <div style="display: flex; gap: 6px;">
+                                        <input
+                                            type="number"
+                                            id="inp-tree-number"
+                                            min="1"
+                                            value="1"
+                                            style="font-size: 1.25rem; font-weight: 800; border: 2px solid var(--primary);"
+                                            onchange="lookupCurrentTree()"
+                                            onkeyup="if(event.key==='ArrowUp'||event.key==='ArrowDown') lookupCurrentTree()"
+                                            required
+                                        />
+                                        <button type="button" class="btn btn-outline btn-sm" title="Load Tree" onclick="lookupCurrentTree()">
+                                            Load
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label>Harvest Date (Auto)</label>
+                                    <input type="date" id="inp-harvest-date" onchange="onHarvestDateChange()" required />
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label>Month (Auto)</label>
+                                    <input type="text" id="inp-auto-month" readonly style="background: #f1f5f9; font-weight: 700;" />
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label>Monthly Round (Auto)</label>
+                                    <input type="text" id="inp-auto-round" readonly style="background: #dcfce7; color: #14532d; font-weight: 800;" />
+                                </div>
+                            </div>
+
+                            <!-- ROW 2: EXACT TREE GEO-LOCATION (GPS) BANNER -->
+                            <div class="gps-banner">
+                                <div>
+                                    <strong style="font-size: 0.85rem; color: #0369a1;">
+                                        ðŸ“ Tree Exact Geo-Location (GPS):
+                                    </strong>
+                                    <span id="tree-status-tag" class="badge badge-blue" style="margin-left: 6px;">Registered Palm</span>
+                                    <div style="display: flex; gap: 10px; margin-top: 6px;">
+                                        <div>
+                                            <label style="font-size: 0.72rem; color: var(--text-muted);">Latitude (N/S)</label>
+                                            <input type="number" step="0.000001" id="inp-latitude" style="width: 145px; padding: 6px 8px; font-family: monospace;" required />
+                                        </div>
+                                        <div>
+                                            <label style="font-size: 0.72rem; color: var(--text-muted);">Longitude (E/W)</label>
+                                            <input type="number" step="0.000001" id="inp-longitude" style="width: 145px; padding: 6px 8px; font-family: monospace;" required />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end;">
+                                    <button type="button" class="btn btn-outline btn-sm" onclick="captureDeviceGPS()">
+                                        ðŸ›°ï¸ Capture Device Live GPS
+                                    </button>
+                                    <span id="tree-3round-mini-history" style="font-size: 0.76rem; color: var(--text-muted);">
+                                        R1: - | R2: - | R3: -
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- ROW 3: PRIMARY HARVEST METRICS: BUNCHES CUT & FRONDS CUT -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px;">
+                                <div class="counter-box highlight-bunch">
+                                    <label style="font-size: 0.95rem; font-weight: 800; color: #14532d;">
+                                        ðŸ¥¥ How Many Bunches Cut (FFB)
+                                    </label>
+                                    <div class="counter-controls">
+                                        <button type="button" class="btn-stepper" onclick="adjustCounter('inp-bunches-cut', -1)">âˆ’</button>
+                                        <input type="number" id="inp-bunches-cut" class="counter-input" min="0" max="50" value="1" oninput="autoCalcWeight()" required />
+                                        <button type="button" class="btn-stepper" onclick="adjustCounter('inp-bunches-cut', 1)">+</button>
+                                    </div>
+                                    <span style="font-size: 0.76rem; color: var(--text-muted); display: block; margin-top: 6px;">
+                                        Fresh Fruit / Coconut Bunches Harvested
+                                    </span>
+                                </div>
+
+                                <div class="counter-box highlight-frond">
+                                    <label style="font-size: 0.95rem; font-weight: 800; color: #92400e;">
+                                        ðŸŒ¿ How Many Fronds Cut (Pruned)
+                                    </label>
+                                    <div class="counter-controls">
+                                        <button type="button" class="btn-stepper" onclick="adjustCounter('inp-fronds-cut', -1)">âˆ’</button>
+                                        <input type="number" id="inp-fronds-cut" class="counter-input" min="0" max="50" value="2" required />
+                                        <button type="button" class="btn-stepper" onclick="adjustCounter('inp-fronds-cut', 1)">+</button>
+                                    </div>
+                                    <span style="font-size: 0.76rem; color: var(--text-muted); display: block; margin-top: 6px;">
+                                        Subtending Fronds Cut &amp; Stacked
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- ROW 4: AGRONOMIC & FIELD UPKEEP INPUTS (FERTILIZER, WEED GROWTH, HEALTH) -->
+                            <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 16px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <strong style="font-size: 0.86rem; color: var(--primary);">
+                                        ðŸŒ± Palm Upkeep, Fertilizer &amp; Weed Growth Details
+                                    </strong>
+                                    <span style="font-size: 0.75rem; color: var(--text-muted);">
+                                        Saved per tree &amp; round
+                                    </span>
+                                </div>
+
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label>Weed Growth Around Palm</label>
+                                        <select id="inp-weed-growth">
+                                            <option value="Clean Circle">Clean Circle (Weeded)</option>
+                                            <option value="Light Weeds">Light Soft Weeds</option>
+                                            <option value="Moderate Weeds">Moderate Weeds (Circle Spray Needed)</option>
+                                            <option value="Heavy Woody Weeds">Heavy / Woody Weeds (Urgent)</option>
+                                            <option value="Legume Cover Crop">Healthy Mucuna Cover Crop</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label>Fertilizer Applied</label>
+                                        <select id="inp-fertilizer-type">
+                                            <option value="None">None (This Round)</option>
+                                            <option value="NPK 12:12:17:2">Compound NPK 12:12:17:2+TE</option>
+                                            <option value="MOP (Muriate of Potash)">MOP (Muriate of Potash)</option>
+                                            <option value="Urea (46% N)">Urea (46% N)</option>
+                                            <option value="Kieserite + Boron">Kieserite + High Grade Borate</option>
+                                            <option value="RP (Rock Phosphate)">Christmas Island Rock Phosphate</option>
+                                            <option value="Organic EFB Mulch">Organic EFB / Compost</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label>Fertilizer Amount (kg/palm)</label>
+                                        <input type="number" step="0.1" id="inp-fertilizer-kg" value="0.0" min="0" />
+                                    </div>
+
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label>Palm Health / Pest Status</label>
+                                        <select id="inp-pest-disease">
+                                            <option value="Healthy">Healthy Vigorous Palm</option>
+                                            <option value="Nutrient Deficiency (Mg)">Mg / Boron Deficiency Fronds</option>
+                                            <option value="Rhinoceros Beetle">Rhinoceros Beetle (Oryctes) Attack</option>
+                                            <option value="Bagworm">Bagworm Leaf Damage</option>
+                                            <option value="Ganoderma BSR">Ganoderma (Basal Stem Rot)</option>
+                                            <option value="Rat Damage">Rat Fruit Damage</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label>Est. Bunch Weight (kg)</label>
+                                        <input type="number" step="0.1" id="inp-bunch-weight" value="18.5" min="0" />
+                                    </div>
+
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label>Frond Stacking Standard</label>
+                                        <select id="inp-pruning-status">
+                                            <option value="Standard Stacked">Standard Box/Inter-row Stacked</option>
+                                            <option value="2 Subtending Retained">2 Subtending Fronds Retained</option>
+                                            <option value="Over-Pruned">Over-Pruned (Warning)</option>
+                                            <option value="Under-Pruned">Under-Pruned (Needs Correction)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- DYNAMIC CUSTOM AGRONOMIC FIELDS CONTAINER -->
+                                <div id="dynamic-custom-fields" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 12px;"></div>
+
+                                <div class="form-group" style="margin-top: 10px; margin-bottom: 0;">
+                                    <label>Field Remarks / Observation</label>
+                                    <input type="text" id="inp-remarks" placeholder="Optional notes for this palm tree..." />
+                                </div>
+                            </div>
+
+                            <!-- ACTION BUTTONS: SAVE & NEXT TREE -->
+                            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                                <button type="button" class="btn btn-outline" onclick="stepTreeNumber(-1)">
+                                    â† Prev Tree
+                                </button>
+                                <button type="submit" class="btn btn-primary btn-lg" style="flex: 1;">
+                                    ðŸ’¾ Save Tree Record &amp; Go to Next Tree â†’
+                                </button>
+                                <button type="button" class="btn btn-outline" onclick="stepTreeNumber(1)">
+                                    Skip to Next Tree â†’
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- RIGHT: BLOCK PROGRESS & QUICK TREE SELECTOR -->
+                    <div>
+                        <div class="card">
+                            <div class="card-header">
+                                <div>
+                                    <h3 id="right-block-title">Block Progress (3 Monthly Rounds)</h3>
+                                    <p style="font-size: 0.8rem; color: var(--text-muted);">
+                                        Click any tree number below to load it immediately
+                                    </p>
+                                </div>
+                                <span id="block-round-progress-badge" class="badge badge-amber">0 / 0 Trees</span>
+                            </div>
+
+                            <!-- 3-ROUND MINI PROGRESS BARS FOR THIS BLOCK -->
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px;">
+                                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 10px; border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 0.74rem; font-weight: 700; color: #166534;">ROUND 1 (1â€“10)</div>
+                                    <div id="blk-stat-r1" style="font-size: 1.05rem; font-weight: 800; margin-top: 2px;">0B / 0F</div>
+                                    <div id="blk-trees-r1" style="font-size: 0.72rem; color: var(--text-muted);">0 trees</div>
+                                </div>
+                                <div style="background: #eff6ff; border: 1px solid #bfdbfe; padding: 10px; border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 0.74rem; font-weight: 700; color: #1e40af;">ROUND 2 (11â€“20)</div>
+                                    <div id="blk-stat-r2" style="font-size: 1.05rem; font-weight: 800; margin-top: 2px;">0B / 0F</div>
+                                    <div id="blk-trees-r2" style="font-size: 0.72rem; color: var(--text-muted);">0 trees</div>
+                                </div>
+                                <div style="background: #fffbeb; border: 1px solid #fde68a; padding: 10px; border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 0.74rem; font-weight: 700; color: #92400e;">ROUND 3 (21â€“End)</div>
+                                    <div id="blk-stat-r3" style="font-size: 1.05rem; font-weight: 800; margin-top: 2px;">0B / 0F</div>
+                                    <div id="blk-trees-r3" style="font-size: 0.72rem; color: var(--text-muted);">0 trees</div>
+                                </div>
+                            </div>
+
+                            <!-- CLICKABLE TREE GRID PILLS -->
+                            <div id="block-tree-pills" class="tree-grid-pills"></div>
+
+                            <div style="margin-top: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: var(--text-muted);">
+                                <span>ðŸŸ© Green = Harvested in selected round</span>
+                                <button type="button" class="btn btn-sm btn-outline" onclick="switchTab('report')">
+                                    View Full 3-Round Report â†’
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =============================================================== -->
+            <!-- TAB 2: 3-ROUND BLOCK REPORT & EXACT GPS MAP                     -->
+            <!-- =============================================================== -->
+            <section id="tab-report" class="tab-panel hidden">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h3 id="report-header-title">Monthly 3-Round Block Harvesting &amp; Geo-Location Report</h3>
+                            <p id="report-hierarchy-subtitle" style="font-size: 0.84rem; color: var(--text-muted);">
+                                Estate â†’ Division â†’ Field â†’ Block
+                            </p>
+                        </div>
+                        <div class="no-print" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <div>
+                                <label style="font-size: 0.74rem; font-weight: 700; display: block;">Report Month</label>
+                                <input type="month" id="report-month-picker" onchange="loadBlockRoundReport()" style="width: 165px; padding: 6px 10px;" />
+                            </div>
+                            <button type="button" class="btn btn-primary" onclick="downloadBlockCSV()">
+                                ðŸ“¥ Export CSV / Excel
+                            </button>
+                            <button type="button" class="btn btn-outline" onclick="window.print()">
+                                ðŸ–¨ï¸ Print Official Report
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 3-ROUND SUMMARY CARDS FOR SELECTED BLOCK -->
+                    <div class="rounds-grid" id="report-rounds-summary"></div>
+
+                    <!-- INTERACTIVE TREE GPS GEO-LOCATION MAP (CANVAS GIS PLOT) -->
+                    <div style="margin-bottom: 22px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <h4 style="color: var(--primary);">
+                                ðŸ—ºï¸ Block Geo-Location Palm Map (Exact Latitude &amp; Longitude Grid)
+                            </h4>
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">
+                                Click any palm pin on the map to inspect or edit its harvest record
+                            </span>
+                        </div>
+                        <canvas id="block-map-canvas" width="1100" height="360"></canvas>
+                    </div>
+
+                    <!-- FULL TREE-BY-TREE 3-ROUND MATRIX TABLE -->
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Tree #</th>
+                                    <th>Exact GPS Location (Lat, Lng)</th>
+                                    <th style="background: #f0fdf4; color: #166534;">Round 1 (Days 1â€“10)<br/>Bunches | Fronds</th>
+                                    <th style="background: #eff6ff; color: #1e40af;">Round 2 (Days 11â€“20)<br/>Bunches | Fronds</th>
+                                    <th style="background: #fffbeb; color: #92400e;">Round 3 (Days 21â€“End)<br/>Bunches | Fronds</th>
+                                    <th>Total Bunches</th>
+                                    <th>Total Fronds</th>
+                                    <th>Est. Weight</th>
+                                    <th>Weed Growth</th>
+                                    <th>Fertilizer &amp; Health</th>
+                                    <th class="no-print">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="report-matrix-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =============================================================== -->
+            <!-- TAB 3: ESTATE DASHBOARD                                         -->
+            <!-- =============================================================== -->
+            <section id="tab-dashboard" class="tab-panel hidden">
+                <div class="kpi-grid" id="dashboard-kpi-grid"></div>
+
+                <h3 style="margin-bottom: 12px; color: var(--primary);">
+                    ðŸ“… Monthly 3-Round Harvesting Cycle Performance (All Blocks)
+                </h3>
+                <div class="rounds-grid" id="dashboard-rounds-grid"></div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>All Blocks â€” 3-Round Monthly Harvesting Matrix Summary</h3>
+                    </div>
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Estate / Division / Field</th>
+                                    <th>Block</th>
+                                    <th>Geo-Tagged Palms</th>
+                                    <th>Round 1 (1â€“10)<br/>Trees | Bunches | Fronds</th>
+                                    <th>Round 2 (11â€“20)<br/>Trees | Bunches | Fronds</th>
+                                    <th>Round 3 (21â€“End)<br/>Trees | Bunches | Fronds</th>
+                                    <th>Monthly Total Bunches</th>
+                                    <th>Monthly Total Fronds</th>
+                                    <th>Est. FFB Tonnage</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dashboard-blocks-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Recent Tree-by-Tree Harvesting &amp; Upkeep Logs</h3>
+                    </div>
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Date &amp; Round</th>
+                                    <th>Hierarchy (Block â†’ Tree)</th>
+                                    <th>Exact GPS</th>
+                                    <th>Bunches Cut</th>
+                                    <th>Fronds Cut</th>
+                                    <th>Weed &amp; Fertilizer</th>
+                                    <th>Recorded By</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dashboard-recent-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =============================================================== -->
+            <!-- TAB 4: HIERARCHY & EXTENSIBLE AGRONOMIC INPUTS MANAGER          -->
+            <!-- =============================================================== -->
+            <section id="tab-hierarchy" class="tab-panel hidden">
+                <div class="workstation-grid">
+                    <!-- ADD NEW CUSTOM AGRONOMIC INPUT FIELD -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>âž• Add New Palm Monitoring Input Field</h3>
+                        </div>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">
+                            Need to record extra details around the palm later (such as <em>Herbicide Circle Spray</em>, <em>Epiphyte Growth</em>, <em>Frond Rachis Length</em>, or <em>Drainage Level</em>)? Add it here and it immediately appears in the Tree-by-Tree Harvest form.
+                        </p>
+                        <form onsubmit="handleAddCustomField(event)">
+                            <div class="form-group">
+                                <label>Input Field Label</label>
+                                <input type="text" id="cf-label" placeholder="e.g. Epiphyte / Fern Growth on Trunk" required />
+                            </div>
+                            <div class="form-group">
+                                <label>Input Type</label>
+                                <select id="cf-type" onchange="document.getElementById('cf-options-wrap').classList.toggle('hidden', this.value !== 'select')">
+                                    <option value="select">Dropdown Options (Select)</option>
+                                    <option value="text">Text / Observation</option>
+                                    <option value="number">Numeric Measurement</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="cf-options-wrap">
+                                <label>Dropdown Choices (Comma-separated)</label>
+                                <input type="text" id="cf-options" placeholder="e.g. Clean,Light Ferns,Heavy Epiphytes" value="Clean,Moderate,Heavy" />
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                Add Field to Tree Monitoring Form
+                            </button>
+                        </form>
+
+                        <div style="margin-top: 20px;">
+                            <h4 style="font-size: 0.9rem; margin-bottom: 8px;">Active Custom Monitoring Fields:</h4>
+                            <div id="custom-fields-list"></div>
+                        </div>
+                    </div>
+
+                    <!-- ADD NEW BLOCK / ESTATE / DIVISION / FIELD -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>ðŸ—ºï¸ Create New Block &amp; Auto-Generate GPS Palm Grid</h3>
+                        </div>
+                        <form onsubmit="handleCreateBlock(event)">
+                            <div class="form-group">
+                                <label>Target Field (under currently selected Estate &amp; Division)</label>
+                                <input type="text" id="new-blk-parent-info" readonly style="background: #f1f5f9;" />
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 10px;">
+                                <div class="form-group">
+                                    <label>Block Code</label>
+                                    <input type="text" id="new-blk-code" placeholder="e.g. BLK-103" required />
+                                </div>
+                                <div class="form-group">
+                                    <label>Block Name</label>
+                                    <input type="text" id="new-blk-name" placeholder="e.g. Block 103 (West Ridge)" required />
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                                <div class="form-group">
+                                    <label>Auto-Create Palms</label>
+                                    <input type="number" id="new-blk-trees" value="15" min="1" max="200" required />
+                                </div>
+                                <div class="form-group">
+                                    <label>Start GPS Latitude</label>
+                                    <input type="number" step="0.000001" id="new-blk-lat" value="2.035500" required />
+                                </div>
+                                <div class="form-group">
+                                    <label>Start GPS Longitude</label>
+                                    <input type="number" step="0.000001" id="new-blk-lng" value="103.320500" required />
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-accent">
+                                Create Block &amp; Generate Geo-Tagged Palms
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =============================================================== -->
+            <!-- TAB 5: USER ACCOUNTS & ROLE ASSIGNMENT                          -->
+            <!-- =============================================================== -->
+            <section id="tab-users" class="tab-panel hidden">
+                <div class="workstation-grid">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Assign New Estate User (Username / Email / Phone Login)</h3>
+                        </div>
+                        <form onsubmit="handleAdminCreateUser(event)">
+                            <div class="form-group">
+                                <label>Full Name &amp; Title</label>
+                                <input type="text" id="usr-fullname" placeholder="e.g. En. Roslan (Block Conductor)" required />
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div class="form-group">
+                                    <label>Username</label>
+                                    <input type="text" id="usr-username" placeholder="roslan" required />
+                                </div>
+                                <div class="form-group">
+                                    <label>Phone Number</label>
+                                    <input type="text" id="usr-phone" placeholder="+60148899001" required />
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Email Address</label>
+                                <input type="email" id="usr-email" placeholder="roslan@elaeis.my" required />
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div class="form-group">
+                                    <label>Role</label>
+                                    <select id="usr-role">
+                                        <option value="Harvester">Harvester / Cutter</option>
+                                        <option value="Supervisor">Supervisor / Conductor</option>
+                                        <option value="Admin">Estate Manager (Admin)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Initial Password</label>
+                                    <input type="text" id="usr-password" value="palm2026" required />
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                Create &amp; Assign User Account
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Registered Estate Users</h3>
+                        </div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Full Name</th>
+                                        <th>Username</th>
+                                        <th>Email</th>
+                                        <th>Phone No</th>
+                                        <th>Role</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="users-list-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="toast" class="toast-banner hidden"></div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
+

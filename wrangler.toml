@@ -1,0 +1,7 @@
+name = "elaeis"
+compatibility_date = "2024-11-01"
+pages_build_output_dir = "static"
+
+# When you create your free Cloudflare D1 SQLite database ("elaeis-db") in the Cloudflare Dashboard,
+# bind it in Cloudflare Pages -> Settings -> Functions -> D1 database bindings
+# with Variable Name = "DB"
