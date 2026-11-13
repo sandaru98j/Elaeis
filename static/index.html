@@ -3,265 +3,248 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Elaeis | Plantation &amp; Crop Monitoring Platform</title>
+    <title>Elaeis | Oil Palm Crop Monitoring &amp; Estate Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    colors: {
+                        emerald: {
+                            50: '#ecfdf5',
+                            100: '#d1fae5',
+                            500: '#10b981',
+                            600: '#059669',
+                            700: '#047857',
+                            800: '#065f46',
+                            900: '#064e3b',
+                        }
+                    }
+                }
+            }
+        };
+    </script>
     <link rel="stylesheet" href="/styles.css" />
 </head>
-<body>
+<body class="bg-[#F8FAFC] text-slate-900 min-h-screen flex flex-col">
 
-    <!-- INLINE VECTOR SVG SPRITE (LOGO & UI ICONS) -->
-    <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+    <!-- =================================================================== -->
+    <!-- INLINE VECTOR SVG SPRITE (CUSTOM LOGO & AGRI-TECH VECTOR ICONS)     -->
+    <!-- =================================================================== -->
+    <svg xmlns="http://www.w3.org/2000/svg" class="hidden">
         <!-- ELAEIS CUSTOM VECTOR LOGO -->
-        <symbol id="icon-logo" viewBox="0 0 64 64">
-            <rect width="64" height="64" rx="16" fill="url(#elaeisGrad)" />
+        <symbol id="v-logo" viewBox="0 0 64 64">
+            <rect width="64" height="64" rx="16" fill="url(#elaeisEmerald)" />
             <defs>
-                <linearGradient id="elaeisGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-                    <stop offset="0%" stop-color="#16a34a" />
-                    <stop offset="100%" stop-color="#0f5132" />
+                <linearGradient id="elaeisEmerald" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stop-color="#10b981" />
+                    <stop offset="100%" stop-color="#047857" />
                 </linearGradient>
             </defs>
-            <!-- Stylized Palm Fronds & Trunk Vector -->
-            <path d="M32 52V28" stroke="#ffffff" stroke-width="4" stroke-linecap="round" />
-            <path d="M24 52H40" stroke="#bbf7d0" stroke-width="3.5" stroke-linecap="round" />
-            <path d="M32 28C24 20 12 22 10 30C18 27 26 28 32 32" fill="#ffffff" />
-            <path d="M32 28C40 20 52 22 54 30C46 27 38 28 32 32" fill="#ffffff" />
-            <path d="M32 25C26 14 15 12 12 18C20 18 27 21 32 27" fill="#dcfce7" />
-            <path d="M32 25C38 14 49 12 52 18C44 18 37 21 32 27" fill="#dcfce7" />
-            <path d="M32 24V12" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" />
+            <path d="M32 53V27" stroke="#ffffff" stroke-width="4.2" stroke-linecap="round" />
+            <path d="M23 53H41" stroke="#a7f3d0" stroke-width="3.5" stroke-linecap="round" />
+            <path d="M32 28C23 19 11 21 9 29C17 26 25 27 32 32" fill="#ffffff" />
+            <path d="M32 28C41 19 53 21 55 29C47 26 39 27 32 32" fill="#ffffff" />
+            <path d="M32 24C26 13 15 11 11 17C19 17 27 20 32 26" fill="#d1fae5" />
+            <path d="M32 24C38 13 49 11 53 17C45 17 37 20 32 26" fill="#d1fae5" />
+            <path d="M32 23V11" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" />
             <circle cx="28" cy="33" r="2.8" fill="#fbbf24" />
             <circle cx="36" cy="33" r="2.8" fill="#fbbf24" />
-            <circle cx="32" cy="36" r="2.8" fill="#f59e0b" />
+            <circle cx="32" cy="36.5" r="2.8" fill="#f59e0b" />
         </symbol>
 
-        <symbol id="icon-harvest" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        <symbol id="v-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
         </symbol>
 
-        <symbol id="icon-tree" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 22v-9" />
-            <path d="M12 13C7 8 2 10 2 14c4-2 7-1 10 1" />
-            <path d="M12 13c5-5 10-3 10 1-4-2-7-1-10 1" />
-            <path d="M12 10C8 4 3 4 3 8c4-1 6 0 9 3" />
-            <path d="M12 10c4-6 9-6 9-2-4-1-6 0-9 3" />
+        <symbol id="v-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
         </symbol>
 
-        <symbol id="icon-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" />
-            <line x1="9" y1="3" x2="9" y2="18" />
-            <line x1="15" y1="6" x2="15" y2="21" />
+        <symbol id="v-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
         </symbol>
 
-        <symbol id="icon-dashboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="9" rx="1" />
-            <rect x="14" y="3" width="7" height="5" rx="1" />
-            <rect x="14" y="12" width="7" height="9" rx="1" />
-            <rect x="3" y="16" width="7" height="5" rx="1" />
+        <symbol id="v-palm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 8c0-2.76-2.46-5-5.5-5S2 5.24 2 8h2l1-1 1 1h4" />
+            <path d="M13 7.14A5.82 5.82 0 0 1 16.5 6c3.04 0 5.5 2.24 5.5 5h-3l-1-1-1 1h-3" />
+            <path d="M5.89 9.71c-2.15 2.15-2.3 5.47-.35 7.43l4.24-4.25.7-.7.71-.71 2.12-2.12c-1.95-1.96-5.27-1.8-7.42.35z" />
+            <path d="M11 15.5c.5 2.5-.17 4.5-1 6.5h4c2-5.5-.5-12-1-14" />
         </symbol>
 
-        <symbol id="icon-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <symbol id="v-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+            <circle cx="12" cy="10" r="3" />
+        </symbol>
+
+        <symbol id="v-crosshair" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="22" y1="12" x2="18" y2="12" />
+            <line x1="6" y1="12" x2="2" y2="12" />
+            <line x1="12" y1="6" x2="12" y2="2" />
+            <line x1="12" y1="22" x2="12" y2="18" />
+        </symbol>
+
+        <symbol id="v-flask" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 2v7.31" />
+            <path d="M14 9.3V1.99" />
+            <path d="M8.5 2h7" />
+            <path d="M14 9.3a6.5 6.5 0 1 1-4 0" />
+            <path d="M5.52 16h12.96" />
+        </symbol>
+
+        <symbol id="v-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10" />
+            <line x1="12" y1="20" x2="12" y2="4" />
+            <line x1="6" y1="20" x2="6" y2="14" />
+        </symbol>
+
+        <symbol id="v-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        </symbol>
+
+        <symbol id="v-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="12 2 2 7 12 12 22 7 12 2" />
             <polyline points="2 17 12 22 22 17" />
             <polyline points="2 12 12 17 22 12" />
         </symbol>
 
-        <symbol id="icon-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-            <circle cx="9" cy="7" r="4" />
-            <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        <symbol id="v-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+            <polyline points="22 4 12 14.01 9 11.01" />
         </symbol>
 
-        <symbol id="icon-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-            <circle cx="12" cy="10" r="3" />
+        <symbol id="v-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
         </symbol>
 
-        <symbol id="icon-gps" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="7" />
-            <circle cx="12" cy="12" r="2" />
-            <line x1="12" y1="2" x2="12" y2="5" />
-            <line x1="12" y1="19" x2="12" y2="22" />
-            <line x1="2" y1="12" x2="5" y2="12" />
-            <line x1="19" y1="12" x2="22" y2="12" />
+        <symbol id="v-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
         </symbol>
 
-        <symbol id="icon-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-            <line x1="16" y1="2" x2="16" y2="6" />
-            <line x1="8" y1="2" x2="8" y2="6" />
-            <line x1="3" y1="10" x2="21" y2="10" />
-        </symbol>
-
-        <symbol id="icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <symbol id="v-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />
         </symbol>
 
-        <symbol id="icon-print" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 6 2 18 2 18 9" />
-            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-            <rect x="6" y="14" width="12" height="8" />
-        </symbol>
-
-        <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-        </symbol>
-
-        <symbol id="icon-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="5" y1="12" x2="19" y2="12" />
-            <polyline points="12 5 19 12 12 19" />
-        </symbol>
-
-        <symbol id="icon-arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12" />
-            <polyline points="12 19 5 12 12 5" />
+        <symbol id="v-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
         </symbol>
     </svg>
 
     <!-- =================================================================== -->
-    <!-- CLEAN FACEBOOK-STYLE AUTHENTICATION SCREEN                          -->
+    <!-- CLEAN MODERN LOGIN / SIGN-UP MODAL SCREEN                           -->
     <!-- =================================================================== -->
-    <div id="auth-screen" class="auth-screen">
-        <div class="auth-container">
-            <!-- LEFT BRAND HERO -->
-            <div class="auth-hero">
-                <div class="auth-brand-row">
-                    <svg class="auth-logo-svg"><use href="#icon-logo"></use></svg>
-                    <span class="auth-brand-title">Elaeis</span>
+    <div id="auth-screen" class="min-h-screen flex items-center justify-center px-4 py-10 bg-slate-100">
+        <div class="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+            <!-- Left Brand Column -->
+            <div class="lg:col-span-7 text-center lg:text-left">
+                <div class="inline-flex items-center gap-3.5 mb-4">
+                    <svg class="w-14 h-14 shadow-md rounded-2xl"><use href="#v-logo"></use></svg>
+                    <span class="text-4xl sm:text-5xl font-extrabold tracking-tight text-emerald-700">Elaeis</span>
                 </div>
-                <p class="auth-tagline">
-                    Precision palm crop monitoring, 3-round monthly harvesting logs, and GPS tree mapping for modern estates.
+                <p class="text-lg sm:text-xl text-slate-700 font-medium leading-relaxed max-w-lg mx-auto lg:mx-0">
+                    Precision oil palm estate management, 10-day harvesting rounds, mobile GPS tree mapping, and ERP/AOP fertilizer tracking.
                 </p>
             </div>
 
-            <!-- RIGHT AUTH CARD -->
-            <div class="auth-card">
-                <!-- 1. LOGIN VIEW -->
-                <div id="login-panel">
-                    <form onsubmit="handleLogin(event)">
+            <!-- Right Auth Card -->
+            <div class="lg:col-span-5 bg-white rounded-2xl shadow-xl border border-slate-200/80 p-6 sm:p-8">
+                <!-- Login Form -->
+                <div id="auth-login-view">
+                    <form onsubmit="handleAuthLogin(event)" class="space-y-3.5">
                         <input
                             type="text"
-                            id="login-identifier"
-                            class="auth-input"
-                            placeholder="Email address, phone number, or username"
+                            id="login-user"
+                            placeholder="Email, phone number, or username"
+                            class="w-full px-4 py-3.5 rounded-xl border border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 outline-none text-slate-900"
                             required
                         />
                         <input
                             type="password"
-                            id="login-password"
-                            class="auth-input"
+                            id="login-pass"
                             placeholder="Password"
+                            class="w-full px-4 py-3.5 rounded-xl border border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 outline-none text-slate-900"
                             required
                         />
-                        <div id="login-error" class="auth-alert hidden"></div>
-                        <button type="submit" class="btn-auth-login">Log In</button>
+                        <div id="login-err-msg" class="hidden text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
+                        <button
+                            type="submit"
+                            class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-lg rounded-xl shadow-sm transition"
+                        >
+                            Log In
+                        </button>
                     </form>
 
-                    <div class="auth-link-row">
-                        <a href="#" class="auth-link" onclick="showAuthPanel('forgot'); return false;">
+                    <div class="text-center my-4">
+                        <a href="#" onclick="switchAuthView('forgot'); return false;" class="text-sm font-medium text-emerald-700 hover:underline">
                             Forgotten password?
                         </a>
                     </div>
 
-                    <div class="auth-divider"></div>
+                    <hr class="border-slate-200 my-5" />
 
-                    <button type="button" class="btn-auth-create" onclick="showAuthPanel('register')">
-                        Create new account
-                    </button>
-                </div>
-
-                <!-- 2. FORGOT PASSWORD VIEW -->
-                <div id="forgot-panel" class="hidden">
-                    <h3 class="auth-card-title">Find Your Account</h3>
-                    <p class="auth-card-subtitle">
-                        Enter your username, email address, or mobile number to reset your password.
-                    </p>
-                    <input
-                        type="text"
-                        id="forgot-identifier"
-                        class="auth-input"
-                        placeholder="Email, phone number, or username"
-                    />
-                    <button type="button" class="btn-auth-login" onclick="requestPasswordReset()">
-                        Get Recovery Code
-                    </button>
-
-                    <div id="reset-step-2" class="hidden" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
-                        <div id="recovery-code-banner" style="background: var(--brand-light); color: var(--primary); padding: 10px 12px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 12px;"></div>
-                        <input
-                            type="text"
-                            id="reset-token-input"
-                            class="auth-input"
-                            placeholder="6-digit recovery code"
-                        />
-                        <input
-                            type="password"
-                            id="reset-new-password"
-                            class="auth-input"
-                            placeholder="New password"
-                        />
-                        <button type="button" class="btn-auth-login" onclick="confirmPasswordReset()">
-                            Update Password
+                    <div class="text-center">
+                        <button
+                            type="button"
+                            onclick="switchAuthView('register')"
+                            class="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl transition"
+                        >
+                            Create new account
                         </button>
                     </div>
+                </div>
 
-                    <div class="auth-link-row" style="margin-top: 14px; margin-bottom: 0;">
-                        <a href="#" class="auth-link" onclick="showAuthPanel('login'); return false;">
-                            Back to Log In
+                <!-- Register View -->
+                <div id="auth-register-view" class="hidden">
+                    <h3 class="text-xl font-bold text-slate-900 mb-1">Create Account</h3>
+                    <p class="text-sm text-slate-500 mb-4">Set up your estate access profile.</p>
+                    <form onsubmit="handleAuthRegister(event)" class="space-y-3">
+                        <input type="text" id="reg-name" placeholder="Full Name (e.g. Sandaruwan Gunathilaka)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600" required />
+                        <input type="text" id="reg-username" placeholder="Username" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600" required />
+                        <input type="email" id="reg-email" placeholder="Email address" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600" required />
+                        <input type="text" id="reg-phone" placeholder="Mobile number (+94 77 123 4567)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600" required />
+                        <select id="reg-role" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600 bg-white">
+                            <option value="Admin">Admin (Full Estate &amp; Hierarchy Control)</option>
+                            <option value="Supervisor">Supervisor (GPS, Harvest &amp; Fertilizer)</option>
+                            <option value="Harvester">Harvester (Round Harvesting Entry)</option>
+                        </select>
+                        <input type="password" id="reg-pass" placeholder="Password" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600" required />
+                        <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition">
+                            Sign Up
+                        </button>
+                    </form>
+                    <div class="text-center mt-4">
+                        <a href="#" onclick="switchAuthView('login'); return false;" class="text-sm font-medium text-emerald-700 hover:underline">
+                            Already have an account? Log In
                         </a>
                     </div>
                 </div>
 
-                <!-- 3. CREATE ACCOUNT VIEW -->
-                <div id="register-panel" class="hidden">
-                    <h3 class="auth-card-title">Sign Up</h3>
-                    <p class="auth-card-subtitle">Quick and easy estate account setup.</p>
-                    <form onsubmit="handleSelfRegister(event)">
-                        <input
-                            type="text"
-                            id="reg-fullname"
-                            class="auth-input"
-                            placeholder="Full name"
-                            required
-                        />
-                        <input
-                            type="text"
-                            id="reg-username"
-                            class="auth-input"
-                            placeholder="Username"
-                            required
-                        />
-                        <input
-                            type="email"
-                            id="reg-email"
-                            class="auth-input"
-                            placeholder="Email address"
-                            required
-                        />
-                        <input
-                            type="text"
-                            id="reg-phone"
-                            class="auth-input"
-                            placeholder="Mobile number (e.g. +94 77 123 4567)"
-                            required
-                        />
-                        <select id="reg-role" class="auth-input" style="margin-bottom: 12px;">
-                            <option value="Admin">Estate Manager (Admin)</option>
-                            <option value="Supervisor">Field Supervisor / Conductor</option>
-                            <option value="Harvester">Field Officer / Harvester</option>
-                        </select>
-                        <input
-                            type="password"
-                            id="reg-password"
-                            class="auth-input"
-                            placeholder="New password"
-                            required
-                        />
-                        <button type="submit" class="btn-auth-login">Sign Up</button>
-                    </form>
-                    <div class="auth-link-row" style="margin-top: 14px; margin-bottom: 0;">
-                        <a href="#" class="auth-link" onclick="showAuthPanel('login'); return false;">
-                            Already have an account? Log In
+                <!-- Forgot Password View -->
+                <div id="auth-forgot-view" class="hidden">
+                    <h3 class="text-xl font-bold text-slate-900 mb-1">Reset Password</h3>
+                    <p class="text-sm text-slate-500 mb-4">Enter your username, email, or phone number.</p>
+                    <div class="space-y-3">
+                        <input type="text" id="forgot-user" placeholder="Username, email, or phone" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600" />
+                        <input type="password" id="forgot-new-pass" placeholder="Enter new password" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600" />
+                        <button type="button" onclick="handleQuickPasswordReset()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition">
+                            Update Password
+                        </button>
+                    </div>
+                    <div class="text-center mt-4">
+                        <a href="#" onclick="switchAuthView('login'); return false;" class="text-sm font-medium text-emerald-700 hover:underline">
+                            Back to Log In
                         </a>
                     </div>
                 </div>
@@ -272,598 +255,780 @@
     <!-- =================================================================== -->
     <!-- MAIN APPLICATION SHELL                                              -->
     <!-- =================================================================== -->
-    <div id="app-shell" class="hidden">
-        <header class="topbar">
-            <div class="topbar-brand">
-                <svg class="topbar-logo"><use href="#icon-logo"></use></svg>
-                <div>
-                    <div class="topbar-title">Elaeis</div>
-                    <span class="topbar-subtitle">Estate &gt; Division &gt; Field &gt; Block &gt; Palm Tree</span>
+    <div id="app-shell" class="hidden flex-1 flex flex-col">
+
+        <!-- 1. DYNAMIC PERSONALIZED HEADER -->
+        <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm no-print">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+                <!-- Left: Vector Logo + Greeting -->
+                <div class="flex items-center gap-3">
+                    <svg class="w-10 h-10 rounded-xl shadow-sm flex-shrink-0"><use href="#v-logo"></use></svg>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xl font-extrabold tracking-tight text-emerald-700">Elaeis</span>
+                            <span id="header-role-pill" class="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                                Admin
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-700">
+                            <svg id="greeting-icon" class="w-4 h-4 text-amber-500"><use href="#v-sun"></use></svg>
+                            <span id="greeting-text">Good morning, Sandaruwan</span>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            <div class="topbar-right">
-                <div class="round-pill">
-                    <svg class="icon-svg"><use href="#icon-calendar"></use></svg>
-                    <span id="live-round-pill">Round 1</span>
-                </div>
-                <div class="user-menu">
-                    <span id="current-user-label">User</span>
-                    <button type="button" class="btn btn-sm btn-outline" style="padding: 4px 10px;" onclick="logoutUser()">
+
+                <!-- Center/Right: Live Clock + Date + Role Switcher + Logout -->
+                <div class="flex items-center flex-wrap gap-2.5 sm:gap-4">
+                    <!-- Real-Time Clock & Date Badge -->
+                    <div class="flex items-center gap-2 bg-slate-100 border border-slate-200/80 px-3 py-1.5 rounded-xl">
+                        <svg class="w-4 h-4 text-emerald-600 flex-shrink-0"><use href="#v-clock"></use></svg>
+                        <div class="text-xs">
+                            <span id="live-date-display" class="font-semibold text-slate-700">Fri, 13 Nov 2026</span>
+                            <span class="mx-1 text-slate-300">|</span>
+                            <span id="live-clock-display" class="font-mono-code font-bold text-emerald-700">14:45:00</span>
+                        </div>
+                    </div>
+
+                    <!-- Interactive Role Switcher Dropdown (For Testing RBAC Permissions) -->
+                    <div class="flex items-center gap-1.5 bg-emerald-50/80 border border-emerald-200 px-2.5 py-1 rounded-xl">
+                        <svg class="w-4 h-4 text-emerald-700"><use href="#v-shield"></use></svg>
+                        <label for="role-switcher" class="text-[11px] font-bold uppercase text-emerald-800 hidden sm:inline">Role:</label>
+                        <select
+                            id="role-switcher"
+                            onchange="onRoleSwitchChange(this.value)"
+                            class="bg-transparent text-xs font-bold text-emerald-900 outline-none cursor-pointer pr-1"
+                            title="Switch role to test Role-Based Access Control (RBAC)"
+                        >
+                            <option value="Admin">Admin (Full Access)</option>
+                            <option value="Supervisor">Supervisor (GPS + Harvest + Fert)</option>
+                            <option value="Harvester">Harvester (Harvest Only)</option>
+                        </select>
+                    </div>
+
+                    <button
+                        type="button"
+                        onclick="handleLogout()"
+                        class="px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-xl border border-slate-200 transition"
+                    >
                         Log Out
                     </button>
                 </div>
             </div>
+
+            <!-- Navigation Tabs -->
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 flex gap-1 overflow-x-auto border-t border-slate-100">
+                <button type="button" data-tab="harvest" onclick="switchMainTab('harvest')" class="nav-tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold border-b-2 border-emerald-600 text-emerald-700 whitespace-nowrap transition">
+                    <svg class="w-4 h-4"><use href="#v-palm"></use></svg>
+                    <span>1. Harvesting Rounds (10-Day)</span>
+                </button>
+                <button type="button" data-tab="gps" onclick="switchMainTab('gps')" class="nav-tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-600 hover:text-emerald-700 whitespace-nowrap transition">
+                    <svg class="w-4 h-4"><use href="#v-pin"></use></svg>
+                    <span>2. Mobile GPS Tree Mapper</span>
+                </button>
+                <button type="button" data-tab="fertilizer" onclick="switchMainTab('fertilizer')" class="nav-tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-600 hover:text-emerald-700 whitespace-nowrap transition">
+                    <svg class="w-4 h-4"><use href="#v-flask"></use></svg>
+                    <span>3. Fertilizer (ERP &amp; AOP)</span>
+                </button>
+                <button type="button" data-tab="rollup" onclick="switchMainTab('rollup')" class="nav-tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-600 hover:text-emerald-700 whitespace-nowrap transition">
+                    <svg class="w-4 h-4"><use href="#v-chart"></use></svg>
+                    <span>4. Monthly Roll-Up Summary</span>
+                </button>
+                <button type="button" data-tab="admin" onclick="switchMainTab('admin')" class="nav-tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-600 hover:text-emerald-700 whitespace-nowrap transition">
+                    <svg class="w-4 h-4"><use href="#v-layers"></use></svg>
+                    <span>5. Hierarchy &amp; Batch Trees</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-mono-code">ADMIN</span>
+                </button>
+            </div>
         </header>
 
-        <!-- NAVIGATION BAR -->
-        <nav class="nav-bar">
-            <button class="nav-tab active" data-tab="harvest" onclick="switchTab('harvest')">
-                <svg class="icon-svg"><use href="#icon-tree"></use></svg>
-                <span>Tree Harvest Entry</span>
-            </button>
-            <button class="nav-tab" data-tab="report" onclick="switchTab('report')">
-                <svg class="icon-svg"><use href="#icon-map"></use></svg>
-                <span>3-Round Report &amp; Map</span>
-            </button>
-            <button class="nav-tab" data-tab="dashboard" onclick="switchTab('dashboard')">
-                <svg class="icon-svg"><use href="#icon-dashboard"></use></svg>
-                <span>Dashboard</span>
-            </button>
-            <button class="nav-tab" data-tab="hierarchy" onclick="switchTab('hierarchy')">
-                <svg class="icon-svg"><use href="#icon-layers"></use></svg>
-                <span>Blocks &amp; Field Inputs</span>
-            </button>
-            <button class="nav-tab" data-tab="users" onclick="switchTab('users')">
-                <svg class="icon-svg"><use href="#icon-users"></use></svg>
-                <span>Team &amp; Users</span>
-            </button>
-        </nav>
+        <!-- MAIN WORKSPACE -->
+        <main class="max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 flex-1 space-y-5">
 
-        <main class="main-container">
-            <!-- GLOBAL CASCADING HIERARCHY BAR: ESTATE -> DIVISION -> FIELD -> BLOCK -->
-            <section class="hierarchy-bar no-print">
-                <div class="hierarchy-item">
-                    <label>1. Estate</label>
-                    <select id="sel-estate" onchange="onEstateChange()"></select>
-                </div>
-                <div class="hierarchy-item">
-                    <label>2. Division</label>
-                    <select id="sel-division" onchange="onDivisionChange()"></select>
-                </div>
-                <div class="hierarchy-item">
-                    <label>3. Field</label>
-                    <select id="sel-field" onchange="onFieldChange()"></select>
-                </div>
-                <div class="hierarchy-item">
-                    <label>4. Block (3 Rounds / Month)</label>
-                    <select id="sel-block" onchange="onBlockChange()"></select>
+            <!-- GLOBAL 4-TIER HIERARCHY BAR: ESTATE -> DIVISION -> BLOCK -> MONTH/ROUND -->
+            <section class="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-sm no-print">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                    <div>
+                        <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            1. Estate
+                        </label>
+                        <select id="global-estate" onchange="onGlobalEstateChange()" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50/60 font-semibold text-sm text-slate-800 focus:border-emerald-600 outline-none"></select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            2. Division (1 - 3,000 Trees)
+                        </label>
+                        <select id="global-division" onchange="onGlobalDivisionChange()" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50/60 font-semibold text-sm text-slate-800 focus:border-emerald-600 outline-none"></select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            3. Field Block (100 - 300 Trees)
+                        </label>
+                        <select id="global-block" onchange="onGlobalBlockChange()" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50/60 font-semibold text-sm text-slate-800 focus:border-emerald-600 outline-none"></select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            4. Active Month &amp; 10-Day Round
+                        </label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <input type="month" id="global-month" onchange="onGlobalPeriodChange()" class="px-2.5 py-2 rounded-xl border border-slate-300 bg-slate-50/60 font-mono-code font-semibold text-xs text-slate-800 outline-none" />
+                            <select id="global-round" onchange="onGlobalPeriodChange()" class="px-2.5 py-2 rounded-xl border border-emerald-300 bg-emerald-50 font-bold text-xs text-emerald-800 outline-none">
+                                <option value="1">Round 1 (1-10)</option>
+                                <option value="2">Round 2 (11-20)</option>
+                                <option value="3">Round 3 (21-31)</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </section>
 
-            <!-- =============================================================== -->
-            <!-- TAB 1: TREE-BY-TREE HARVEST & UPKEEP ENTRY                      -->
-            <!-- =============================================================== -->
-            <section id="tab-harvest" class="tab-panel">
-                <div class="workstation-grid">
-                    <!-- LEFT: TREE HARVEST ENTRY CARD -->
-                    <div class="card">
-                        <div class="card-header">
+            <!-- =========================================================== -->
+            <!-- TAB 1: 10-DAY HARVESTING ROUNDS (SUPERVISOR & HARVESTER)    -->
+            <!-- =========================================================== -->
+            <section id="panel-harvest" class="tab-panel tab-transition space-y-5">
+                <!-- 3-Round Monthly Overview Strip for Active Block -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-3.5" id="harvest-top-kpis"></div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                    <!-- Left: Rapid Tree-by-Tree Harvest Logger -->
+                    <div class="lg:col-span-6 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-3.5 mb-4">
                             <div>
-                                <h3 class="card-title">
-                                    <svg class="icon-svg-lg" style="color: var(--brand);"><use href="#icon-tree"></use></svg>
-                                    <span>Tree-by-Tree Harvest &amp; Upkeep Entry</span>
-                                </h3>
-                                <p class="card-subtitle">
-                                    Enter tree number to auto-fill date, harvesting round, and GPS location.
+                                <h2 class="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                                    <svg class="w-5 h-5 text-emerald-600"><use href="#v-palm"></use></svg>
+                                    <span>Round-Wise Tree Harvesting Entry</span>
+                                </h2>
+                                <p class="text-xs text-slate-500">
+                                    Select a tree number to log Fresh Fruit Bunches (FFB) &amp; pruned Fronds.
                                 </p>
                             </div>
-                            <span id="form-round-badge" class="badge badge-green">Round 1 (Days 1-10)</span>
+                            <span id="harvest-active-round-badge" class="font-mono-code text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800">
+                                Round 2 (Days 11-20)
+                            </span>
                         </div>
 
-                        <form id="harvest-entry-form" onsubmit="submitTreeHarvest(event)">
-                            <!-- TREE NUMBER & DATE BAR -->
-                            <div class="tree-selector-row">
-                                <div>
-                                    <label style="font-size: 0.8rem; font-weight: 700; color: var(--primary); display: block; margin-bottom: 4px;">
-                                        Tree Number (#)
+                        <form onsubmit="handleSaveHarvest(event)" class="space-y-4">
+                            <!-- Tree Selector + GPS Verified Status -->
+                            <div class="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+                                <div class="sm:col-span-5">
+                                    <label class="block text-[11px] font-bold uppercase text-emerald-800 mb-1">
+                                        Palm Tree Number (#)
                                     </label>
-                                    <div class="tree-num-input-group">
+                                    <div class="flex gap-1.5">
                                         <input
                                             type="number"
-                                            id="inp-tree-number"
-                                            class="tree-num-input"
+                                            id="hv-tree-num"
                                             min="1"
                                             value="1"
-                                            onchange="lookupCurrentTree()"
-                                            onkeyup="if(event.key==='ArrowUp'||event.key==='ArrowDown') lookupCurrentTree()"
+                                            onchange="loadTreeForHarvest()"
+                                            class="w-full px-3 py-2 rounded-xl border-2 border-emerald-600 font-mono-code text-xl font-extrabold text-center text-emerald-900 bg-white outline-none"
                                             required
                                         />
-                                        <button type="button" class="btn btn-outline" onclick="lookupCurrentTree()">
-                                            Load
+                                        <button type="button" onclick="loadTreeForHarvest()" class="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl text-xs font-bold text-slate-700">
+                                            Go
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="sm:col-span-7 flex flex-col justify-between space-y-1.5">
+                                    <div class="flex items-center justify-between">
+                                        <span id="hv-tree-code-badge" class="font-mono-code text-xs font-bold text-slate-700">Tree #T-001</span>
+                                        <span id="hv-gps-badge" class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                                            GPS Verified
+                                        </span>
+                                    </div>
+                                    <div id="hv-gps-coords" class="font-mono-code text-xs text-slate-500">
+                                        6.142500, 80.365200 (±3.2m)
+                                    </div>
+                                    <div id="hv-tree-round-history" class="font-mono-code text-[11px] text-slate-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                                        R1: 2B/3F | R2: 0B/0F | R3: 0B/0F
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Touch-Friendly Stepper Cards for FFB Bunches & Fronds -->
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <!-- Bunches Cut -->
+                                <div class="bg-emerald-50/70 border-2 border-emerald-200 rounded-2xl p-4 text-center">
+                                    <label class="block text-sm font-extrabold text-emerald-950 mb-1">
+                                        Fresh Fruit Bunches (FFB)
+                                    </label>
+                                    <span class="block text-[11px] text-emerald-700 mb-3">Number of bunches harvested</span>
+                                    <div class="flex items-center justify-center gap-3">
+                                        <button type="button" onclick="stepHarvestInput('hv-bunches', -1)" class="w-12 h-12 rounded-xl bg-white border border-emerald-300 hover:bg-emerald-600 hover:text-white text-xl font-extrabold text-emerald-900 shadow-sm transition active:scale-95">
+                                            -
+                                        </button>
+                                        <input
+                                            type="number"
+                                            id="hv-bunches"
+                                            min="0"
+                                            max="40"
+                                            value="2"
+                                            class="w-20 h-12 text-center font-mono-code text-2xl font-extrabold rounded-xl border border-emerald-300 bg-white text-slate-900 outline-none"
+                                            required
+                                        />
+                                        <button type="button" onclick="stepHarvestInput('hv-bunches', 1)" class="w-12 h-12 rounded-xl bg-white border border-emerald-300 hover:bg-emerald-600 hover:text-white text-xl font-extrabold text-emerald-900 shadow-sm transition active:scale-95">
+                                            +
                                         </button>
                                     </div>
                                 </div>
 
-                                <div>
-                                    <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 4px;">
-                                        Harvest Date (Auto)
+                                <!-- Fronds Cut -->
+                                <div class="bg-amber-50/70 border-2 border-amber-200 rounded-2xl p-4 text-center">
+                                    <label class="block text-sm font-extrabold text-amber-950 mb-1">
+                                        Fronds Pruned / Cut
                                     </label>
-                                    <input type="date" id="inp-harvest-date" onchange="onHarvestDateChange()" required />
-                                </div>
-
-                                <div class="round-info-strip">
-                                    <div>
-                                        <span style="color: var(--text-muted);">Month:</span>
-                                        <strong id="inp-auto-month-label" style="margin-left: 4px;">2026-11</strong>
-                                        <input type="hidden" id="inp-auto-month" />
-                                    </div>
-                                    <div>
-                                        <span style="color: var(--text-muted);">Active Cycle:</span>
-                                        <strong id="inp-auto-round-label" style="color: var(--primary); margin-left: 4px;">Round 1 (Days 1-10)</strong>
-                                        <input type="hidden" id="inp-auto-round" />
+                                    <span class="block text-[11px] text-amber-800 mb-3">Subtending fronds stacked</span>
+                                    <div class="flex items-center justify-center gap-3">
+                                        <button type="button" onclick="stepHarvestInput('hv-fronds', -1)" class="w-12 h-12 rounded-xl bg-white border border-amber-300 hover:bg-amber-600 hover:text-white text-xl font-extrabold text-amber-900 shadow-sm transition active:scale-95">
+                                            -
+                                        </button>
+                                        <input
+                                            type="number"
+                                            id="hv-fronds"
+                                            min="0"
+                                            max="40"
+                                            value="3"
+                                            class="w-20 h-12 text-center font-mono-code text-2xl font-extrabold rounded-xl border border-amber-300 bg-white text-slate-900 outline-none"
+                                            required
+                                        />
+                                        <button type="button" onclick="stepHarvestInput('hv-fronds', 1)" class="w-12 h-12 rounded-xl bg-white border border-amber-300 hover:bg-amber-600 hover:text-white text-xl font-extrabold text-amber-900 shadow-sm transition active:scale-95">
+                                            +
+                                        </button>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- GPS COORDINATES BOX -->
-                            <div class="gps-card">
-                                <div class="gps-header">
-                                    <div style="display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 0.85rem; color: var(--accent);">
-                                        <svg class="icon-svg"><use href="#icon-pin"></use></svg>
-                                        <span>Palm GPS Coordinates</span>
-                                        <span id="tree-status-tag" class="badge badge-green">Registered</span>
-                                    </div>
-                                    <span id="tree-3round-mini-history" style="font-size: 0.78rem; color: var(--text-muted);">
-                                        R1: - | R2: - | R3: -
-                                    </span>
-                                </div>
-
-                                <div class="gps-coords-grid">
-                                    <div>
-                                        <label style="font-size: 0.74rem; color: var(--text-muted); display: block; margin-bottom: 3px;">
-                                            Latitude (N)
-                                        </label>
-                                        <input type="number" step="0.000001" id="inp-latitude" required />
-                                    </div>
-                                    <div>
-                                        <label style="font-size: 0.74rem; color: var(--text-muted); display: block; margin-bottom: 3px;">
-                                            Longitude (E)
-                                        </label>
-                                        <input type="number" step="0.000001" id="inp-longitude" required />
-                                    </div>
-                                    <button type="button" class="btn btn-outline" onclick="captureDeviceGPS()">
-                                        <svg class="icon-svg"><use href="#icon-gps"></use></svg>
-                                        <span>Use Device GPS</span>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- BUNCHES CUT & FRONDS CUT STEPPERS -->
-                            <div class="counters-grid">
-                                <div class="counter-card bunch-card">
-                                    <div class="counter-label" style="color: var(--primary);">
-                                        <span>Bunches Cut</span>
-                                    </div>
-                                    <div class="counter-controls">
-                                        <button type="button" class="btn-stepper" onclick="adjustCounter('inp-bunches-cut', -1)">-</button>
-                                        <input type="number" id="inp-bunches-cut" class="counter-input" min="0" max="50" value="1" oninput="autoCalcWeight()" required />
-                                        <button type="button" class="btn-stepper" onclick="adjustCounter('inp-bunches-cut', 1)">+</button>
-                                    </div>
-                                    <span class="counter-unit">Fresh Fruit Bunches (FFB)</span>
-                                </div>
-
-                                <div class="counter-card frond-card">
-                                    <div class="counter-label" style="color: #92400e;">
-                                        <span>Fronds Cut</span>
-                                    </div>
-                                    <div class="counter-controls">
-                                        <button type="button" class="btn-stepper" onclick="adjustCounter('inp-fronds-cut', -1)">-</button>
-                                        <input type="number" id="inp-fronds-cut" class="counter-input" min="0" max="50" value="2" required />
-                                        <button type="button" class="btn-stepper" onclick="adjustCounter('inp-fronds-cut', 1)">+</button>
-                                    </div>
-                                    <span class="counter-unit">Pruned Subtending Fronds</span>
-                                </div>
-                            </div>
-
-                            <!-- UPKEEP, WEED GROWTH & FERTILIZER INPUTS (SRI LANKAN METRIC UNITS) -->
-                            <div class="upkeep-box">
-                                <div class="upkeep-title">
-                                    <svg class="icon-svg" style="color: var(--brand);"><use href="#icon-layers"></use></svg>
-                                    <span>Palm Circle Upkeep, Fertilizer &amp; Field Details</span>
-                                </div>
-
-                                <div class="form-grid-3">
-                                    <div class="form-group" style="margin-bottom: 0;">
-                                        <label>Weed Growth (Palm Circle)</label>
-                                        <select id="inp-weed-growth">
-                                            <option value="Clean Circle">Clean Circle (Weeded)</option>
-                                            <option value="Light Weeds">Light Weeds</option>
-                                            <option value="Moderate Weeds">Moderate Weeds</option>
-                                            <option value="Heavy Weeds">Heavy Weeds (Action Required)</option>
-                                            <option value="Cover Crop">Cover Crop Maintained</option>
-                                        </select>
-                                    </div>
-
-                                    <div class="form-group" style="margin-bottom: 0;">
-                                        <label>Fertilizer Type</label>
-                                        <select id="inp-fertilizer-type">
-                                            <option value="None">None (This Round)</option>
-                                            <option value="YPM Palm Mixture">YPM / Adult Palm Mixture</option>
-                                            <option value="NPK 12:12:17:2">NPK 12:12:17:2 + TE</option>
-                                            <option value="MOP (Muriate of Potash)">MOP (Muriate of Potash)</option>
-                                            <option value="Urea">Urea (46% N)</option>
-                                            <option value="Eppawala Rock Phosphate">ERP (Eppawala Rock Phosphate)</option>
-                                            <option value="Dolomite / Kieserite">Dolomite / Kieserite (Mg)</option>
-                                            <option value="Organic Mulch">Organic Compost / Mulch</option>
-                                        </select>
-                                    </div>
-
-                                    <div class="form-group" style="margin-bottom: 0;">
-                                        <label>Fertilizer Applied (kg)</label>
-                                        <input type="number" step="0.1" id="inp-fertilizer-kg" value="0.0" min="0" />
-                                    </div>
-
-                                    <div class="form-group" style="margin-bottom: 0;">
-                                        <label>Tree Health Status</label>
-                                        <select id="inp-pest-disease">
-                                            <option value="Healthy">Healthy Palm</option>
-                                            <option value="Mg / K Deficiency">Nutrient Deficiency (Mg / K)</option>
-                                            <option value="Red Weevil / Beetle">Red Weevil / Rhinoceros Beetle</option>
-                                            <option value="Leaf Blight / Rot">Leaf Blight / Bud Rot</option>
-                                            <option value="Stem Rot">Basal Stem Rot</option>
-                                        </select>
-                                    </div>
-
-                                    <div class="form-group" style="margin-bottom: 0;">
-                                        <label>Estimated Bunch Weight (kg)</label>
-                                        <input type="number" step="0.1" id="inp-bunch-weight" value="18.0" min="0" />
-                                    </div>
-
-                                    <div class="form-group" style="margin-bottom: 0;">
-                                        <label>Frond Stacking</label>
-                                        <select id="inp-pruning-status">
-                                            <option value="Standard Stacked">Standard Stacked</option>
-                                            <option value="Mulched in Circle">Mulched Around Circle</option>
-                                            <option value="Over-Pruned">Over-Pruned</option>
-                                            <option value="Under-Pruned">Under-Pruned</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <div id="dynamic-custom-fields" class="form-grid-3" style="margin-top: 12px; margin-bottom: 0;"></div>
-
-                                <div class="form-group" style="margin-top: 12px; margin-bottom: 0;">
-                                    <label>Field Notes (Optional)</label>
-                                    <input type="text" id="inp-remarks" placeholder="Add observation for this tree..." />
-                                </div>
-                            </div>
-
-                            <!-- SAVE & NEXT TREE BAR -->
-                            <div class="action-bar">
-                                <button type="button" class="btn btn-outline" onclick="stepTreeNumber(-1)">
-                                    <svg class="icon-svg"><use href="#icon-arrow-left"></use></svg>
-                                    <span>Previous</span>
+                            <!-- Action Buttons -->
+                            <div class="flex flex-col sm:flex-row gap-2.5 pt-1">
+                                <button type="button" onclick="navigateTree(-1)" class="px-4 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-xs text-slate-700">
+                                    Prev Tree
                                 </button>
-                                <button type="submit" class="btn btn-primary btn-lg" style="flex: 1;">
-                                    <svg class="icon-svg"><use href="#icon-check"></use></svg>
-                                    <span>Save &amp; Next Tree</span>
-                                    <svg class="icon-svg"><use href="#icon-arrow-right"></use></svg>
+                                <button type="submit" class="flex-1 py-3.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-sm shadow-sm flex items-center justify-center gap-2 transition">
+                                    <svg class="w-4 h-4"><use href="#v-check-circle"></use></svg>
+                                    <span>Save Round Record &amp; Next Tree</span>
                                 </button>
-                                <button type="button" class="btn btn-outline" onclick="stepTreeNumber(1)">
-                                    <span>Skip</span>
-                                    <svg class="icon-svg"><use href="#icon-arrow-right"></use></svg>
+                                <button type="button" onclick="navigateTree(1)" class="px-4 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-xs text-slate-700">
+                                    Skip Tree
                                 </button>
                             </div>
                         </form>
                     </div>
 
-                    <!-- RIGHT: BLOCK 3-ROUND PROGRESS & TREE GRID -->
-                    <div class="card">
-                        <div class="card-header">
+                    <!-- Right: Interactive Block Tree Matrix (150+ Trees) -->
+                    <div class="lg:col-span-6 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3.5 mb-3.5">
                             <div>
-                                <h3 id="right-block-title" class="card-title">Block Progress</h3>
-                                <p class="card-subtitle">Tap any tree number to view or edit</p>
+                                <h3 id="grid-block-heading" class="text-base font-extrabold text-slate-900">
+                                    Block A1 Tree Matrix
+                                </h3>
+                                <p class="text-xs text-slate-500">Tap any palm card to load it into the logger</p>
                             </div>
-                            <span id="block-round-progress-badge" class="badge badge-amber">0 / 0 Trees</span>
-                        </div>
-
-                        <div class="mini-rounds-grid">
-                            <div class="mini-round-box r1">
-                                <div class="mini-round-title">Round 1 (1-10)</div>
-                                <div id="blk-stat-r1" class="mini-round-val">0B / 0F</div>
-                                <div id="blk-trees-r1" class="mini-round-sub">0 palms</div>
-                            </div>
-                            <div class="mini-round-box r2">
-                                <div class="mini-round-title">Round 2 (11-20)</div>
-                                <div id="blk-stat-r2" class="mini-round-val">0B / 0F</div>
-                                <div id="blk-trees-r2" class="mini-round-sub">0 palms</div>
-                            </div>
-                            <div class="mini-round-box r3">
-                                <div class="mini-round-title">Round 3 (21-End)</div>
-                                <div id="blk-stat-r3" class="mini-round-val">0B / 0F</div>
-                                <div id="blk-trees-r3" class="mini-round-sub">0 palms</div>
+                            <div class="flex items-center gap-1.5">
+                                <button type="button" onclick="setTreeGridFilter('all')" id="flt-all" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white">All</button>
+                                <button type="button" onclick="setTreeGridFilter('done')" id="flt-done" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600">Harvested</button>
+                                <button type="button" onclick="setTreeGridFilter('pending')" id="flt-pending" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600">Pending</button>
                             </div>
                         </div>
 
-                        <div id="block-tree-pills" class="tree-grid-pills"></div>
-
-                        <div style="margin-top: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: var(--text-muted);">
-                            <span>Highlighted = Harvested in active round</span>
-                            <button type="button" class="btn btn-sm btn-outline" onclick="switchTab('report')">
-                                <span>Full Report</span>
-                                <svg class="icon-svg"><use href="#icon-arrow-right"></use></svg>
-                            </button>
-                        </div>
+                        <div id="harvest-tree-pills-grid" class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2 max-h-[380px] overflow-y-auto p-1"></div>
                     </div>
                 </div>
             </section>
 
-            <!-- =============================================================== -->
-            <!-- TAB 2: 3-ROUND BLOCK REPORT & GPS MAP                           -->
-            <!-- =============================================================== -->
-            <section id="tab-report" class="tab-panel hidden">
-                <div class="card">
-                    <div class="card-header">
-                        <div>
-                            <h3 id="report-header-title" class="card-title">Monthly 3-Round Block Report</h3>
-                            <p id="report-hierarchy-subtitle" class="card-subtitle">
-                                Estate &gt; Division &gt; Field &gt; Block
+            <!-- =========================================================== -->
+            <!-- TAB 2: MOBILE GPS GEOLOCATION AUTO-DETECTION (SUPERVISOR)   -->
+            <!-- =========================================================== -->
+            <section id="panel-gps" class="tab-panel hidden tab-transition space-y-5">
+                <div id="gps-rbac-notice" class="hidden bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 text-sm font-semibold flex items-center gap-3">
+                    <svg class="w-5 h-5 text-amber-600 flex-shrink-0"><use href="#v-lock"></use></svg>
+                    <span>Note: GPS Field Capture is restricted to <strong>Supervisor</strong> and <strong>Admin</strong> roles. Switch role in the top header to test capturing GPS.</span>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                    <!-- Left: Mobile Phone GPS Capture Station -->
+                    <div class="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+                        <div class="border-b border-slate-100 pb-3">
+                            <h2 class="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-emerald-600"><use href="#v-pin"></use></svg>
+                                <span>Field Palm GPS Geolocation Capture</span>
+                            </h2>
+                            <p class="text-xs text-slate-500 mt-0.5">
+                                Walk to the physical palm tree with your phone, select the tree number, and tap <strong>Capture Phone GPS</strong>.
                             </p>
                         </div>
-                        <div class="no-print" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                            <input type="month" id="report-month-picker" onchange="loadBlockRoundReport()" style="width: 165px;" />
-                            <button type="button" class="btn btn-primary" onclick="downloadBlockCSV()">
-                                <svg class="icon-svg"><use href="#icon-download"></use></svg>
-                                <span>Export CSV</span>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">Select Tree # in Block</label>
+                                <input
+                                    type="number"
+                                    id="gps-tree-num"
+                                    min="1"
+                                    value="1"
+                                    onchange="loadTreeForGpsPanel()"
+                                    class="w-full px-3.5 py-2.5 rounded-xl border-2 border-emerald-600 font-mono-code text-lg font-extrabold text-slate-900 outline-none"
+                                />
+                            </div>
+                            <div class="flex flex-col justify-end">
+                                <div id="gps-panel-verified-badge" class="py-2.5 px-3 rounded-xl font-bold text-xs text-center bg-emerald-100 text-emerald-800">
+                                    GPS Verified
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Live Coordinates Readout -->
+                        <div class="bg-slate-900 text-white rounded-2xl p-4 space-y-2.5 font-mono-code">
+                            <div class="flex justify-between items-center text-xs text-slate-400">
+                                <span>TREE ID: <strong id="gps-readout-code" class="text-emerald-400">#T-001</strong></span>
+                                <span id="gps-readout-acc" class="bg-slate-800 px-2 py-0.5 rounded text-emerald-300">Accuracy: ±3.2m</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3 pt-1">
+                                <div class="bg-slate-800/90 p-2.5 rounded-xl">
+                                    <span class="block text-[10px] text-slate-400 uppercase">Latitude (N)</span>
+                                    <input type="number" step="0.000001" id="gps-inp-lat" class="w-full bg-transparent text-sm font-bold text-white outline-none mt-0.5" />
+                                </div>
+                                <div class="bg-slate-800/90 p-2.5 rounded-xl">
+                                    <span class="block text-[10px] text-slate-400 uppercase">Longitude (E)</span>
+                                    <input type="number" step="0.000001" id="gps-inp-lng" class="w-full bg-transparent text-sm font-bold text-white outline-none mt-0.5" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Primary Capture Phone GPS Button -->
+                        <button
+                            type="button"
+                            id="btn-capture-phone-gps"
+                            onclick="captureLivePhoneGPS()"
+                            class="w-full py-4 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-sm shadow-md flex items-center justify-center gap-2.5 transition"
+                        >
+                            <svg class="w-5 h-5"><use href="#v-crosshair"></use></svg>
+                            <span>Capture Phone GPS (High Accuracy)</span>
+                        </button>
+
+                        <div class="flex gap-2">
+                            <button type="button" onclick="saveManualGpsCoordinates()" class="flex-1 py-2.5 px-4 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700">
+                                Save Manual Coordinates &amp; Next Tree
                             </button>
-                            <button type="button" class="btn btn-outline" onclick="window.print()">
-                                <svg class="icon-svg"><use href="#icon-print"></use></svg>
-                                <span>Print</span>
+                            <button type="button" onclick="stepGpsTree(1)" class="py-2.5 px-4 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700">
+                                Next Tree &rarr;
                             </button>
                         </div>
                     </div>
 
-                    <div class="rounds-grid" id="report-rounds-summary"></div>
-
-                    <div style="margin-bottom: 20px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
-                            <h4 style="font-size: 0.92rem; color: var(--primary); display: flex; align-items: center; gap: 6px;">
-                                <svg class="icon-svg"><use href="#icon-map"></use></svg>
-                                <span>Block Palm GPS Map (Latitude &amp; Longitude Layout)</span>
-                            </h4>
-                            <span style="font-size: 0.78rem; color: var(--text-muted);">
-                                Click any tree pin to open its record
+                    <!-- Right: Interactive Block GIS Canvas Map & Verification Registry -->
+                    <div class="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <h3 class="text-base font-extrabold text-slate-900">Block Geo-Verification Map</h3>
+                                <p class="text-xs text-slate-500">Emerald pins = GPS Verified palms | Slate pins = Unverified grid default</p>
+                            </div>
+                            <span id="gps-block-summary-pill" class="font-mono-code text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                0 / 150 Verified
                             </span>
                         </div>
-                        <canvas id="block-map-canvas" width="1100" height="340"></canvas>
-                    </div>
 
-                    <div class="table-responsive">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Tree #</th>
-                                    <th>GPS Coordinates (Lat, Lng)</th>
-                                    <th>Round 1 (Days 1-10)<br/>Bunches | Fronds</th>
-                                    <th>Round 2 (Days 11-20)<br/>Bunches | Fronds</th>
-                                    <th>Round 3 (Days 21-End)<br/>Bunches | Fronds</th>
-                                    <th>Total Bunches</th>
-                                    <th>Total Fronds</th>
-                                    <th>Weight (kg)</th>
-                                    <th>Weed Status</th>
-                                    <th>Fertilizer &amp; Health</th>
-                                    <th class="no-print">Edit</th>
-                                </tr>
-                            </thead>
-                            <tbody id="report-matrix-tbody"></tbody>
-                        </table>
+                        <canvas id="gps-block-canvas" width="900" height="320" class="w-full h-[300px] rounded-xl border border-slate-200 bg-emerald-50/40"></canvas>
                     </div>
                 </div>
             </section>
 
-            <!-- =============================================================== -->
-            <!-- TAB 3: ESTATE DASHBOARD                                         -->
-            <!-- =============================================================== -->
-            <section id="tab-dashboard" class="tab-panel hidden">
-                <div class="kpi-grid" id="dashboard-kpi-grid"></div>
-
-                <div class="rounds-grid" id="dashboard-rounds-grid"></div>
-
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Block Harvesting Summary (3 Monthly Rounds)</h3>
-                    </div>
-                    <div class="table-responsive">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Estate / Division / Field</th>
-                                    <th>Block</th>
-                                    <th>Registered Palms</th>
-                                    <th>Round 1 (1-10)</th>
-                                    <th>Round 2 (11-20)</th>
-                                    <th>Round 3 (21-End)</th>
-                                    <th>Total Bunches</th>
-                                    <th>Total Fronds</th>
-                                    <th>Yield Weight (kg)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="dashboard-blocks-tbody"></tbody>
-                        </table>
-                    </div>
+            <!-- =========================================================== -->
+            <!-- TAB 3: FERTILIZER APPLICATION MODULE (ERP & AOP - 4 ROUNDS) -->
+            <!-- =========================================================== -->
+            <section id="panel-fertilizer" class="tab-panel hidden tab-transition space-y-5">
+                <div id="fert-rbac-notice" class="hidden bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 text-sm font-semibold flex items-center gap-3">
+                    <svg class="w-5 h-5 text-amber-600 flex-shrink-0"><use href="#v-lock"></use></svg>
+                    <span>Fertilizer Logging is restricted to <strong>Supervisor</strong> and <strong>Admin</strong> roles.</span>
                 </div>
 
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Recent Harvesting &amp; Upkeep Activity</h3>
-                    </div>
-                    <div class="table-responsive">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Date &amp; Round</th>
-                                    <th>Block &amp; Tree</th>
-                                    <th>GPS Location</th>
-                                    <th>Bunches Cut</th>
-                                    <th>Fronds Cut</th>
-                                    <th>Upkeep Details</th>
-                                    <th>Recorded By</th>
-                                </tr>
-                            </thead>
-                            <tbody id="dashboard-recent-tbody"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
+                <!-- 4-Round Annual Fertilizer Overview Strip -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5" id="fert-annual-rounds-strip"></div>
 
-            <!-- =============================================================== -->
-            <!-- TAB 4: HIERARCHY & CUSTOM FIELD INPUTS                          -->
-            <!-- =============================================================== -->
-            <section id="tab-hierarchy" class="tab-panel hidden">
-                <div class="workstation-grid">
-                    <div class="card">
-                        <div class="card-header">
-                            <div>
-                                <h3 class="card-title">Add Custom Monitoring Field</h3>
-                                <p class="card-subtitle">
-                                    Add extra parameters (such as Soil Moisture, Drainage, Mulching, or Pest Count) to the tree form.
-                                </p>
-                            </div>
+                <!-- Mode Selector & Shared Fertilizer Config Bar -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-5">
+                    <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                        <div>
+                            <h2 class="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-emerald-600"><use href="#v-flask"></use></svg>
+                                <span>Dual-Mode Fertilizer Logger (ERP &amp; AOP - 4 Annual Rounds)</span>
+                            </h2>
+                            <p class="text-xs text-slate-500">
+                                Log <strong>ERP (Eppawala Rock Phosphate)</strong> or <strong>AOP (Adult Oil Palm Mixture)</strong> using 1-Click Block Apply or Tree-by-Tree Checklist.
+                            </p>
                         </div>
-                        <form onsubmit="handleAddCustomField(event)">
-                            <div class="form-group">
-                                <label>Field Name</label>
-                                <input type="text" id="cf-label" placeholder="e.g. Drainage Condition" required />
-                            </div>
-                            <div class="form-group">
-                                <label>Input Type</label>
-                                <select id="cf-type" onchange="document.getElementById('cf-options-wrap').classList.toggle('hidden', this.value !== 'select')">
-                                    <option value="select">Dropdown List</option>
-                                    <option value="text">Text Note</option>
-                                    <option value="number">Number / Measurement</option>
-                                </select>
-                            </div>
-                            <div class="form-group" id="cf-options-wrap">
-                                <label>Dropdown Options (Comma-separated)</label>
-                                <input type="text" id="cf-options" value="Good,Moderate,Blocked" />
-                            </div>
-                            <button type="submit" class="btn btn-primary">Add Field</button>
-                        </form>
 
-                        <div style="margin-top: 18px;">
-                            <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: 8px;">
-                                Active Custom Fields
-                            </label>
-                            <div id="custom-fields-list"></div>
+                        <!-- Mode Switcher Pills -->
+                        <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+                            <button
+                                type="button"
+                                id="btn-fert-mode-bulk"
+                                onclick="switchFertilizerMode('bulk')"
+                                class="px-3.5 py-2 rounded-lg text-xs font-extrabold bg-emerald-600 text-white shadow-sm transition"
+                            >
+                                Mode A: 1-Click Block Apply
+                            </button>
+                            <button
+                                type="button"
+                                id="btn-fert-mode-checklist"
+                                onclick="switchFertilizerMode('checklist')"
+                                class="px-3.5 py-2 rounded-lg text-xs font-extrabold text-slate-700 hover:text-slate-900 transition"
+                            >
+                                Mode B: Tree-by-Tree Checklist
+                            </button>
                         </div>
                     </div>
 
-                    <div class="card">
-                        <div class="card-header">
-                            <div>
-                                <h3 class="card-title">Create New Block &amp; Generate Palm Grid</h3>
-                                <p class="card-subtitle">
-                                    Creates a new block under the selected Field and generates geo-tagged trees.
-                                </p>
-                            </div>
+                    <!-- Shared Application Parameters (Variety, Annual Round 1-4, Weight per Palm, Date) -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200/80">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Fertilizer Variety</label>
+                            <select id="fert-variety" onchange="renderFertilizerModule()" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white font-bold text-sm text-emerald-900 outline-none">
+                                <option value="ERP">ERP (Eppawala Rock Phosphate)</option>
+                                <option value="AOP">AOP (Adult Oil Palm Mixture)</option>
+                            </select>
                         </div>
-                        <form onsubmit="handleCreateBlock(event)">
-                            <div class="form-group">
-                                <label>Selected Estate &gt; Division &gt; Field</label>
-                                <input type="text" id="new-blk-parent-info" readonly style="background: var(--bg-muted);" />
-                            </div>
-                            <div class="form-grid-2">
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label>Block Code</label>
-                                    <input type="text" id="new-blk-code" placeholder="e.g. BLK-A2" required />
-                                </div>
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label>Block Name</label>
-                                    <input type="text" id="new-blk-name" placeholder="e.g. Block A2 (Lower Slope)" required />
-                                </div>
-                            </div>
-                            <div class="form-grid-3">
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label>Number of Palms</label>
-                                    <input type="number" id="new-blk-trees" value="20" min="1" max="200" required />
-                                </div>
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label>Start Latitude (N)</label>
-                                    <input type="number" step="0.000001" id="new-blk-lat" value="6.142500" required />
-                                </div>
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label>Start Longitude (E)</label>
-                                    <input type="number" step="0.000001" id="new-blk-lng" value="80.365200" required />
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-primary">Create Block &amp; Palms</button>
-                        </form>
-                    </div>
-                </div>
-            </section>
-
-            <!-- =============================================================== -->
-            <!-- TAB 5: TEAM & USER ACCOUNTS                                     -->
-            <!-- =============================================================== -->
-            <section id="tab-users" class="tab-panel hidden">
-                <div class="workstation-grid">
-                    <div class="card">
-                        <div class="card-header">
-                            <h3 class="card-title">Assign New Team Member</h3>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Annual Application Round (1 - 4)</label>
+                            <select id="fert-round" onchange="renderFertilizerModule()" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white font-bold text-sm text-slate-800 outline-none">
+                                <option value="1">Annual Round 1</option>
+                                <option value="2">Annual Round 2</option>
+                                <option value="3">Annual Round 3</option>
+                                <option value="4">Annual Round 4</option>
+                            </select>
                         </div>
-                        <form onsubmit="handleAdminCreateUser(event)">
-                            <div class="form-group">
-                                <label>Full Name</label>
-                                <input type="text" id="usr-fullname" placeholder="e.g. Kasun Perera" required />
-                            </div>
-                            <div class="form-grid-2">
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label>Username</label>
-                                    <input type="text" id="usr-username" placeholder="kasun" required />
-                                </div>
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label>Mobile Number</label>
-                                    <input type="text" id="usr-phone" placeholder="+94 77 234 5678" required />
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>Email Address</label>
-                                <input type="email" id="usr-email" placeholder="kasun@estate.lk" required />
-                            </div>
-                            <div class="form-grid-2">
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label>Role</label>
-                                    <select id="usr-role">
-                                        <option value="Harvester">Field Officer / Harvester</option>
-                                        <option value="Supervisor">Field Supervisor</option>
-                                        <option value="Admin">Estate Manager (Admin)</option>
-                                    </select>
-                                </div>
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label>Initial Password</label>
-                                    <input type="text" id="usr-password" value="elaeis2026" required />
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-primary">Create User Account</button>
-                        </form>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Weight per Palm (kg)</label>
+                            <input
+                                type="number"
+                                id="fert-weight-kg"
+                                step="0.25"
+                                min="0.25"
+                                max="15"
+                                value="2.0"
+                                class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white font-mono-code font-bold text-sm text-slate-900 outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Application Date</label>
+                            <input
+                                type="date"
+                                id="fert-date"
+                                class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white font-mono-code font-semibold text-sm text-slate-800 outline-none"
+                            />
+                        </div>
                     </div>
 
-                    <div class="card">
-                        <div class="card-header">
-                            <h3 class="card-title">Registered Team Members</h3>
+                    <!-- MODE A: 1-CLICK BLOCK-LEVEL BULK APPLY -->
+                    <div id="fert-view-bulk" class="bg-emerald-50/70 border-2 border-emerald-200 rounded-2xl p-6 text-center space-y-4">
+                        <div class="max-w-xl mx-auto space-y-2">
+                            <span class="inline-block text-xs font-extrabold uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-200/80 text-emerald-900">
+                                Single-Day Block Completion
+                            </span>
+                            <h3 id="bulk-fert-summary-title" class="text-lg sm:text-xl font-extrabold text-slate-900">
+                                Apply ERP (2.0 kg/palm) to All Trees in Block A1
+                            </h3>
+                            <p class="text-xs sm:text-sm text-slate-600">
+                                Clicking the button below immediately logs the selected fertilizer variety, annual round, and weight to every active palm tree in the current block.
+                            </p>
                         </div>
-                        <div class="table-responsive">
-                            <table>
-                                <thead>
+                        <button
+                            type="button"
+                            onclick="handleBulkApplyBlockFertilizer()"
+                            class="px-8 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-base shadow-md inline-flex items-center gap-2.5 transition"
+                        >
+                            <svg class="w-5 h-5"><use href="#v-check-circle"></use></svg>
+                            <span>Apply to Entire Block Now</span>
+                        </button>
+                    </div>
+
+                    <!-- MODE B: TREE-BY-TREE CHECKLIST (TICK & SUBMIT) -->
+                    <div id="fert-view-checklist" class="hidden space-y-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                                <button type="button" onclick="toggleAllFertilizerChecks(true)" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700">
+                                    Tick All Trees
+                                </button>
+                                <button type="button" onclick="toggleAllFertilizerChecks(false)" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700">
+                                    Untick All
+                                </button>
+                            </div>
+                            <button
+                                type="button"
+                                onclick="handleSubmitCheckedFertilizerTrees()"
+                                class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm shadow-sm flex items-center gap-2 transition"
+                            >
+                                <svg class="w-4 h-4"><use href="#v-check-circle"></use></svg>
+                                <span>Submit Checked Trees</span>
+                            </button>
+                        </div>
+
+                        <div class="max-h-[420px] overflow-y-auto border border-slate-200 rounded-xl">
+                            <table class="w-full text-left border-collapse text-xs sm:text-sm">
+                                <thead class="bg-slate-100 sticky top-0 text-[11px] font-bold uppercase text-slate-600">
                                     <tr>
-                                        <th>Full Name</th>
-                                        <th>Username</th>
-                                        <th>Email</th>
-                                        <th>Mobile</th>
-                                        <th>Role</th>
+                                        <th class="py-2.5 px-3 w-12 text-center">Tick</th>
+                                        <th class="py-2.5 px-3">Tree ID</th>
+                                        <th class="py-2.5 px-3">GPS Coordinates</th>
+                                        <th class="py-2.5 px-3">Weight (kg)</th>
+                                        <th class="py-2.5 px-3">Current Round Status</th>
                                     </tr>
                                 </thead>
-                                <tbody id="users-list-tbody"></tbody>
+                                <tbody id="fert-checklist-tbody" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =========================================================== -->
+            <!-- TAB 4: MONTHLY ROLL-UP SUMMARY (R1 + R2 + R3 AGGREGATION)   -->
+            <!-- =========================================================== -->
+            <section id="panel-rollup" class="tab-panel hidden tab-transition space-y-5">
+                <!-- Header + Export Actions -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                        <h2 id="rollup-heading" class="text-base sm:text-lg font-extrabold text-slate-900">
+                            Monthly End Wrap-Up Summary (Round 1 + Round 2 + Round 3)
+                        </h2>
+                        <p class="text-xs text-slate-500">
+                            Automated monthly roll-up of bunches cut and fronds pruned per Division, per Field Block, and per Individual Palm Tree.
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2 no-print">
+                        <button type="button" onclick="exportMonthlyRollupCSV()" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-sm">
+                            <svg class="w-4 h-4"><use href="#v-download"></use></svg>
+                            <span>Export Block CSV</span>
+                        </button>
+                        <button type="button" onclick="window.print()" class="px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-xs text-slate-700">
+                            Print Report
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 1. Division-Level Monthly Roll-Up Table -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                    <h3 class="text-sm font-extrabold uppercase tracking-wider text-emerald-800 mb-3">
+                        1. Division-Level Monthly Roll-Up (R1 + R2 + R3)
+                    </h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-xs sm:text-sm">
+                            <thead class="bg-slate-50 text-[11px] font-bold uppercase text-slate-500 border-b border-slate-200">
+                                <tr>
+                                    <th class="py-2.5 px-3">Division</th>
+                                    <th class="py-2.5 px-3">Blocks / Trees</th>
+                                    <th class="py-2.5 px-3">Round 1 (1-10)</th>
+                                    <th class="py-2.5 px-3">Round 2 (11-20)</th>
+                                    <th class="py-2.5 px-3">Round 3 (21-31)</th>
+                                    <th class="py-2.5 px-3 text-emerald-800">Monthly Total Bunches</th>
+                                    <th class="py-2.5 px-3 text-amber-800">Monthly Total Fronds</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rollup-division-tbody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 2. Block-Level Monthly Roll-Up Table -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                    <h3 class="text-sm font-extrabold uppercase tracking-wider text-emerald-800 mb-3">
+                        2. Field Block Monthly Roll-Up (R1 + R2 + R3)
+                    </h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-xs sm:text-sm">
+                            <thead class="bg-slate-50 text-[11px] font-bold uppercase text-slate-500 border-b border-slate-200">
+                                <tr>
+                                    <th class="py-2.5 px-3">Block</th>
+                                    <th class="py-2.5 px-3">Division</th>
+                                    <th class="py-2.5 px-3">Palm Count</th>
+                                    <th class="py-2.5 px-3">Round 1 (1-10)</th>
+                                    <th class="py-2.5 px-3">Round 2 (11-20)</th>
+                                    <th class="py-2.5 px-3">Round 3 (21-31)</th>
+                                    <th class="py-2.5 px-3 text-emerald-800">Monthly Total Bunches</th>
+                                    <th class="py-2.5 px-3 text-amber-800">Monthly Total Fronds</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rollup-block-tbody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 3. Tree-by-Tree Monthly Roll-Up Table for Selected Block -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                        <h3 id="rollup-tree-table-title" class="text-sm font-extrabold uppercase tracking-wider text-emerald-800">
+                            3. Per-Tree Monthly Wrap-Up Table (Selected Block)
+                        </h3>
+                        <span class="text-xs text-slate-500">Showing Round 1 + Round 2 + Round 3 = Monthly End Total per Palm</span>
+                    </div>
+                    <div class="max-h-[460px] overflow-y-auto border border-slate-200 rounded-xl">
+                        <table class="w-full text-left border-collapse text-xs sm:text-sm">
+                            <thead class="bg-slate-100 sticky top-0 text-[11px] font-bold uppercase text-slate-600">
+                                <tr>
+                                    <th class="py-2.5 px-3">Tree ID</th>
+                                    <th class="py-2.5 px-3">GPS Status &amp; Coords</th>
+                                    <th class="py-2.5 px-3">Round 1 (1-10)</th>
+                                    <th class="py-2.5 px-3">Round 2 (11-20)</th>
+                                    <th class="py-2.5 px-3">Round 3 (21-31)</th>
+                                    <th class="py-2.5 px-3 bg-emerald-50 text-emerald-900">Monthly Bunches</th>
+                                    <th class="py-2.5 px-3 bg-amber-50 text-amber-900">Monthly Fronds</th>
+                                    <th class="py-2.5 px-3">Fertilizer (ERP/AOP)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rollup-tree-tbody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =========================================================== -->
+            <!-- TAB 5: HIERARCHY & BATCH TREE GENERATOR (ADMIN ROLE ONLY)   -->
+            <!-- =========================================================== -->
+            <section id="panel-admin" class="tab-panel hidden tab-transition space-y-5">
+                <!-- RBAC Lock Screen for Non-Admins (Supervisor / Harvester) -->
+                <div id="admin-rbac-locked" class="hidden bg-white rounded-2xl border-2 border-amber-200 p-8 text-center max-w-xl mx-auto my-6 shadow-sm space-y-3">
+                    <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
+                        <svg class="w-6 h-6"><use href="#v-lock"></use></svg>
+                    </div>
+                    <h3 class="text-lg font-extrabold text-slate-900">Admin Permission Required (RBAC Enforced)</h3>
+                    <p class="text-xs sm:text-sm text-slate-600">
+                        Your current role (<strong id="locked-role-name">Supervisor</strong>) has read-only access to the Estate Hierarchy. Only <strong>Admin</strong> users can create, edit, or delete Estates, Divisions, Field Blocks, or Batch Generate Trees.
+                    </p>
+                    <button
+                        type="button"
+                        onclick="onRoleSwitchChange('Admin')"
+                        class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm"
+                    >
+                        Switch to Admin Role to Unlock
+                    </button>
+                </div>
+
+                <!-- Admin Controls Container -->
+                <div id="admin-rbac-unlocked" class="space-y-5">
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                        <!-- Featured Tool: Batch Generate Trees inside a Block (100 - 300 Trees in 1 Click) -->
+                        <div class="lg:col-span-6 bg-white rounded-2xl border-2 border-emerald-500/80 p-5 shadow-sm space-y-4">
+                            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                                <div>
+                                    <span class="text-[10px] font-mono-code font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                                        Admin Power Tool
+                                    </span>
+                                    <h3 class="text-base sm:text-lg font-extrabold text-slate-900 mt-1">
+                                        Batch Generate Palm Trees in Block
+                                    </h3>
+                                    <p class="text-xs text-slate-500">
+                                        Automatically generate 100 to 300+ sequential trees (e.g., Tree #1 to Tree #250) in the selected block.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <form onsubmit="handleBatchGenerateTrees(event)" class="space-y-3.5">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Target Block</label>
+                                    <select id="batch-target-block" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50 font-bold text-sm text-slate-900 outline-none"></select>
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 mb-1">Total Trees to Generate</label>
+                                        <input
+                                            type="number"
+                                            id="batch-tree-count"
+                                            min="1"
+                                            max="500"
+                                            value="250"
+                                            class="w-full px-3 py-2.5 rounded-xl border-2 border-emerald-600 font-mono-code font-extrabold text-base text-emerald-900 outline-none"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 mb-1">Base Latitude (N)</label>
+                                        <input
+                                            type="number"
+                                            step="0.000001"
+                                            id="batch-base-lat"
+                                            value="6.142500"
+                                            class="w-full px-3 py-2.5 rounded-xl border border-slate-300 font-mono-code text-sm outline-none"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 mb-1">Base Longitude (E)</label>
+                                        <input
+                                            type="number"
+                                            step="0.000001"
+                                            id="batch-base-lng"
+                                            value="80.365200"
+                                            class="w-full px-3 py-2.5 rounded-xl border border-slate-300 font-mono-code text-sm outline-none"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    class="w-full py-3.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm shadow-sm flex items-center justify-center gap-2 transition"
+                                >
+                                    <svg class="w-4 h-4"><use href="#v-plus"></use></svg>
+                                    <span>Batch Generate Trees (1 to N) Now</span>
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- Create Estate / Division / Block Manager -->
+                        <div class="lg:col-span-6 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+                            <h3 class="text-base font-extrabold text-slate-900 border-b border-slate-100 pb-3">
+                                Create New Estate, Division, or Field Block
+                            </h3>
+
+                            <!-- Create Division -->
+                            <form onsubmit="handleCreateDivision(event)" class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2.5">
+                                <div class="text-xs font-extrabold uppercase text-slate-700">Add Division (Capacity: 1 - 3,000 Trees)</div>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <input type="text" id="new-div-code" placeholder="Code (e.g. DIV-C)" class="px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono-code" required />
+                                    <input type="text" id="new-div-name" placeholder="Division Name (e.g. East Division)" class="px-3 py-2 rounded-lg border border-slate-300 text-xs sm:col-span-2" required />
+                                </div>
+                                <button type="submit" class="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold">
+                                    + Create Division
+                                </button>
+                            </form>
+
+                            <!-- Create Field Block with Auto-Generated Trees -->
+                            <form onsubmit="handleCreateBlockWithBatch(event)" class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2.5">
+                                <div class="text-xs font-extrabold uppercase text-slate-700">Add Field Block (100 - 300 Trees)</div>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <input type="text" id="new-blk-code" placeholder="Block Code (e.g. BLK-A3)" class="px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono-code" required />
+                                    <input type="text" id="new-blk-name" placeholder="Block Name (e.g. Block A3)" class="px-3 py-2 rounded-lg border border-slate-300 text-xs" required />
+                                    <input type="number" id="new-blk-count" min="1" max="500" value="200" placeholder="Initial Trees (e.g. 200)" class="px-3 py-2 rounded-lg border border-emerald-400 text-xs font-mono-code font-bold" required />
+                                </div>
+                                <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">
+                                    + Create Block &amp; Generate Trees
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Hierarchy Overview & Delete/Manage Table -->
+                    <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                            <h3 class="text-sm font-extrabold uppercase tracking-wider text-slate-800">
+                                Estate Hierarchy Overview (Admin Edit / Delete)
+                            </h3>
+                            <button type="button" onclick="resetDemoStateToDefaults()" class="text-xs font-bold text-red-600 hover:underline">
+                                Reset All Sample Data to Defaults
+                            </button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse text-xs sm:text-sm">
+                                <thead class="bg-slate-100 text-[11px] font-bold uppercase text-slate-600">
+                                    <tr>
+                                        <th class="py-2.5 px-3">Estate</th>
+                                        <th class="py-2.5 px-3">Division</th>
+                                        <th class="py-2.5 px-3">Block Code &amp; Name</th>
+                                        <th class="py-2.5 px-3">Generated Palms</th>
+                                        <th class="py-2.5 px-3">GPS Verified</th>
+                                        <th class="py-2.5 px-3 text-right">Admin Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-hierarchy-tbody" class="divide-y divide-slate-100"></tbody>
                             </table>
                         </div>
                     </div>
@@ -872,7 +1037,8 @@
         </main>
     </div>
 
-    <div id="toast" class="toast-banner hidden"></div>
+    <!-- Toast Notification -->
+    <div id="toast" class="hidden fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl text-xs sm:text-sm font-bold flex items-center gap-2 border border-slate-700"></div>
 
     <script src="/app.js"></script>
 </body>
