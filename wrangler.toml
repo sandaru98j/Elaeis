@@ -7,3 +7,8 @@ directory = "./static"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "elaeis-db"
+database_id = "7ee0c311-6175-4ac2-bad8-0e9dfec78936"
