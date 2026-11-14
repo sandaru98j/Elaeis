@@ -266,23 +266,24 @@
         <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 pt-4 pb-6 space-y-4">
 
             <!-- ================================================================
-                 PAGE 1: ADVANCED YIELD ANALYTICS DASHBOARD
+                 PAGE 1: ANALYTICS DASHBOARD (Unified Filters + 5 Core KPIs Only)
                  ================================================================ -->
             <section id="page-dashboard" class="page-view space-y-4">
-                <!-- Filter Bar (5-Tier Cascade + Comparison Views + Export) -->
-                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 sm:p-4 shadow-sm space-y-3 print-card">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
+                <!-- Unified Filter Controls -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-4 print-card">
+                    <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
                         <div class="flex items-center gap-2 min-w-0">
                             <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                                <i data-lucide="filter" class="w-4 h-4"></i>
+                                <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
                             </div>
-                            <div id="dash-breadcrumb" class="text-xs font-bold text-slate-800 truncate">
-                                Season-to-Date | Uskvalley Estate
+                            <div id="dash-breadcrumb" class="text-xs font-extrabold text-slate-800 truncate">
+                                Uskvalley Estate | 2026/27 | Season-to-Date | Entire Month
                             </div>
                         </div>
                         <div class="flex items-center gap-1.5 no-print">
                             <button type="button" id="btn-dash-reset" title="Reset Filters" class="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 text-xs font-semibold flex items-center gap-1">
                                 <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                                <span>Reset</span>
                             </button>
                             <button type="button" id="btn-export-csv" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition">
                                 <i data-lucide="download" class="w-3.5 h-3.5"></i>
@@ -295,163 +296,169 @@
                         </div>
                     </div>
 
-                    <!-- 5-Tier Hierarchy Dropdown Cascade -->
-                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 no-print">
-                        <select id="flt-estate" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"></select>
-                        <select id="flt-division" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"></select>
-                        <select id="flt-field" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"></select>
-                        <select id="flt-block" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"></select>
-                        <select id="flt-tree" class="col-span-2 sm:col-span-1 px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold text-slate-800"></select>
+                    <!-- A. Hierarchy Filters (Estate Fixed -> Division -> Field -> Block -> Palm/Tree) -->
+                    <div class="space-y-1.5 no-print">
+                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                            Hierarchy Filters
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-500 block mb-1">Estate (Fixed)</label>
+                                <div class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-100 text-xs font-bold text-slate-700 flex items-center justify-between select-none cursor-not-allowed">
+                                    <span id="flt-estate-fixed">Uskvalley Estate</span>
+                                    <i data-lucide="lock" class="w-3.5 h-3.5 text-slate-400"></i>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-500 block mb-1">Division</label>
+                                <select id="flt-division" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"></select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-500 block mb-1">Field</label>
+                                <select id="flt-field" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"></select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-500 block mb-1">Block</label>
+                                <select id="flt-block" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"></select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-500 block mb-1">Palm / Tree</label>
+                                <select id="flt-tree" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold text-slate-800"></select>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Time Mode Filter Row (Season-to-Date, Month-by-Month, Round-by-Round, Custom) -->
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-100 no-print">
-                        <select id="flt-time-mode" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-emerald-800">
-                            <option value="std">Season-to-Date (STD)</option>
-                            <option value="month">Month View</option>
-                            <option value="round">Specific Round</option>
-                            <option value="season">Full Season (Apr-Mar)</option>
-                            <option value="custom">Custom Date Range</option>
-                        </select>
-                        <div id="flt-time-slot-1">
-                            <select id="flt-season-year" class="w-full px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold">
-                                <option value="2026">2026/27 Season</option>
-                                <option value="2025">2025/26 Season</option>
-                            </select>
+                    <!-- B. Time & Round Filters (Season, Time Period Mode, Month/Custom Range, Harvest Round) -->
+                    <div class="space-y-1.5 pt-2 border-t border-slate-100 no-print">
+                        <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                            Time &amp; Round Filters
                         </div>
-                        <div id="flt-time-slot-2" class="hidden">
-                            <input id="flt-month" type="month" class="w-full px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold" />
-                        </div>
-                        <div id="flt-time-slot-3" class="hidden">
-                            <select id="flt-round" class="w-full px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold">
-                                <option value="1">Round 1 (Days 1-10)</option>
-                                <option value="2">Round 2 (Days 11-20)</option>
-                                <option value="3">Round 3 (Days 21-End)</option>
-                            </select>
-                        </div>
-                        <div id="flt-time-custom" class="col-span-2 hidden grid grid-cols-2 gap-2">
-                            <input id="flt-from" type="date" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code" />
-                            <input id="flt-to" type="date" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code" />
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                            <!-- Season -->
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-500 block mb-1">Season</label>
+                                <select id="flt-season-year" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-bold text-slate-800">
+                                    <option value="2026">2026/27</option>
+                                    <option value="2025">2025/26</option>
+                                </select>
+                            </div>
+
+                            <!-- Time Period Mode -->
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-500 block mb-1">Time Period Mode</label>
+                                <select id="flt-time-mode" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-emerald-800">
+                                    <option value="std">Season-to-Date</option>
+                                    <option value="month">Specific Month</option>
+                                    <option value="custom">Custom Date Range</option>
+                                </select>
+                            </div>
+
+                            <!-- Dynamic Period Input (Month Picker OR Custom Start-End Dates) -->
+                            <div id="flt-time-slot-month" class="hidden">
+                                <label class="text-[10px] font-bold text-slate-500 block mb-1">Select Month</label>
+                                <input id="flt-month" type="month" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold text-slate-800" />
+                            </div>
+                            <div id="flt-time-slot-std">
+                                <label class="text-[10px] font-bold text-slate-500 block mb-1">Active Window</label>
+                                <div id="flt-std-label" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code text-slate-600 truncate">
+                                    2026-04-01 &rarr; Today
+                                </div>
+                            </div>
+                            <div id="flt-time-custom" class="hidden sm:col-span-2 lg:col-span-1 grid grid-cols-2 gap-1.5">
+                                <div>
+                                    <label class="text-[10px] font-bold text-slate-500 block mb-1">Start Date</label>
+                                    <input id="flt-from" type="date" class="w-full px-2 py-2 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-mono-code" />
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-bold text-slate-500 block mb-1">End Date</label>
+                                    <input id="flt-to" type="date" class="w-full px-2 py-2 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-mono-code" />
+                                </div>
+                            </div>
+
+                            <!-- Harvest Round -->
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-500 block mb-1">Harvest Round</label>
+                                <select id="flt-round" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-bold text-slate-800">
+                                    <option value="">Entire Month</option>
+                                    <option value="1">Round 1</option>
+                                    <option value="2">Round 2</option>
+                                    <option value="3">Round 3</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- 5 Core KPI Metric Cards: Bunches, Fronds, Dispatch Weight, ABW, YPH -->
-                <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                    <!-- Total Bunches -->
-                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center gap-3 print-card">
-                        <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                            <i data-lucide="package-check" class="w-5 h-5"></i>
-                        </div>
-                        <div class="min-w-0">
-                            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Bunches</div>
-                            <div id="kpi-bunches" class="text-xl font-extrabold font-mono-code text-slate-900">0</div>
-                            <div id="kpi-harvest-trees" class="text-[11px] text-slate-500 truncate">0 palms cut</div>
-                        </div>
-                    </div>
-
-                    <!-- Total Fronds -->
-                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center gap-3 print-card">
-                        <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
-                            <i data-lucide="scissors" class="w-5 h-5"></i>
-                        </div>
-                        <div class="min-w-0">
-                            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Fronds</div>
-                            <div id="kpi-fronds" class="text-xl font-extrabold font-mono-code text-slate-900">0</div>
-                            <div id="kpi-harvest-recs" class="text-[11px] text-slate-500 truncate">0 harvest logs</div>
-                        </div>
-                    </div>
-
-                    <!-- Total Dispatch Weight -->
-                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center gap-3 print-card">
-                        <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                            <i data-lucide="truck" class="w-5 h-5"></i>
-                        </div>
-                        <div class="min-w-0">
-                            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Dispatch Weight</div>
-                            <div id="kpi-dispatch-kg" class="text-xl font-extrabold font-mono-code text-slate-900">0 kg</div>
-                            <div id="kpi-dispatch-recs" class="text-[11px] text-slate-500 truncate">0 mill loads</div>
-                        </div>
-                    </div>
-
-                    <!-- Average Bunch Weight (ABW) -->
-                    <div class="bg-white rounded-2xl border border-emerald-200 p-4 shadow-sm flex items-center gap-3 print-card">
-                        <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                            <i data-lucide="scale" class="w-5 h-5"></i>
-                        </div>
-                        <div class="min-w-0">
-                            <div class="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Avg Bunch Wt (ABW)</div>
-                            <div id="kpi-abw" class="text-xl font-extrabold font-mono-code text-slate-900">0.00 kg</div>
-                            <div class="text-[10px] font-mono-code text-slate-400 truncate">Dispatch / Bunches</div>
-                        </div>
-                    </div>
-
-                    <!-- Yield Per Hectare (YPH) -->
-                    <div class="col-span-2 lg:col-span-1 bg-white rounded-2xl border border-emerald-200 p-4 shadow-sm flex items-center gap-3 print-card">
-                        <div class="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0">
-                            <i data-lucide="trending-up" class="w-5 h-5"></i>
-                        </div>
-                        <div class="min-w-0">
-                            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Yield / Ha (YPH)</div>
-                            <div id="kpi-yph" class="text-xl font-extrabold font-mono-code text-slate-900">0.00 kg/Ha</div>
-                            <div id="kpi-area-ha" class="text-[10px] font-mono-code text-emerald-700 font-semibold truncate">0.00 Ha</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Comparison Charts Grid: Round-by-Round & Month-by-Month -->
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <!-- Round-by-Round Comparison -->
-                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm print-card">
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="flex items-center gap-2">
-                                <i data-lucide="layers" class="w-4 h-4 text-emerald-600"></i>
-                                <span class="text-xs font-extrabold text-slate-800">Round-by-Round Comparison (R1 vs R2 vs R3)</span>
-                            </div>
-                            <span class="text-[11px] font-mono-code text-slate-400">Bunches &bull; ABW &bull; YPH</span>
-                        </div>
-                        <div id="chart-rounds" class="space-y-3"></div>
-                    </div>
-
-                    <!-- Month-by-Month Comparison -->
-                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm print-card">
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="flex items-center gap-2">
-                                <i data-lucide="calendar" class="w-4 h-4 text-blue-600"></i>
-                                <span class="text-xs font-extrabold text-slate-800">Month-by-Month Comparison</span>
-                            </div>
-                            <div class="flex items-center gap-2 text-[11px] font-semibold">
-                                <span class="flex items-center gap-1 text-emerald-600"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-600"></span>Bunches</span>
-                                <span class="flex items-center gap-1 text-teal-400"><span class="w-2.5 h-2.5 rounded-sm bg-teal-400"></span>Fronds</span>
+                <!-- 5 Core KPIs (Dynamic Output Only) -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+                    <!-- 1. Total Bunches Cut -->
+                    <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between gap-3 print-card">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">1. Total Bunches Cut</span>
+                            <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                                <i data-lucide="package-check" class="w-5 h-5"></i>
                             </div>
                         </div>
-                        <div id="chart-months" class="space-y-3 max-h-64 overflow-y-auto pr-1"></div>
-                    </div>
-                </div>
-
-                <!-- Division Season-to-Date / Filtered Yield Table -->
-                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden print-card">
-                    <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                        <div class="flex items-center gap-2">
-                            <i data-lucide="bar-chart-2" class="w-4 h-4 text-emerald-600"></i>
-                            <span class="text-xs font-extrabold text-slate-800">Division Yield &amp; Mill Dispatch Breakdown</span>
+                        <div>
+                            <div id="kpi-bunches" class="text-2xl sm:text-3xl font-extrabold font-mono-code text-slate-900">0</div>
+                            <div id="kpi-harvest-trees" class="text-xs text-slate-500 mt-1">0 palms harvested</div>
                         </div>
                     </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse text-xs">
-                            <thead>
-                                <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase text-slate-400">
-                                    <th class="py-2.5 px-4">Division</th>
-                                    <th class="py-2.5 px-4">Extent (Ha)</th>
-                                    <th class="py-2.5 px-4">Total Bunches</th>
-                                    <th class="py-2.5 px-4">Total Fronds</th>
-                                    <th class="py-2.5 px-4">Dispatch Weight (kg)</th>
-                                    <th class="py-2.5 px-4">ABW (kg/bunch)</th>
-                                    <th class="py-2.5 px-4">YPH (kg/Ha)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="dash-div-tbody" class="divide-y divide-slate-100"></tbody>
-                        </table>
+
+                    <!-- 2. Total Fronds Cut -->
+                    <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between gap-3 print-card">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">2. Total Fronds Cut</span>
+                            <div class="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
+                                <i data-lucide="scissors" class="w-5 h-5"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <div id="kpi-fronds" class="text-2xl sm:text-3xl font-extrabold font-mono-code text-slate-900">0</div>
+                            <div id="kpi-harvest-recs" class="text-xs text-slate-500 mt-1">0 harvest logs</div>
+                        </div>
+                    </div>
+
+                    <!-- 3. Total Dispatched Weight (kg) -->
+                    <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between gap-3 print-card">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">3. Total Dispatched Wt</span>
+                            <div class="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                <i data-lucide="truck" class="w-5 h-5"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <div id="kpi-dispatch-kg" class="text-2xl sm:text-3xl font-extrabold font-mono-code text-slate-900">0 kg</div>
+                            <div id="kpi-dispatch-recs" class="text-xs text-slate-500 mt-1">0 mill dispatches</div>
+                        </div>
+                    </div>
+
+                    <!-- 4. Average Bunch Weight (ABW) -->
+                    <div class="bg-white rounded-2xl border border-emerald-200 p-5 shadow-sm flex flex-col justify-between gap-3 print-card">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-700">4. Avg Bunch Wt (ABW)</span>
+                            <div class="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                                <i data-lucide="scale" class="w-5 h-5"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <div id="kpi-abw" class="text-2xl sm:text-3xl font-extrabold font-mono-code text-slate-900">0.00 kg</div>
+                            <div class="text-xs font-mono-code text-slate-400 mt-1">Dispatched Wt / Bunches</div>
+                        </div>
+                    </div>
+
+                    <!-- 5. Yield Per Hectare (YPH) -->
+                    <div class="bg-white rounded-2xl border border-emerald-200 p-5 shadow-sm flex flex-col justify-between gap-3 print-card">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-600">5. Yield / Ha (YPH)</span>
+                            <div class="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0">
+                                <i data-lucide="trending-up" class="w-5 h-5"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <div id="kpi-yph" class="text-2xl sm:text-3xl font-extrabold font-mono-code text-slate-900">0.00 kg/Ha</div>
+                            <div id="kpi-area-ha" class="text-xs font-mono-code text-emerald-700 font-semibold mt-1">Extent: 0.00 Ha</div>
+                        </div>
                     </div>
                 </div>
             </section>

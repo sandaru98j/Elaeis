@@ -850,18 +850,8 @@ async function getReport(db, params) {
     }
     const dClause = `WHERE ${dWhere.join(" AND ")}`;
 
-    // 4. Execute batch queries for Totals, Round-by-Round, Month-by-Month, and Division Breakdown
-    const [
-        hTot,
-        dTot,
-        hByRound,
-        dByRound,
-        hByMonth,
-        dByMonth,
-        hByDiv,
-        dByDiv,
-        divHaRows,
-    ] = await db.batch([
+    // 4. Execute batch queries strictly for the 5 Core KPIs
+    const [hTot, dTot] = await db.batch([
         db
             .prepare(
                 `SELECT COALESCE(SUM(bunches), 0) AS bunches,
@@ -878,53 +868,6 @@ async function getReport(db, params) {
                  FROM el_dispatch x JOIN el_divisions d ON d.id = x.division_id ${dClause}`
             )
             .bind(...dBinds),
-        db
-            .prepare(
-                `SELECT x.round_no, COALESCE(SUM(bunches), 0) AS bunches, COALESCE(SUM(fronds), 0) AS fronds
-                 FROM el_harvest x ${JOINS} ${hClause}
-                 GROUP BY x.round_no ORDER BY x.round_no`
-            )
-            .bind(...hBinds),
-        db
-            .prepare(
-                `SELECT x.round_no, COALESCE(SUM(x.weight_kg), 0) AS dispatch_kg
-                 FROM el_dispatch x JOIN el_divisions d ON d.id = x.division_id ${dClause}
-                 GROUP BY x.round_no ORDER BY x.round_no`
-            )
-            .bind(...dBinds),
-        db
-            .prepare(
-                `SELECT x.year_month AS ym, COALESCE(SUM(bunches), 0) AS bunches, COALESCE(SUM(fronds), 0) AS fronds
-                 FROM el_harvest x ${JOINS} ${hClause}
-                 GROUP BY x.year_month ORDER BY x.year_month`
-            )
-            .bind(...hBinds),
-        db
-            .prepare(
-                `SELECT x.year_month AS ym, COALESCE(SUM(x.weight_kg), 0) AS dispatch_kg
-                 FROM el_dispatch x JOIN el_divisions d ON d.id = x.division_id ${dClause}
-                 GROUP BY x.year_month ORDER BY x.year_month`
-            )
-            .bind(...dBinds),
-        db
-            .prepare(
-                `SELECT d.id AS div_id, d.name AS label, COALESCE(SUM(bunches), 0) AS bunches, COALESCE(SUM(fronds), 0) AS fronds
-                 FROM el_harvest x ${JOINS} ${hClause}
-                 GROUP BY d.id ORDER BY bunches DESC`
-            )
-            .bind(...hBinds),
-        db
-            .prepare(
-                `SELECT d.id AS div_id, d.name AS label, COALESCE(SUM(x.weight_kg), 0) AS dispatch_kg
-                 FROM el_dispatch x JOIN el_divisions d ON d.id = x.division_id ${dClause}
-                 GROUP BY d.id`
-            )
-            .bind(...dBinds),
-        db.prepare(
-            `SELECT d.id AS div_id, d.name AS label, COALESCE(SUM(f.area_ha), 0) AS area_ha
-             FROM el_divisions d LEFT JOIN el_fields f ON f.division_id = d.id
-             GROUP BY d.id ORDER BY d.id`
-        ),
     ]);
 
     const totalBunches = Number(hTot.results[0]?.bunches || 0);
@@ -932,81 +875,10 @@ async function getReport(db, params) {
     const totalDispatchKg = Number(dTot.results[0]?.dispatch_kg || 0);
 
     // Formulas:
-    // ABW = Total Dispatch Weight / Total Bunches
-    // YPH = Total Dispatch Weight / Total Hectares of selected Division/Field
+    // ABW = Total Dispatched Weight / Total Bunches
+    // YPH = Total Dispatched Weight / Total Hectares of selected Division/Field
     const abw = totalBunches > 0 ? Number((totalDispatchKg / totalBunches).toFixed(2)) : 0;
     const yph = totalHa > 0 ? Number((totalDispatchKg / totalHa).toFixed(2)) : 0;
-
-    // Round-by-Round Comparison (R1, R2, R3)
-    const roundsMap = {
-        1: { round_no: 1, label: "Round 1 (Days 1-10)", bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 },
-        2: { round_no: 2, label: "Round 2 (Days 11-20)", bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 },
-        3: { round_no: 3, label: "Round 3 (Days 21-End)", bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 },
-    };
-    hByRound.results.forEach((r) => {
-        if (roundsMap[r.round_no]) {
-            roundsMap[r.round_no].bunches = Number(r.bunches || 0);
-            roundsMap[r.round_no].fronds = Number(r.fronds || 0);
-        }
-    });
-    dByRound.results.forEach((r) => {
-        if (roundsMap[r.round_no]) {
-            roundsMap[r.round_no].dispatch_kg = Number(r.dispatch_kg || 0);
-        }
-    });
-    Object.values(roundsMap).forEach((r) => {
-        r.abw = r.bunches > 0 ? Number((r.dispatch_kg / r.bunches).toFixed(2)) : 0;
-        r.yph = totalHa > 0 ? Number((r.dispatch_kg / totalHa).toFixed(2)) : 0;
-    });
-
-    // Month-by-Month Comparison
-    const monthsMap = {};
-    hByMonth.results.forEach((r) => {
-        monthsMap[r.ym] = { ym: r.ym, bunches: Number(r.bunches || 0), fronds: Number(r.fronds || 0), dispatch_kg: 0, abw: 0, yph: 0 };
-    });
-    dByMonth.results.forEach((r) => {
-        monthsMap[r.ym] = monthsMap[r.ym] || { ym: r.ym, bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 };
-        monthsMap[r.ym].dispatch_kg = Number(r.dispatch_kg || 0);
-    });
-    const monthComparison = Object.values(monthsMap)
-        .sort((a, b) => (a.ym < b.ym ? -1 : 1))
-        .map((m) => ({
-            ...m,
-            abw: m.bunches > 0 ? Number((m.dispatch_kg / m.bunches).toFixed(2)) : 0,
-            yph: totalHa > 0 ? Number((m.dispatch_kg / totalHa).toFixed(2)) : 0,
-        }));
-
-    // Division Breakdown
-    const divMap = {};
-    divHaRows.results.forEach((r) => {
-        if (targetDivisionId && r.div_id !== targetDivisionId) return;
-        divMap[r.div_id] = {
-            div_id: r.div_id,
-            label: r.label,
-            area_ha: Number(r.area_ha || 0),
-            bunches: 0,
-            fronds: 0,
-            dispatch_kg: 0,
-            abw: 0,
-            yph: 0,
-        };
-    });
-    hByDiv.results.forEach((r) => {
-        if (divMap[r.div_id]) {
-            divMap[r.div_id].bunches = Number(r.bunches || 0);
-            divMap[r.div_id].fronds = Number(r.fronds || 0);
-        }
-    });
-    dByDiv.results.forEach((r) => {
-        if (divMap[r.div_id]) {
-            divMap[r.div_id].dispatch_kg = Number(r.dispatch_kg || 0);
-        }
-    });
-    const breakdown = Object.values(divMap).map((d) => ({
-        ...d,
-        abw: d.bunches > 0 ? Number((d.dispatch_kg / d.bunches).toFixed(2)) : 0,
-        yph: d.area_ha > 0 ? Number((d.dispatch_kg / d.area_ha).toFixed(2)) : 0,
-    }));
 
     return {
         from,
@@ -1022,9 +894,6 @@ async function getReport(db, params) {
             abw,
             yph,
         },
-        round_comparison: Object.values(roundsMap),
-        month_comparison: monthComparison,
-        breakdown,
     };
 }
 
@@ -1042,25 +911,15 @@ async function getReportCsv(db, params) {
         `To Date,${rep.to}`,
         `Total Bunches Cut,${rep.totals.bunches}`,
         `Total Fronds Cut,${rep.totals.fronds}`,
-        `Total Dispatch Weight (kg),${rep.totals.dispatch_kg}`,
+        `Total Dispatched Weight (kg),${rep.totals.dispatch_kg}`,
         `Selected Area (Ha),${rep.totals.area_ha}`,
         `Average Bunch Weight ABW (kg/bunch),${rep.totals.abw}`,
         `Yield Per Hectare YPH (kg/Ha),${rep.totals.yph}`,
-        "",
-        "Round,Bunches,Fronds,Dispatch Weight (kg),ABW (kg/bunch),YPH (kg/Ha)",
-        ...rep.round_comparison.map((r) =>
-            [csvCell(r.label), r.bunches, r.fronds, r.dispatch_kg, r.abw, r.yph].join(",")
-        ),
-        "",
-        "Month,Bunches,Fronds,Dispatch Weight (kg),ABW (kg/bunch),YPH (kg/Ha)",
-        ...rep.month_comparison.map((m) =>
-            [csvCell(m.ym), m.bunches, m.fronds, m.dispatch_kg, m.abw, m.yph].join(",")
-        ),
     ];
     return new Response(lines.join("\n"), {
         headers: {
             "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": `attachment; filename="elaeis_yield_report_${rep.from}_${rep.to}.csv"`,
+            "Content-Disposition": `attachment; filename="elaeis_kpi_report_${rep.from}_${rep.to}.csv"`,
             "Cache-Control": "no-store",
         },
     });

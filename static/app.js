@@ -483,71 +483,6 @@ function localApiFallback(path, method, body) {
         const abw = bunches > 0 ? Number((dispatch_kg / bunches).toFixed(2)) : 0;
         const yph = totalHa > 0 ? Number((dispatch_kg / totalHa).toFixed(2)) : 0;
 
-        const roundsMap = {
-            1: { round_no: 1, label: "Round 1 (Days 1-10)", bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 },
-            2: { round_no: 2, label: "Round 2 (Days 11-20)", bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 },
-            3: { round_no: 3, label: "Round 3 (Days 21-End)", bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 },
-        };
-        hRows.forEach((h) => {
-            if (roundsMap[h.round_no]) {
-                roundsMap[h.round_no].bunches += h.bunches;
-                roundsMap[h.round_no].fronds += h.fronds;
-            }
-        });
-        dRows.forEach((d) => {
-            if (roundsMap[d.round_no]) {
-                roundsMap[d.round_no].dispatch_kg += d.weight_kg;
-            }
-        });
-        Object.values(roundsMap).forEach((r) => {
-            r.abw = r.bunches > 0 ? Number((r.dispatch_kg / r.bunches).toFixed(2)) : 0;
-            r.yph = totalHa > 0 ? Number((r.dispatch_kg / totalHa).toFixed(2)) : 0;
-        });
-
-        const monthsMap = {};
-        hRows.forEach((h) => {
-            monthsMap[h.year_month] = monthsMap[h.year_month] || { ym: h.year_month, bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 };
-            monthsMap[h.year_month].bunches += h.bunches;
-            monthsMap[h.year_month].fronds += h.fronds;
-        });
-        dRows.forEach((d) => {
-            monthsMap[d.year_month] = monthsMap[d.year_month] || { ym: d.year_month, bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 };
-            monthsMap[d.year_month].dispatch_kg += d.weight_kg;
-        });
-        const month_comparison = Object.values(monthsMap)
-            .sort((a, b) => (a.ym < b.ym ? -1 : 1))
-            .map((m) => ({
-                ...m,
-                abw: m.bunches > 0 ? Number((m.dispatch_kg / m.bunches).toFixed(2)) : 0,
-                yph: totalHa > 0 ? Number((m.dispatch_kg / totalHa).toFixed(2)) : 0,
-            }));
-
-        const breakdown = db.divisions
-            .filter((div) => !targetDivId || div.id === targetDivId)
-            .map((div) => {
-                const area_ha = db.fields.filter((f) => f.division_id === div.id).reduce((s, f) => s + f.area_ha, 0);
-                const divHarvest = hRows.filter((h) => {
-                    const t = db.trees.find((x) => x.id === h.tree_id);
-                    const b = t ? db.blocks.find((x) => x.id === t.block_id) : null;
-                    const f = b ? db.fields.find((x) => x.id === b.field_id) : null;
-                    return f && f.division_id === div.id;
-                });
-                const divDisp = dRows.filter((d) => d.division_id === div.id);
-                const dBunches = divHarvest.reduce((s, r) => s + r.bunches, 0);
-                const dFronds = divHarvest.reduce((s, r) => s + r.fronds, 0);
-                const dKg = divDisp.reduce((s, r) => s + r.weight_kg, 0);
-                return {
-                    div_id: div.id,
-                    label: div.name,
-                    area_ha,
-                    bunches: dBunches,
-                    fronds: dFronds,
-                    dispatch_kg: dKg,
-                    abw: dBunches > 0 ? Number((dKg / dBunches).toFixed(2)) : 0,
-                    yph: area_ha > 0 ? Number((dKg / area_ha).toFixed(2)) : 0,
-                };
-            });
-
         return {
             from,
             to,
@@ -562,9 +497,6 @@ function localApiFallback(path, method, body) {
                 abw,
                 yph,
             },
-            round_comparison: Object.values(roundsMap),
-            month_comparison,
-            breakdown,
         };
     }
     if (pathname === "/api/admin/compliance") {
@@ -839,22 +771,21 @@ function initDivisionCascade(prefix, onChange) {
 }
 
 // ----------------------------------------------------------------------------
-// PAGE 1: ADVANCED ANALYTICS DASHBOARD (Bunches, Fronds, Dispatch, ABW, YPH)
+// PAGE 1: ANALYTICS DASHBOARD (Unified Filters + 5 Core KPIs Only)
 // ----------------------------------------------------------------------------
 function initDashboardFilters() {
-    const estEl = $("flt-estate");
+    const estFixed = $("flt-estate-fixed");
     const divEl = $("flt-division");
     const fldEl = $("flt-field");
     const blkEl = $("flt-block");
     const treeEl = $("flt-tree");
     const { estates, divisions, fields, blocks } = state.hierarchy;
 
-    estEl.innerHTML = `<option value="">All Estates</option>` + estates.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join("");
-    if (estates.length === 1) estEl.value = String(estates[0].id);
+    const userEstate = estates[0] || { id: 1, name: "Uskvalley Estate" };
+    if (estFixed) estFixed.textContent = userEstate.name;
 
     const popDivs = () => {
-        const eid = Number(estEl.value);
-        const list = eid ? divisions.filter((d) => d.estate_id === eid) : divisions;
+        const list = divisions.filter((d) => d.estate_id === userEstate.id);
         divEl.innerHTML = `<option value="">All Divisions</option>` + list.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
         popFields();
     };
@@ -867,8 +798,15 @@ function initDashboardFilters() {
         popBlocks();
     };
     const popBlocks = () => {
+        const did = Number(divEl.value);
         const fid = Number(fldEl.value);
-        const list = fid ? blocks.filter((b) => b.field_id === fid) : blocks;
+        let list = blocks;
+        if (fid) {
+            list = blocks.filter((b) => b.field_id === fid);
+        } else if (did) {
+            const divFieldIds = new Set(fields.filter((f) => f.division_id === did).map((f) => f.id));
+            list = blocks.filter((b) => divFieldIds.has(b.field_id));
+        }
         blkEl.innerHTML = `<option value="">All Blocks</option>` + list.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join("");
         popTrees();
     };
@@ -883,26 +821,27 @@ function initDashboardFilters() {
         state.dashTrees = bData.trees || [];
         treeEl.innerHTML =
             `<option value="">All Palms (${state.dashTrees.length})</option>` +
-            state.dashTrees.map((t) => `<option value="${t.id}">Tree ${t.tree_no}</option>`).join("");
+            state.dashTrees.map((t) => `<option value="${t.id}">Palm #${t.tree_no}</option>`).join("");
         refreshDashboard();
     };
 
-    estEl.onchange = popDivs;
     divEl.onchange = popFields;
     fldEl.onchange = popBlocks;
     blkEl.onchange = popTrees;
     treeEl.onchange = refreshDashboard;
 
     const today = todayStr();
+    $("flt-season-year").value = "2026";
+    $("flt-time-mode").value = "std";
     $("flt-month").value = today.slice(0, 7);
-    $("flt-from").value = `${today.slice(0, 4)}-01-01`;
+    $("flt-from").value = `${today.slice(0, 4)}-04-01`;
     $("flt-to").value = today;
+    $("flt-round").value = "";
 
     const syncTimeSlots = () => {
         const mode = $("flt-time-mode").value;
-        $("flt-time-slot-1").classList.toggle("hidden", mode !== "season" && mode !== "std");
-        $("flt-time-slot-2").classList.toggle("hidden", mode !== "month" && mode !== "round");
-        $("flt-time-slot-3").classList.toggle("hidden", mode !== "round");
+        $("flt-time-slot-std").classList.toggle("hidden", mode !== "std");
+        $("flt-time-slot-month").classList.toggle("hidden", mode !== "month");
         $("flt-time-custom").classList.toggle("hidden", mode !== "custom");
         refreshDashboard();
     };
@@ -914,45 +853,50 @@ function initDashboardFilters() {
     $("flt-from").onchange = refreshDashboard;
     $("flt-to").onchange = refreshDashboard;
 
+    syncTimeSlots();
     popDivs();
 }
 
 function getDashboardQuery() {
     const mode = $("flt-time-mode").value;
+    const yr = Number($("flt-season-year").value) || 2026;
+    const seasonLabel = `${yr}/${String(yr + 1).slice(2)}`;
     const sMonth = String(state.settings.season_start_month || 4).padStart(2, "0");
-    let from = "2026-04-01";
-    let to = "2027-03-31";
-    let timeLabel = "Season-to-Date";
+    const roundVal = $("flt-round").value;
 
-    const q = new URLSearchParams();
+    let from = `${yr}-${sMonth}-01`;
+    let to = todayStr();
+    let periodLabel = "Season-to-Date";
 
-    if (mode === "season" || mode === "std") {
-        const yr = Number($("flt-season-year").value) || 2026;
+    if (mode === "std") {
         from = `${yr}-${sMonth}-01`;
-        to = mode === "std" ? todayStr() : `${yr + 1}-03-31`;
-        timeLabel = mode === "std" ? `${yr}/${String(yr + 1).slice(2)} Season-to-Date` : `${yr}/${String(yr + 1).slice(2)} Full Season`;
+        to = todayStr();
+        periodLabel = `Season-to-Date (${from} to ${to})`;
+        const stdLbl = $("flt-std-label");
+        if (stdLbl) stdLbl.textContent = `${from} to ${to}`;
     } else if (mode === "month") {
         const ym = $("flt-month").value || todayStr().slice(0, 7);
         from = `${ym}-01`;
         to = `${ym}-31`;
-        timeLabel = `Month: ${ym}`;
-    } else if (mode === "round") {
-        const ym = $("flt-month").value || todayStr().slice(0, 7);
-        const r = Number($("flt-round").value) || 1;
-        from = `${ym}-01`;
-        to = `${ym}-31`;
-        q.set("round_no", String(r));
-        timeLabel = `${ym} • Round ${r}`;
+        periodLabel = `Month: ${ym}`;
     } else if (mode === "custom") {
-        from = $("flt-from").value || "2026-01-01";
+        from = $("flt-from").value || `${yr}-${sMonth}-01`;
         to = $("flt-to").value || todayStr();
-        timeLabel = `${from} to ${to}`;
+        periodLabel = `${from} to ${to}`;
     }
 
-    q.set("from", from);
-    q.set("to", to);
+    const q = new URLSearchParams({ from, to });
+    const estateId = state.hierarchy.estates[0]?.id || 1;
+    q.set("estate_id", String(estateId));
 
-    const parts = [timeLabel];
+    if (roundVal) {
+        q.set("round_no", roundVal);
+    }
+
+    const estateName = state.hierarchy.estates[0]?.name || "Uskvalley Estate";
+    const roundLabel = roundVal ? `Round ${roundVal}` : "Entire Month";
+    const parts = [estateName, `Season ${seasonLabel}`, periodLabel, roundLabel];
+
     const addPart = (id, param) => {
         const el = $(id);
         if (el && el.value) {
@@ -960,7 +904,6 @@ function getDashboardQuery() {
             parts.push(el.options[el.selectedIndex]?.text || "");
         }
     };
-    addPart("flt-estate", "estate_id");
     addPart("flt-division", "division_id");
     addPart("flt-field", "field_id");
     addPart("flt-block", "block_id");
@@ -976,102 +919,14 @@ async function refreshDashboard() {
     const tot = rep.totals || {};
 
     $("kpi-bunches").textContent = Number(tot.bunches || 0).toLocaleString();
-    $("kpi-harvest-trees").textContent = `${tot.trees || 0} palms cut`;
+    $("kpi-harvest-trees").textContent = `${tot.trees || 0} palms harvested`;
     $("kpi-fronds").textContent = Number(tot.fronds || 0).toLocaleString();
     $("kpi-harvest-recs").textContent = `${tot.records || 0} harvest logs`;
     $("kpi-dispatch-kg").textContent = `${Number(tot.dispatch_kg || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`;
-    $("kpi-dispatch-recs").textContent = `${tot.dispatch_records || 0} mill loads`;
+    $("kpi-dispatch-recs").textContent = `${tot.dispatch_records || 0} mill dispatches`;
     $("kpi-abw").textContent = `${Number(tot.abw || 0).toFixed(2)} kg`;
     $("kpi-yph").textContent = `${Number(tot.yph || 0).toFixed(2)} kg/Ha`;
     $("kpi-area-ha").textContent = `Extent: ${Number(tot.area_ha || 0).toFixed(2)} Ha`;
-
-    renderRoundComparison(rep.round_comparison || []);
-    renderMonthComparison(rep.month_comparison || []);
-    renderDivisionTable(rep.breakdown || []);
-}
-
-function renderRoundComparison(rounds) {
-    const box = $("chart-rounds");
-    if (!rounds.length) {
-        box.innerHTML = `<div class="py-8 text-center text-xs text-slate-400">No round data in selected filter</div>`;
-        return;
-    }
-    const maxBunches = Math.max(1, ...rounds.map((r) => r.bunches || 0));
-    box.innerHTML = rounds
-        .map((r) => {
-            const pct = Math.min(100, Math.round(((r.bunches || 0) / maxBunches) * 100));
-            return `
-            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-                <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <span class="font-extrabold text-slate-800">${esc(r.label)}</span>
-                    <div class="flex items-center gap-2 font-mono-code text-[11px]">
-                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">ABW: ${Number(r.abw || 0).toFixed(2)} kg</span>
-                        <span class="px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-bold">YPH: ${Number(r.yph || 0).toFixed(2)} kg/Ha</span>
-                    </div>
-                </div>
-                <div class="flex items-center justify-between text-[11px] font-mono-code text-slate-600">
-                    <span><b>${r.bunches || 0}</b> Bunches &bull; <b>${r.fronds || 0}</b> Fronds</span>
-                    <span class="text-blue-700 font-bold">Dispatch: ${Number(r.dispatch_kg || 0).toLocaleString()} kg</span>
-                </div>
-                <div class="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
-                    <div class="h-full rounded-full bg-emerald-600 transition-all" style="width:${pct}%"></div>
-                </div>
-            </div>`;
-        })
-        .join("");
-}
-
-function renderMonthComparison(months) {
-    const box = $("chart-months");
-    if (!months.length) {
-        box.innerHTML = `<div class="py-12 text-center text-xs text-slate-400">No monthly data in selected range</div>`;
-        return;
-    }
-    const maxB = Math.max(1, ...months.map((m) => m.bunches || 0));
-    box.innerHTML = months
-        .map((m) => {
-            const pct = Math.min(100, Math.round(((m.bunches || 0) / maxB) * 100));
-            return `
-            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-                <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <span class="font-mono-code font-extrabold text-slate-900">${esc(m.ym)}</span>
-                    <div class="flex items-center gap-2 font-mono-code text-[11px]">
-                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">ABW: ${Number(m.abw || 0).toFixed(2)} kg</span>
-                        <span class="px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-bold">YPH: ${Number(m.yph || 0).toFixed(2)} kg/Ha</span>
-                    </div>
-                </div>
-                <div class="flex items-center justify-between text-[11px] font-mono-code text-slate-600">
-                    <span><b>${m.bunches || 0}</b> Bunches &bull; <b>${m.fronds || 0}</b> Fronds</span>
-                    <span class="text-blue-700 font-bold">Dispatch: ${Number(m.dispatch_kg || 0).toLocaleString()} kg</span>
-                </div>
-                <div class="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
-                    <div class="h-full rounded-full bg-blue-600 transition-all" style="width:${pct}%"></div>
-                </div>
-            </div>`;
-        })
-        .join("");
-}
-
-function renderDivisionTable(rows) {
-    const tbody = $("dash-div-tbody");
-    if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-slate-400">No division data available</td></tr>`;
-        return;
-    }
-    tbody.innerHTML = rows
-        .map(
-            (r) => `
-        <tr class="hover:bg-slate-50">
-            <td class="py-2.5 px-4 font-bold text-slate-900">${esc(r.label)}</td>
-            <td class="py-2.5 px-4 font-mono-code text-slate-600">${Number(r.area_ha || 0).toFixed(2)} Ha</td>
-            <td class="py-2.5 px-4 font-mono-code font-bold text-emerald-700">${Number(r.bunches || 0).toLocaleString()}</td>
-            <td class="py-2.5 px-4 font-mono-code text-slate-700">${Number(r.fronds || 0).toLocaleString()}</td>
-            <td class="py-2.5 px-4 font-mono-code font-bold text-blue-700">${Number(r.dispatch_kg || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg</td>
-            <td class="py-2.5 px-4 font-mono-code font-extrabold text-slate-900">${Number(r.abw || 0).toFixed(2)} kg</td>
-            <td class="py-2.5 px-4 font-mono-code font-extrabold text-emerald-800">${Number(r.yph || 0).toFixed(2)} kg/Ha</td>
-        </tr>`
-        )
-        .join("");
 }
 
 // ----------------------------------------------------------------------------
