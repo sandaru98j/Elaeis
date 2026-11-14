@@ -2,8 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Elaeis | Oil Palm Crop Monitoring &amp; Estate Management</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Elaeis — Palm-based Crop Monitoring System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -12,1033 +15,1047 @@
                     fontFamily: {
                         sans: ['"Plus Jakarta Sans"', 'sans-serif'],
                         mono: ['"JetBrains Mono"', 'monospace'],
-                    },
-                    colors: {
-                        emerald: {
-                            50: '#ecfdf5',
-                            100: '#d1fae5',
-                            500: '#10b981',
-                            600: '#059669',
-                            700: '#047857',
-                            800: '#065f46',
-                            900: '#064e3b',
-                        }
                     }
                 }
             }
         };
     </script>
+    <script src="https://unpkg.com/lucide@0.454.0/dist/umd/lucide.min.js"></script>
     <link rel="stylesheet" href="/styles.css" />
 </head>
-<body class="bg-[#F8FAFC] text-slate-900 min-h-screen flex flex-col">
+<body class="bg-slate-50 text-slate-900 antialiased selection:bg-emerald-600 selection:text-white">
 
-    <!-- =================================================================== -->
-    <!-- INLINE VECTOR SVG SPRITE (CUSTOM LOGO & AGRI-TECH VECTOR ICONS)     -->
-    <!-- =================================================================== -->
-    <svg xmlns="http://www.w3.org/2000/svg" class="hidden">
-        <!-- ELAEIS CUSTOM VECTOR LOGO -->
-        <symbol id="v-logo" viewBox="0 0 64 64">
-            <rect width="64" height="64" rx="16" fill="url(#elaeisEmerald)" />
-            <defs>
-                <linearGradient id="elaeisEmerald" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-                    <stop offset="0%" stop-color="#10b981" />
-                    <stop offset="100%" stop-color="#047857" />
-                </linearGradient>
-            </defs>
-            <path d="M32 53V27" stroke="#ffffff" stroke-width="4.2" stroke-linecap="round" />
-            <path d="M23 53H41" stroke="#a7f3d0" stroke-width="3.5" stroke-linecap="round" />
-            <path d="M32 28C23 19 11 21 9 29C17 26 25 27 32 32" fill="#ffffff" />
-            <path d="M32 28C41 19 53 21 55 29C47 26 39 27 32 32" fill="#ffffff" />
-            <path d="M32 24C26 13 15 11 11 17C19 17 27 20 32 26" fill="#d1fae5" />
-            <path d="M32 24C38 13 49 11 53 17C45 17 37 20 32 26" fill="#d1fae5" />
-            <path d="M32 23V11" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" />
-            <circle cx="28" cy="33" r="2.8" fill="#fbbf24" />
-            <circle cx="36" cy="33" r="2.8" fill="#fbbf24" />
-            <circle cx="32" cy="36.5" r="2.8" fill="#f59e0b" />
-        </symbol>
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
 
-        <symbol id="v-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="4" />
-            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-        </symbol>
-
-        <symbol id="v-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-        </symbol>
-
-        <symbol id="v-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-        </symbol>
-
-        <symbol id="v-palm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M13 8c0-2.76-2.46-5-5.5-5S2 5.24 2 8h2l1-1 1 1h4" />
-            <path d="M13 7.14A5.82 5.82 0 0 1 16.5 6c3.04 0 5.5 2.24 5.5 5h-3l-1-1-1 1h-3" />
-            <path d="M5.89 9.71c-2.15 2.15-2.3 5.47-.35 7.43l4.24-4.25.7-.7.71-.71 2.12-2.12c-1.95-1.96-5.27-1.8-7.42.35z" />
-            <path d="M11 15.5c.5 2.5-.17 4.5-1 6.5h4c2-5.5-.5-12-1-14" />
-        </symbol>
-
-        <symbol id="v-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-            <circle cx="12" cy="10" r="3" />
-        </symbol>
-
-        <symbol id="v-crosshair" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="22" y1="12" x2="18" y2="12" />
-            <line x1="6" y1="12" x2="2" y2="12" />
-            <line x1="12" y1="6" x2="12" y2="2" />
-            <line x1="12" y1="22" x2="12" y2="18" />
-        </symbol>
-
-        <symbol id="v-flask" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10 2v7.31" />
-            <path d="M14 9.3V1.99" />
-            <path d="M8.5 2h7" />
-            <path d="M14 9.3a6.5 6.5 0 1 1-4 0" />
-            <path d="M5.52 16h12.96" />
-        </symbol>
-
-        <symbol id="v-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="20" x2="18" y2="10" />
-            <line x1="12" y1="20" x2="12" y2="4" />
-            <line x1="6" y1="20" x2="6" y2="14" />
-        </symbol>
-
-        <symbol id="v-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-        </symbol>
-
-        <symbol id="v-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="12 2 2 7 12 12 22 7 12 2" />
-            <polyline points="2 17 12 22 22 17" />
-            <polyline points="2 12 12 17 22 12" />
-        </symbol>
-
-        <symbol id="v-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-            <polyline points="22 4 12 14.01 9 11.01" />
-        </symbol>
-
-        <symbol id="v-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-        </symbol>
-
-        <symbol id="v-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-        </symbol>
-
-        <symbol id="v-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-        </symbol>
-
-        <symbol id="v-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-        </symbol>
-    </svg>
-
-    <!-- =================================================================== -->
-    <!-- CLEAN MODERN LOGIN / SIGN-UP MODAL SCREEN                           -->
-    <!-- =================================================================== -->
-    <div id="auth-screen" class="min-h-screen flex items-center justify-center px-4 py-10 bg-slate-100">
-        <div class="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-            <!-- Left Brand Column -->
-            <div class="lg:col-span-7 text-center lg:text-left">
-                <div class="inline-flex items-center gap-3.5 mb-4">
-                    <svg class="w-14 h-14 shadow-md rounded-2xl"><use href="#v-logo"></use></svg>
-                    <span class="text-4xl sm:text-5xl font-extrabold tracking-tight text-emerald-700">Elaeis</span>
+    <!-- ========================================================================
+         1. AUTH SCREEN (Login / Sign-Up / Forgot Password SMS & Email Code UI)
+         ======================================================================== -->
+    <section id="auth-screen" class="min-h-screen flex flex-col justify-center items-center px-4 py-10 bg-gradient-to-br from-slate-50 via-emerald-50/40 to-slate-100">
+        <div class="w-full max-w-md">
+            <!-- Brand Header -->
+            <div class="flex flex-col items-center text-center mb-6">
+                <div class="w-16 h-16 rounded-2xl bg-emerald-600 shadow-lg shadow-emerald-600/25 flex items-center justify-center mb-3">
+                    <!-- Custom Vector Oil Palm & Geo Emblem -->
+                    <svg class="w-10 h-10 text-white" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M24 42V22" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
+                        <path d="M24 22C18 14 9 14 6 20C12 19 18 21 24 25" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M24 22C30 14 39 14 42 20C36 19 30 21 24 25" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M24 19C19 9 11 7 7 12C13 12 19 15 24 20" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M24 19C29 9 37 7 41 12C35 12 29 15 24 20" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="24" cy="9" r="3" fill="#A7F3D0"/>
+                        <path d="M17 42H31" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
+                    </svg>
                 </div>
-                <p class="text-lg sm:text-xl text-slate-700 font-medium leading-relaxed max-w-lg mx-auto lg:mx-0">
-                    Precision oil palm estate management, 10-day harvesting rounds, mobile GPS tree mapping, and ERP/AOP fertilizer tracking.
-                </p>
+                <h1 class="text-3xl font-extrabold tracking-tight text-slate-900">Elaeis</h1>
+                <p class="text-sm font-medium text-slate-500 mt-1">Palm-based Crop Monitoring System</p>
             </div>
 
-            <!-- Right Auth Card -->
-            <div class="lg:col-span-5 bg-white rounded-2xl shadow-xl border border-slate-200/80 p-6 sm:p-8">
-                <!-- Login Form -->
-                <div id="auth-login-view">
-                    <form onsubmit="handleAuthLogin(event)" class="space-y-3.5">
-                        <input
-                            type="text"
-                            id="login-user"
-                            placeholder="Email, phone number, or username"
-                            class="w-full px-4 py-3.5 rounded-xl border border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 outline-none text-slate-900"
-                            required
-                        />
-                        <input
-                            type="password"
-                            id="login-pass"
-                            placeholder="Password"
-                            class="w-full px-4 py-3.5 rounded-xl border border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 outline-none text-slate-900"
-                            required
-                        />
-                        <div id="login-err-msg" class="hidden text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
-                        <button
-                            type="submit"
-                            class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-lg rounded-xl shadow-sm transition"
-                        >
-                            Log In
-                        </button>
-                    </form>
+            <!-- Clean Facebook-Style Card -->
+            <div class="bg-white rounded-2xl shadow-xl shadow-slate-200/70 border border-slate-200/80 p-6 sm:p-7">
 
-                    <div class="text-center my-4">
-                        <a href="#" onclick="switchAuthView('forgot'); return false;" class="text-sm font-medium text-emerald-700 hover:underline">
-                            Forgotten password?
-                        </a>
+                <!-- LOGIN FORM -->
+                <form id="form-login" class="space-y-4">
+                    <div>
+                        <div class="relative">
+                            <i data-lucide="user" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                            <input id="login-identifier" type="text" required placeholder="Username, email, or mobile number"
+                                class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 outline-none text-sm font-medium transition" />
+                        </div>
                     </div>
-
-                    <hr class="border-slate-200 my-5" />
-
+                    <div>
+                        <div class="relative">
+                            <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                            <input id="login-password" type="password" required placeholder="Password"
+                                class="w-full pl-10 pr-10 py-3 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 outline-none text-sm font-medium transition" />
+                            <button type="button" data-toggle-pass="login-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                <i data-lucide="eye" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-sm shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition">
+                        <i data-lucide="log-in" class="w-4 h-4"></i>
+                        <span>Log In</span>
+                    </button>
                     <div class="text-center">
-                        <button
-                            type="button"
-                            onclick="switchAuthView('register')"
-                            class="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl transition"
-                        >
-                            Create new account
+                        <button type="button" id="btn-show-forgot" class="text-xs font-semibold text-emerald-700 hover:underline">
+                            Forgot password?
+                        </button>
+                    </div>
+                    <div class="border-t border-slate-200 pt-4 text-center">
+                        <button type="button" id="btn-show-signup" class="py-2.5 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs inline-flex items-center gap-2 transition">
+                            <i data-lucide="user-plus" class="w-4 h-4"></i>
+                            <span>Create New Account</span>
+                        </button>
+                    </div>
+                </form>
+
+                <!-- SIGN UP FORM (Defaults to Normal User / Pending) -->
+                <form id="form-signup" class="space-y-3.5 hidden">
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="user-plus" class="w-4 h-4 text-emerald-600"></i>
+                            <span class="font-bold text-sm text-slate-800">Create Account</span>
+                        </div>
+                        <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                            <i data-lucide="clock" class="w-3 h-3"></i> Normal User
+                        </span>
+                    </div>
+                    <div class="relative">
+                        <i data-lucide="badge-check" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input id="reg-fullname" type="text" required placeholder="Full name"
+                            class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
+                    </div>
+                    <div class="relative">
+                        <i data-lucide="at-sign" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input id="reg-username" type="text" required placeholder="Username"
+                            class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
+                    </div>
+                    <div class="relative">
+                        <i data-lucide="mail" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input id="reg-email" type="email" required placeholder="Email address"
+                            class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
+                    </div>
+                    <div class="relative">
+                        <i data-lucide="smartphone" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input id="reg-phone" type="tel" required placeholder="Mobile (+9477...)"
+                            class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm font-mono-code" />
+                    </div>
+                    <div class="relative">
+                        <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input id="reg-password" type="password" required minlength="8" placeholder="Password (8+ chars)"
+                            class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
+                    </div>
+                    <button type="submit" class="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition">
+                        <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                        <span>Sign Up</span>
+                    </button>
+                    <div class="text-center pt-1">
+                        <button type="button" data-back-login class="text-xs font-semibold text-slate-500 hover:text-slate-800 inline-flex items-center gap-1">
+                            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back to Log In
+                        </button>
+                    </div>
+                </form>
+
+                <!-- FORGOT PASSWORD FORM (SMS / Email Code UI) -->
+                <div id="form-forgot" class="space-y-4 hidden">
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="key-round" class="w-4 h-4 text-emerald-600"></i>
+                            <span class="font-bold text-sm text-slate-800">Account Recovery</span>
+                        </div>
+                        <div class="inline-flex rounded-lg bg-slate-100 p-0.5 text-xs font-semibold">
+                            <button type="button" id="chan-sms" class="px-2.5 py-1 rounded-md bg-white text-slate-900 shadow-sm flex items-center gap-1">
+                                <i data-lucide="smartphone" class="w-3 h-3"></i> SMS
+                            </button>
+                            <button type="button" id="chan-email" class="px-2.5 py-1 rounded-md text-slate-500 flex items-center gap-1">
+                                <i data-lucide="mail" class="w-3 h-3"></i> Email
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Step 1: Send Code -->
+                    <div id="forgot-step-1" class="space-y-3">
+                        <div class="relative">
+                            <i data-lucide="user-check" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                            <input id="forgot-identifier" type="text" placeholder="Username, email, or mobile"
+                                class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
+                        </div>
+                        <button type="button" id="btn-send-code" class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition">
+                            <i data-lucide="send" class="w-4 h-4"></i>
+                            <span>Send 6-Digit Code</span>
+                        </button>
+                    </div>
+
+                    <!-- Step 2: Verify Code & New Password -->
+                    <div id="forgot-step-2" class="space-y-3 hidden">
+                        <div id="demo-otp-banner" class="hidden p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between">
+                            <span class="flex items-center gap-1.5 font-medium"><i data-lucide="message-square-code" class="w-4 h-4 text-emerald-600"></i> Code:</span>
+                            <span id="demo-otp-val" class="font-mono-code font-bold text-sm tracking-widest bg-white px-2 py-0.5 rounded border border-emerald-200">------</span>
+                        </div>
+                        <div class="relative">
+                            <i data-lucide="hash" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                            <input id="reset-code" type="text" maxlength="6" placeholder="6-digit code"
+                                class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm font-mono-code tracking-widest" />
+                        </div>
+                        <div class="relative">
+                            <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                            <input id="reset-new-password" type="password" placeholder="New password (8+ chars)"
+                                class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
+                        </div>
+                        <button type="button" id="btn-verify-reset" class="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 transition">
+                            <i data-lucide="check" class="w-4 h-4"></i>
+                            <span>Reset Password</span>
+                        </button>
+                    </div>
+
+                    <div class="text-center pt-1">
+                        <button type="button" data-back-login class="text-xs font-semibold text-slate-500 hover:text-slate-800 inline-flex items-center gap-1">
+                            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back to Log In
                         </button>
                     </div>
                 </div>
+            </div>
 
-                <!-- Register View -->
-                <div id="auth-register-view" class="hidden">
-                    <h3 class="text-xl font-bold text-slate-900 mb-1">Create Account</h3>
-                    <p class="text-sm text-slate-500 mb-4">Set up your estate access profile.</p>
-                    <form onsubmit="handleAuthRegister(event)" class="space-y-3">
-                        <input type="text" id="reg-name" placeholder="Full Name (e.g. Sandaruwan Gunathilaka)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600" required />
-                        <input type="text" id="reg-username" placeholder="Username" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600" required />
-                        <input type="email" id="reg-email" placeholder="Email address" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600" required />
-                        <input type="text" id="reg-phone" placeholder="Mobile number (+94 77 123 4567)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600" required />
-                        <select id="reg-role" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600 bg-white">
-                            <option value="Admin">Admin (Full Estate &amp; Hierarchy Control)</option>
-                            <option value="Supervisor">Supervisor (GPS, Harvest &amp; Fertilizer)</option>
-                            <option value="Harvester">Harvester (Round Harvesting Entry)</option>
-                        </select>
-                        <input type="password" id="reg-pass" placeholder="Password" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600" required />
-                        <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition">
-                            Sign Up
-                        </button>
-                    </form>
-                    <div class="text-center mt-4">
-                        <a href="#" onclick="switchAuthView('login'); return false;" class="text-sm font-medium text-emerald-700 hover:underline">
-                            Already have an account? Log In
-                        </a>
-                    </div>
+            <!-- Quick 1-Tap Role Demo Switcher on Login Screen -->
+            <div class="mt-5 bg-white/80 backdrop-blur rounded-2xl border border-slate-200/80 p-3.5">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i data-lucide="zap" class="w-3.5 h-3.5 text-emerald-600"></i> Quick Role Access
+                    </span>
+                    <span class="text-[11px] font-mono-code text-slate-400">Pass: Elaeis@2026</span>
                 </div>
-
-                <!-- Forgot Password View -->
-                <div id="auth-forgot-view" class="hidden">
-                    <h3 class="text-xl font-bold text-slate-900 mb-1">Reset Password</h3>
-                    <p class="text-sm text-slate-500 mb-4">Enter your username, email, or phone number.</p>
-                    <div class="space-y-3">
-                        <input type="text" id="forgot-user" placeholder="Username, email, or phone" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600" />
-                        <input type="password" id="forgot-new-pass" placeholder="Enter new password" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 outline-none focus:border-emerald-600" />
-                        <button type="button" onclick="handleQuickPasswordReset()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition">
-                            Update Password
-                        </button>
-                    </div>
-                    <div class="text-center mt-4">
-                        <a href="#" onclick="switchAuthView('login'); return false;" class="text-sm font-medium text-emerald-700 hover:underline">
-                            Back to Log In
-                        </a>
-                    </div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                    <button type="button" data-quick-login="admin" class="px-2.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-900 text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+                        <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-600"></i> Admin
+                    </button>
+                    <button type="button" data-quick-login="supervisor" class="px-2.5 py-2 rounded-xl border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-900 text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+                        <i data-lucide="user-check" class="w-3.5 h-3.5 text-blue-600"></i> Supervisor
+                    </button>
+                    <button type="button" data-quick-login="harvester" class="px-2.5 py-2 rounded-xl border border-amber-200 bg-amber-50/70 hover:bg-amber-100 text-amber-900 text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+                        <i data-lucide="scissors" class="w-3.5 h-3.5 text-amber-600"></i> Harvester
+                    </button>
+                    <button type="button" data-quick-login="ruwan" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+                        <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-500"></i> Normal
+                    </button>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
 
-    <!-- =================================================================== -->
-    <!-- MAIN APPLICATION SHELL                                              -->
-    <!-- =================================================================== -->
-    <div id="app-shell" class="hidden flex-1 flex flex-col">
+    <!-- ========================================================================
+         2. NORMAL USER — WAITING FOR ADMIN APPROVAL SCREEN
+         ======================================================================== -->
+    <section id="pending-screen" class="hidden min-h-screen flex flex-col justify-center items-center px-4 py-10 bg-slate-50">
+        <div class="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 p-7 text-center">
+            <div class="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto mb-4">
+                <i data-lucide="shield-alert" class="w-8 h-8"></i>
+            </div>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold mb-2">
+                <i data-lucide="clock" class="w-3.5 h-3.5"></i> Normal User &bull; Pending
+            </span>
+            <h2 class="text-xl font-extrabold text-slate-900">Waiting for Admin Approval</h2>
+            <p class="text-xs text-slate-500 mt-1">Master Admin must assign your role (Harvester, Supervisor, or Admin) to unlock estate access.</p>
 
-        <!-- 1. DYNAMIC PERSONALIZED HEADER -->
-        <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm no-print">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
-                <!-- Left: Vector Logo + Greeting -->
-                <div class="flex items-center gap-3">
-                    <svg class="w-10 h-10 rounded-xl shadow-sm flex-shrink-0"><use href="#v-logo"></use></svg>
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xl font-extrabold tracking-tight text-emerald-700">Elaeis</span>
-                            <span id="header-role-pill" class="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                                Admin
-                            </span>
-                        </div>
-                        <div class="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-700">
-                            <svg id="greeting-icon" class="w-4 h-4 text-amber-500"><use href="#v-sun"></use></svg>
-                            <span id="greeting-text">Good morning, Sandaruwan</span>
-                        </div>
-                    </div>
+            <div class="mt-5 p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-left space-y-2 text-xs">
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Name</span>
+                    <span id="pending-name" class="font-bold text-slate-800">—</span>
                 </div>
-
-                <!-- Center/Right: Live Clock + Date + Role Switcher + Logout -->
-                <div class="flex items-center flex-wrap gap-2.5 sm:gap-4">
-                    <!-- Real-Time Clock & Date Badge -->
-                    <div class="flex items-center gap-2 bg-slate-100 border border-slate-200/80 px-3 py-1.5 rounded-xl">
-                        <svg class="w-4 h-4 text-emerald-600 flex-shrink-0"><use href="#v-clock"></use></svg>
-                        <div class="text-xs">
-                            <span id="live-date-display" class="font-semibold text-slate-700">Fri, 13 Nov 2026</span>
-                            <span class="mx-1 text-slate-300">|</span>
-                            <span id="live-clock-display" class="font-mono-code font-bold text-emerald-700">14:45:00</span>
-                        </div>
-                    </div>
-
-                    <!-- Interactive Role Switcher Dropdown (For Testing RBAC Permissions) -->
-                    <div class="flex items-center gap-1.5 bg-emerald-50/80 border border-emerald-200 px-2.5 py-1 rounded-xl">
-                        <svg class="w-4 h-4 text-emerald-700"><use href="#v-shield"></use></svg>
-                        <label for="role-switcher" class="text-[11px] font-bold uppercase text-emerald-800 hidden sm:inline">Role:</label>
-                        <select
-                            id="role-switcher"
-                            onchange="onRoleSwitchChange(this.value)"
-                            class="bg-transparent text-xs font-bold text-emerald-900 outline-none cursor-pointer pr-1"
-                            title="Switch role to test Role-Based Access Control (RBAC)"
-                        >
-                            <option value="Admin">Admin (Full Access)</option>
-                            <option value="Supervisor">Supervisor (GPS + Harvest + Fert)</option>
-                            <option value="Harvester">Harvester (Harvest Only)</option>
-                        </select>
-                    </div>
-
-                    <button
-                        type="button"
-                        onclick="handleLogout()"
-                        class="px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-xl border border-slate-200 transition"
-                    >
-                        Log Out
-                    </button>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Username</span>
+                    <span id="pending-username" class="font-mono-code font-semibold text-slate-700">—</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Mobile</span>
+                    <span id="pending-phone" class="font-mono-code text-slate-700">—</span>
                 </div>
             </div>
 
-            <!-- Navigation Tabs -->
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 flex gap-1 overflow-x-auto border-t border-slate-100">
-                <button type="button" data-tab="harvest" onclick="switchMainTab('harvest')" class="nav-tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold border-b-2 border-emerald-600 text-emerald-700 whitespace-nowrap transition">
-                    <svg class="w-4 h-4"><use href="#v-palm"></use></svg>
-                    <span>1. Harvesting Rounds (10-Day)</span>
+            <div class="mt-6 flex flex-col sm:flex-row gap-2">
+                <button type="button" id="btn-refresh-pending" class="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> Check Approval
                 </button>
-                <button type="button" data-tab="gps" onclick="switchMainTab('gps')" class="nav-tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-600 hover:text-emerald-700 whitespace-nowrap transition">
-                    <svg class="w-4 h-4"><use href="#v-pin"></use></svg>
-                    <span>2. Mobile GPS Tree Mapper</span>
+                <button type="button" id="btn-pending-switch-admin" class="flex-1 py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition">
+                    <i data-lucide="shield-check" class="w-4 h-4"></i> Open as Admin
                 </button>
-                <button type="button" data-tab="fertilizer" onclick="switchMainTab('fertilizer')" class="nav-tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-600 hover:text-emerald-700 whitespace-nowrap transition">
-                    <svg class="w-4 h-4"><use href="#v-flask"></use></svg>
-                    <span>3. Fertilizer (ERP &amp; AOP)</span>
+                <button type="button" id="btn-pending-logout" class="py-2.5 px-3.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 font-bold text-xs flex items-center justify-center gap-1 transition">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
                 </button>
-                <button type="button" data-tab="rollup" onclick="switchMainTab('rollup')" class="nav-tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-600 hover:text-emerald-700 whitespace-nowrap transition">
-                    <svg class="w-4 h-4"><use href="#v-chart"></use></svg>
-                    <span>4. Monthly Roll-Up Summary</span>
-                </button>
-                <button type="button" data-tab="admin" onclick="switchMainTab('admin')" class="nav-tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-600 hover:text-emerald-700 whitespace-nowrap transition">
-                    <svg class="w-4 h-4"><use href="#v-layers"></use></svg>
-                    <span>5. Hierarchy &amp; Batch Trees</span>
-                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-mono-code">ADMIN</span>
-                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========================================================================
+         3. MAIN APPLICATION SHELL (Desktop Header Bar + Mobile Bottom Tab Bar)
+         ======================================================================== -->
+    <div id="app-shell" class="hidden min-h-screen flex flex-col pb-20 lg:pb-8">
+
+        <!-- TOP HEADER MENU BAR -->
+        <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 no-print">
+            <div class="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
+                <!-- Brand + Greeting -->
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                        <svg class="w-6 h-6" viewBox="0 0 48 48" fill="none">
+                            <path d="M24 42V22" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/>
+                            <path d="M24 22C18 14 9 14 6 20C12 19 18 21 24 25" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M24 22C30 14 39 14 42 20C36 19 30 21 24 25" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M24 19C19 9 11 7 7 12C13 12 19 15 24 20" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M24 19C29 9 37 7 41 12C35 12 29 15 24 20" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle cx="24" cy="9" r="3" fill="#A7F3D0"/>
+                        </svg>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2">
+                            <span class="font-extrabold text-base tracking-tight text-slate-900">Elaeis</span>
+                            <span id="hdr-round-pill" class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono-code font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                R2
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-1.5 text-[11px] text-slate-500 truncate">
+                            <span id="hdr-greeting" class="font-semibold text-slate-700 truncate">Good morning</span>
+                            <span>&bull;</span>
+                            <span id="hdr-clock" class="font-mono-code">--:--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DESKTOP TOP NAVIGATION MENU -->
+                <nav id="desktop-nav" class="hidden lg:flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60">
+                    <button type="button" data-nav="dashboard" class="nav-btn px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
+                        <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                        <span>Dashboard</span>
+                    </button>
+                    <button type="button" data-nav="harvest" class="nav-btn px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
+                        <i data-lucide="scissors" class="w-4 h-4"></i>
+                        <span>Harvest</span>
+                    </button>
+                    <button type="button" data-nav="maintenance" data-min-role="supervisor" class="nav-btn px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
+                        <i data-lucide="sprout" class="w-4 h-4"></i>
+                        <span>Field Care</span>
+                    </button>
+                    <button type="button" data-nav="mapper" data-min-role="admin" class="nav-btn px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
+                        <i data-lucide="map-pin" class="w-4 h-4"></i>
+                        <span>GPS Mapper</span>
+                    </button>
+                    <button type="button" data-nav="compliance" data-min-role="admin" class="nav-btn px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
+                        <i data-lucide="shield-alert" class="w-4 h-4"></i>
+                        <span>GPS Log</span>
+                    </button>
+                    <button type="button" data-nav="admin" data-min-role="admin" class="nav-btn px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
+                        <i data-lucide="sliders" class="w-4 h-4"></i>
+                        <span>Admin</span>
+                    </button>
+                </nav>
+
+                <!-- RIGHT CONTROLS: GPS Status + Role Switcher + Logout -->
+                <div class="flex items-center gap-2 shrink-0">
+                    <button type="button" id="btn-gps-ping" title="Live Device GPS" class="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[11px] font-mono-code font-semibold text-slate-700 flex items-center gap-1.5 transition">
+                        <span id="gps-dot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        <i data-lucide="locate-fixed" class="w-3.5 h-3.5 text-emerald-600"></i>
+                        <span id="gps-label" class="hidden md:inline">GPS Ready</span>
+                    </button>
+
+                    <!-- Role Switcher Dropdown for Instant RBAC Testing -->
+                    <div class="relative">
+                        <select id="role-switcher" title="Switch Account / Role" class="appearance-none pl-2.5 pr-7 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50/70 text-emerald-900 text-xs font-bold cursor-pointer focus:outline-none">
+                            <option value="admin">Admin</option>
+                            <option value="supervisor">Supervisor</option>
+                            <option value="harvester">Harvester</option>
+                            <option value="ruwan">Normal User</option>
+                        </select>
+                        <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-emerald-700 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                    </div>
+
+                    <button type="button" id="btn-logout" title="Log Out" class="p-2 rounded-xl border border-slate-200 hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-slate-600 transition">
+                        <i data-lucide="log-out" class="w-4 h-4"></i>
+                    </button>
+                </div>
             </div>
         </header>
 
-        <!-- MAIN WORKSPACE -->
-        <main class="max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 flex-1 space-y-5">
+        <!-- MAIN WORKSPACE CONTAINER -->
+        <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 pt-4 pb-6 space-y-4">
 
-            <!-- GLOBAL 4-TIER HIERARCHY BAR: ESTATE -> DIVISION -> BLOCK -> MONTH/ROUND -->
-            <section class="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-sm no-print">
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                    <div>
-                        <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                            1. Estate
-                        </label>
-                        <select id="global-estate" onchange="onGlobalEstateChange()" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50/60 font-semibold text-sm text-slate-800 focus:border-emerald-600 outline-none"></select>
+            <!-- ================================================================
+                 PAGE 1: HOME / ANALYTICS DASHBOARD
+                 ================================================================ -->
+            <section id="page-dashboard" class="page-view space-y-4">
+                <!-- Filter Bar (5-Tier Cascade + Time Filters + Export) -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 sm:p-4 shadow-sm space-y-3 print-card">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                                <i data-lucide="filter" class="w-4 h-4"></i>
+                            </div>
+                            <div id="dash-breadcrumb" class="text-xs font-bold text-slate-800 truncate">
+                                2026/27 Season | Uskvalley Estate
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1.5 no-print">
+                            <button type="button" id="btn-dash-reset" title="Reset Filters" class="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 text-xs font-semibold flex items-center gap-1">
+                                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                            </button>
+                            <button type="button" id="btn-export-csv" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                                <span>CSV</span>
+                            </button>
+                            <button type="button" id="btn-export-pdf" class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 transition">
+                                <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+                                <span>PDF</span>
+                            </button>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                            2. Division (1 - 3,000 Trees)
-                        </label>
-                        <select id="global-division" onchange="onGlobalDivisionChange()" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50/60 font-semibold text-sm text-slate-800 focus:border-emerald-600 outline-none"></select>
+
+                    <!-- 5-Tier Hierarchy Dropdown Cascade -->
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 no-print">
+                        <select id="flt-estate" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"></select>
+                        <select id="flt-division" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"></select>
+                        <select id="flt-field" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"></select>
+                        <select id="flt-block" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"></select>
+                        <select id="flt-tree" class="col-span-2 sm:col-span-1 px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold text-slate-800"></select>
                     </div>
-                    <div>
-                        <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                            3. Field Block (100 - 300 Trees)
-                        </label>
-                        <select id="global-block" onchange="onGlobalBlockChange()" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50/60 font-semibold text-sm text-slate-800 focus:border-emerald-600 outline-none"></select>
-                    </div>
-                    <div>
-                        <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                            4. Active Month &amp; 10-Day Round
-                        </label>
-                        <div class="grid grid-cols-2 gap-2">
-                            <input type="month" id="global-month" onchange="onGlobalPeriodChange()" class="px-2.5 py-2 rounded-xl border border-slate-300 bg-slate-50/60 font-mono-code font-semibold text-xs text-slate-800 outline-none" />
-                            <select id="global-round" onchange="onGlobalPeriodChange()" class="px-2.5 py-2 rounded-xl border border-emerald-300 bg-emerald-50 font-bold text-xs text-emerald-800 outline-none">
-                                <option value="1">Round 1 (1-10)</option>
-                                <option value="2">Round 2 (11-20)</option>
-                                <option value="3">Round 3 (21-31)</option>
+
+                    <!-- Time Mode Filter Row -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-100 no-print">
+                        <select id="flt-time-mode" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-emerald-800">
+                            <option value="season">Season (Apr-Mar)</option>
+                            <option value="std">Season-to-Date</option>
+                            <option value="month">Month</option>
+                            <option value="round">Specific Round</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
+                        <div id="flt-time-slot-1">
+                            <select id="flt-season-year" class="w-full px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold">
+                                <option value="2026">2026/27 Season</option>
+                                <option value="2025">2025/26 Season</option>
                             </select>
                         </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- =========================================================== -->
-            <!-- TAB 1: 10-DAY HARVESTING ROUNDS (SUPERVISOR & HARVESTER)    -->
-            <!-- =========================================================== -->
-            <section id="panel-harvest" class="tab-panel tab-transition space-y-5">
-                <!-- 3-Round Monthly Overview Strip for Active Block -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-3.5" id="harvest-top-kpis"></div>
-
-                <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-                    <!-- Left: Rapid Tree-by-Tree Harvest Logger -->
-                    <div class="lg:col-span-6 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-                        <div class="flex items-center justify-between border-b border-slate-100 pb-3.5 mb-4">
-                            <div>
-                                <h2 class="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                                    <svg class="w-5 h-5 text-emerald-600"><use href="#v-palm"></use></svg>
-                                    <span>Round-Wise Tree Harvesting Entry</span>
-                                </h2>
-                                <p class="text-xs text-slate-500">
-                                    Select a tree number to log Fresh Fruit Bunches (FFB) &amp; pruned Fronds.
-                                </p>
-                            </div>
-                            <span id="harvest-active-round-badge" class="font-mono-code text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800">
-                                Round 2 (Days 11-20)
-                            </span>
+                        <div id="flt-time-slot-2" class="hidden">
+                            <input id="flt-month" type="month" class="w-full px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold" />
                         </div>
-
-                        <form onsubmit="handleSaveHarvest(event)" class="space-y-4">
-                            <!-- Tree Selector + GPS Verified Status -->
-                            <div class="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
-                                <div class="sm:col-span-5">
-                                    <label class="block text-[11px] font-bold uppercase text-emerald-800 mb-1">
-                                        Palm Tree Number (#)
-                                    </label>
-                                    <div class="flex gap-1.5">
-                                        <input
-                                            type="number"
-                                            id="hv-tree-num"
-                                            min="1"
-                                            value="1"
-                                            onchange="loadTreeForHarvest()"
-                                            class="w-full px-3 py-2 rounded-xl border-2 border-emerald-600 font-mono-code text-xl font-extrabold text-center text-emerald-900 bg-white outline-none"
-                                            required
-                                        />
-                                        <button type="button" onclick="loadTreeForHarvest()" class="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl text-xs font-bold text-slate-700">
-                                            Go
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="sm:col-span-7 flex flex-col justify-between space-y-1.5">
-                                    <div class="flex items-center justify-between">
-                                        <span id="hv-tree-code-badge" class="font-mono-code text-xs font-bold text-slate-700">Tree #T-001</span>
-                                        <span id="hv-gps-badge" class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                                            GPS Verified
-                                        </span>
-                                    </div>
-                                    <div id="hv-gps-coords" class="font-mono-code text-xs text-slate-500">
-                                        6.142500, 80.365200 (±3.2m)
-                                    </div>
-                                    <div id="hv-tree-round-history" class="font-mono-code text-[11px] text-slate-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
-                                        R1: 2B/3F | R2: 0B/0F | R3: 0B/0F
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Touch-Friendly Stepper Cards for FFB Bunches & Fronds -->
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <!-- Bunches Cut -->
-                                <div class="bg-emerald-50/70 border-2 border-emerald-200 rounded-2xl p-4 text-center">
-                                    <label class="block text-sm font-extrabold text-emerald-950 mb-1">
-                                        Fresh Fruit Bunches (FFB)
-                                    </label>
-                                    <span class="block text-[11px] text-emerald-700 mb-3">Number of bunches harvested</span>
-                                    <div class="flex items-center justify-center gap-3">
-                                        <button type="button" onclick="stepHarvestInput('hv-bunches', -1)" class="w-12 h-12 rounded-xl bg-white border border-emerald-300 hover:bg-emerald-600 hover:text-white text-xl font-extrabold text-emerald-900 shadow-sm transition active:scale-95">
-                                            -
-                                        </button>
-                                        <input
-                                            type="number"
-                                            id="hv-bunches"
-                                            min="0"
-                                            max="40"
-                                            value="2"
-                                            class="w-20 h-12 text-center font-mono-code text-2xl font-extrabold rounded-xl border border-emerald-300 bg-white text-slate-900 outline-none"
-                                            required
-                                        />
-                                        <button type="button" onclick="stepHarvestInput('hv-bunches', 1)" class="w-12 h-12 rounded-xl bg-white border border-emerald-300 hover:bg-emerald-600 hover:text-white text-xl font-extrabold text-emerald-900 shadow-sm transition active:scale-95">
-                                            +
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <!-- Fronds Cut -->
-                                <div class="bg-amber-50/70 border-2 border-amber-200 rounded-2xl p-4 text-center">
-                                    <label class="block text-sm font-extrabold text-amber-950 mb-1">
-                                        Fronds Pruned / Cut
-                                    </label>
-                                    <span class="block text-[11px] text-amber-800 mb-3">Subtending fronds stacked</span>
-                                    <div class="flex items-center justify-center gap-3">
-                                        <button type="button" onclick="stepHarvestInput('hv-fronds', -1)" class="w-12 h-12 rounded-xl bg-white border border-amber-300 hover:bg-amber-600 hover:text-white text-xl font-extrabold text-amber-900 shadow-sm transition active:scale-95">
-                                            -
-                                        </button>
-                                        <input
-                                            type="number"
-                                            id="hv-fronds"
-                                            min="0"
-                                            max="40"
-                                            value="3"
-                                            class="w-20 h-12 text-center font-mono-code text-2xl font-extrabold rounded-xl border border-amber-300 bg-white text-slate-900 outline-none"
-                                            required
-                                        />
-                                        <button type="button" onclick="stepHarvestInput('hv-fronds', 1)" class="w-12 h-12 rounded-xl bg-white border border-amber-300 hover:bg-amber-600 hover:text-white text-xl font-extrabold text-amber-900 shadow-sm transition active:scale-95">
-                                            +
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Action Buttons -->
-                            <div class="flex flex-col sm:flex-row gap-2.5 pt-1">
-                                <button type="button" onclick="navigateTree(-1)" class="px-4 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-xs text-slate-700">
-                                    Prev Tree
-                                </button>
-                                <button type="submit" class="flex-1 py-3.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-sm shadow-sm flex items-center justify-center gap-2 transition">
-                                    <svg class="w-4 h-4"><use href="#v-check-circle"></use></svg>
-                                    <span>Save Round Record &amp; Next Tree</span>
-                                </button>
-                                <button type="button" onclick="navigateTree(1)" class="px-4 py-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-xs text-slate-700">
-                                    Skip Tree
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-
-                    <!-- Right: Interactive Block Tree Matrix (150+ Trees) -->
-                    <div class="lg:col-span-6 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-                        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3.5 mb-3.5">
-                            <div>
-                                <h3 id="grid-block-heading" class="text-base font-extrabold text-slate-900">
-                                    Block A1 Tree Matrix
-                                </h3>
-                                <p class="text-xs text-slate-500">Tap any palm card to load it into the logger</p>
-                            </div>
-                            <div class="flex items-center gap-1.5">
-                                <button type="button" onclick="setTreeGridFilter('all')" id="flt-all" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white">All</button>
-                                <button type="button" onclick="setTreeGridFilter('done')" id="flt-done" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600">Harvested</button>
-                                <button type="button" onclick="setTreeGridFilter('pending')" id="flt-pending" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600">Pending</button>
-                            </div>
-                        </div>
-
-                        <div id="harvest-tree-pills-grid" class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2 max-h-[380px] overflow-y-auto p-1"></div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- =========================================================== -->
-            <!-- TAB 2: MOBILE GPS GEOLOCATION AUTO-DETECTION (SUPERVISOR)   -->
-            <!-- =========================================================== -->
-            <section id="panel-gps" class="tab-panel hidden tab-transition space-y-5">
-                <div id="gps-rbac-notice" class="hidden bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 text-sm font-semibold flex items-center gap-3">
-                    <svg class="w-5 h-5 text-amber-600 flex-shrink-0"><use href="#v-lock"></use></svg>
-                    <span>Note: GPS Field Capture is restricted to <strong>Supervisor</strong> and <strong>Admin</strong> roles. Switch role in the top header to test capturing GPS.</span>
-                </div>
-
-                <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-                    <!-- Left: Mobile Phone GPS Capture Station -->
-                    <div class="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
-                        <div class="border-b border-slate-100 pb-3">
-                            <h2 class="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                                <svg class="w-5 h-5 text-emerald-600"><use href="#v-pin"></use></svg>
-                                <span>Field Palm GPS Geolocation Capture</span>
-                            </h2>
-                            <p class="text-xs text-slate-500 mt-0.5">
-                                Walk to the physical palm tree with your phone, select the tree number, and tap <strong>Capture Phone GPS</strong>.
-                            </p>
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-600 mb-1">Select Tree # in Block</label>
-                                <input
-                                    type="number"
-                                    id="gps-tree-num"
-                                    min="1"
-                                    value="1"
-                                    onchange="loadTreeForGpsPanel()"
-                                    class="w-full px-3.5 py-2.5 rounded-xl border-2 border-emerald-600 font-mono-code text-lg font-extrabold text-slate-900 outline-none"
-                                />
-                            </div>
-                            <div class="flex flex-col justify-end">
-                                <div id="gps-panel-verified-badge" class="py-2.5 px-3 rounded-xl font-bold text-xs text-center bg-emerald-100 text-emerald-800">
-                                    GPS Verified
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Live Coordinates Readout -->
-                        <div class="bg-slate-900 text-white rounded-2xl p-4 space-y-2.5 font-mono-code">
-                            <div class="flex justify-between items-center text-xs text-slate-400">
-                                <span>TREE ID: <strong id="gps-readout-code" class="text-emerald-400">#T-001</strong></span>
-                                <span id="gps-readout-acc" class="bg-slate-800 px-2 py-0.5 rounded text-emerald-300">Accuracy: ±3.2m</span>
-                            </div>
-                            <div class="grid grid-cols-2 gap-3 pt-1">
-                                <div class="bg-slate-800/90 p-2.5 rounded-xl">
-                                    <span class="block text-[10px] text-slate-400 uppercase">Latitude (N)</span>
-                                    <input type="number" step="0.000001" id="gps-inp-lat" class="w-full bg-transparent text-sm font-bold text-white outline-none mt-0.5" />
-                                </div>
-                                <div class="bg-slate-800/90 p-2.5 rounded-xl">
-                                    <span class="block text-[10px] text-slate-400 uppercase">Longitude (E)</span>
-                                    <input type="number" step="0.000001" id="gps-inp-lng" class="w-full bg-transparent text-sm font-bold text-white outline-none mt-0.5" />
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Primary Capture Phone GPS Button -->
-                        <button
-                            type="button"
-                            id="btn-capture-phone-gps"
-                            onclick="captureLivePhoneGPS()"
-                            class="w-full py-4 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-sm shadow-md flex items-center justify-center gap-2.5 transition"
-                        >
-                            <svg class="w-5 h-5"><use href="#v-crosshair"></use></svg>
-                            <span>Capture Phone GPS (High Accuracy)</span>
-                        </button>
-
-                        <div class="flex gap-2">
-                            <button type="button" onclick="saveManualGpsCoordinates()" class="flex-1 py-2.5 px-4 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700">
-                                Save Manual Coordinates &amp; Next Tree
-                            </button>
-                            <button type="button" onclick="stepGpsTree(1)" class="py-2.5 px-4 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700">
-                                Next Tree &rarr;
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Right: Interactive Block GIS Canvas Map & Verification Registry -->
-                    <div class="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
-                        <div class="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                                <h3 class="text-base font-extrabold text-slate-900">Block Geo-Verification Map</h3>
-                                <p class="text-xs text-slate-500">Emerald pins = GPS Verified palms | Slate pins = Unverified grid default</p>
-                            </div>
-                            <span id="gps-block-summary-pill" class="font-mono-code text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                0 / 150 Verified
-                            </span>
-                        </div>
-
-                        <canvas id="gps-block-canvas" width="900" height="320" class="w-full h-[300px] rounded-xl border border-slate-200 bg-emerald-50/40"></canvas>
-                    </div>
-                </div>
-            </section>
-
-            <!-- =========================================================== -->
-            <!-- TAB 3: FERTILIZER APPLICATION MODULE (ERP & AOP - 4 ROUNDS) -->
-            <!-- =========================================================== -->
-            <section id="panel-fertilizer" class="tab-panel hidden tab-transition space-y-5">
-                <div id="fert-rbac-notice" class="hidden bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 text-sm font-semibold flex items-center gap-3">
-                    <svg class="w-5 h-5 text-amber-600 flex-shrink-0"><use href="#v-lock"></use></svg>
-                    <span>Fertilizer Logging is restricted to <strong>Supervisor</strong> and <strong>Admin</strong> roles.</span>
-                </div>
-
-                <!-- 4-Round Annual Fertilizer Overview Strip -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5" id="fert-annual-rounds-strip"></div>
-
-                <!-- Mode Selector & Shared Fertilizer Config Bar -->
-                <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-5">
-                    <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                        <div>
-                            <h2 class="text-base sm:text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                                <svg class="w-5 h-5 text-emerald-600"><use href="#v-flask"></use></svg>
-                                <span>Dual-Mode Fertilizer Logger (ERP &amp; AOP - 4 Annual Rounds)</span>
-                            </h2>
-                            <p class="text-xs text-slate-500">
-                                Log <strong>ERP (Eppawala Rock Phosphate)</strong> or <strong>AOP (Adult Oil Palm Mixture)</strong> using 1-Click Block Apply or Tree-by-Tree Checklist.
-                            </p>
-                        </div>
-
-                        <!-- Mode Switcher Pills -->
-                        <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
-                            <button
-                                type="button"
-                                id="btn-fert-mode-bulk"
-                                onclick="switchFertilizerMode('bulk')"
-                                class="px-3.5 py-2 rounded-lg text-xs font-extrabold bg-emerald-600 text-white shadow-sm transition"
-                            >
-                                Mode A: 1-Click Block Apply
-                            </button>
-                            <button
-                                type="button"
-                                id="btn-fert-mode-checklist"
-                                onclick="switchFertilizerMode('checklist')"
-                                class="px-3.5 py-2 rounded-lg text-xs font-extrabold text-slate-700 hover:text-slate-900 transition"
-                            >
-                                Mode B: Tree-by-Tree Checklist
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Shared Application Parameters (Variety, Annual Round 1-4, Weight per Palm, Date) -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200/80">
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1">Fertilizer Variety</label>
-                            <select id="fert-variety" onchange="renderFertilizerModule()" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white font-bold text-sm text-emerald-900 outline-none">
-                                <option value="ERP">ERP (Eppawala Rock Phosphate)</option>
-                                <option value="AOP">AOP (Adult Oil Palm Mixture)</option>
+                        <div id="flt-time-slot-3" class="hidden">
+                            <select id="flt-round" class="w-full px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold">
+                                <option value="1">Round 1 (Days 1-10)</option>
+                                <option value="2">Round 2 (Days 11-20)</option>
+                                <option value="3">Round 3 (Days 21-End)</option>
                             </select>
                         </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1">Annual Application Round (1 - 4)</label>
-                            <select id="fert-round" onchange="renderFertilizerModule()" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white font-bold text-sm text-slate-800 outline-none">
-                                <option value="1">Annual Round 1</option>
-                                <option value="2">Annual Round 2</option>
-                                <option value="3">Annual Round 3</option>
-                                <option value="4">Annual Round 4</option>
-                            </select>
+                        <div id="flt-time-custom" class="col-span-2 hidden grid grid-cols-2 gap-2">
+                            <input id="flt-from" type="date" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code" />
+                            <input id="flt-to" type="date" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- KPI Metric Cards -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center gap-3 print-card">
+                        <div class="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                            <i data-lucide="package-check" class="w-5 h-5"></i>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1">Weight per Palm (kg)</label>
-                            <input
-                                type="number"
-                                id="fert-weight-kg"
-                                step="0.25"
-                                min="0.25"
-                                max="15"
-                                value="2.0"
-                                class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white font-mono-code font-bold text-sm text-slate-900 outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1">Application Date</label>
-                            <input
-                                type="date"
-                                id="fert-date"
-                                class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white font-mono-code font-semibold text-sm text-slate-800 outline-none"
-                            />
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Bunches Cut</div>
+                            <div id="kpi-bunches" class="text-2xl font-extrabold font-mono-code text-slate-900">0</div>
+                            <div id="kpi-harvest-trees" class="text-[11px] text-slate-500">0 palms</div>
                         </div>
                     </div>
 
-                    <!-- MODE A: 1-CLICK BLOCK-LEVEL BULK APPLY -->
-                    <div id="fert-view-bulk" class="bg-emerald-50/70 border-2 border-emerald-200 rounded-2xl p-6 text-center space-y-4">
-                        <div class="max-w-xl mx-auto space-y-2">
-                            <span class="inline-block text-xs font-extrabold uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-200/80 text-emerald-900">
-                                Single-Day Block Completion
-                            </span>
-                            <h3 id="bulk-fert-summary-title" class="text-lg sm:text-xl font-extrabold text-slate-900">
-                                Apply ERP (2.0 kg/palm) to All Trees in Block A1
-                            </h3>
-                            <p class="text-xs sm:text-sm text-slate-600">
-                                Clicking the button below immediately logs the selected fertilizer variety, annual round, and weight to every active palm tree in the current block.
-                            </p>
+                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center gap-3 print-card">
+                        <div class="w-11 h-11 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
+                            <i data-lucide="scissors" class="w-5 h-5"></i>
                         </div>
-                        <button
-                            type="button"
-                            onclick="handleBulkApplyBlockFertilizer()"
-                            class="px-8 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-base shadow-md inline-flex items-center gap-2.5 transition"
-                        >
-                            <svg class="w-5 h-5"><use href="#v-check-circle"></use></svg>
-                            <span>Apply to Entire Block Now</span>
-                        </button>
+                        <div>
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Fronds Cut</div>
+                            <div id="kpi-fronds" class="text-2xl font-extrabold font-mono-code text-slate-900">0</div>
+                            <div id="kpi-harvest-recs" class="text-[11px] text-slate-500">0 logs</div>
+                        </div>
                     </div>
 
-                    <!-- MODE B: TREE-BY-TREE CHECKLIST (TICK & SUBMIT) -->
-                    <div id="fert-view-checklist" class="hidden space-y-4">
-                        <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center gap-3 print-card">
+                        <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                            <i data-lucide="flask-conical" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Fertilizer (kg)</div>
+                            <div id="kpi-fert-kg" class="text-2xl font-extrabold font-mono-code text-slate-900">0.0</div>
+                            <div id="kpi-fert-types" class="text-[11px] text-slate-500 truncate">ERP / AOP</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center gap-3 print-card">
+                        <div class="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                            <i data-lucide="sparkles" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Sanitation</div>
+                            <div id="kpi-sanitation" class="text-lg font-extrabold font-mono-code text-slate-900">—</div>
+                            <div id="kpi-weed" class="text-[11px] text-slate-500">Weed status</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Grid -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <!-- Chart 1: Bunches & Fronds Cut -->
+                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm print-card">
+                        <div class="flex items-center justify-between mb-3">
                             <div class="flex items-center gap-2">
-                                <button type="button" onclick="toggleAllFertilizerChecks(true)" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700">
-                                    Tick All Trees
-                                </button>
-                                <button type="button" onclick="toggleAllFertilizerChecks(false)" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700">
-                                    Untick All
-                                </button>
+                                <i data-lucide="bar-chart-2" class="w-4 h-4 text-emerald-600"></i>
+                                <span class="text-xs font-bold text-slate-800">Harvest Output (Bunches &amp; Fronds)</span>
                             </div>
-                            <button
-                                type="button"
-                                onclick="handleSubmitCheckedFertilizerTrees()"
-                                class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm shadow-sm flex items-center gap-2 transition"
-                            >
-                                <svg class="w-4 h-4"><use href="#v-check-circle"></use></svg>
-                                <span>Submit Checked Trees</span>
-                            </button>
+                            <div class="flex items-center gap-3 text-[11px] font-semibold">
+                                <span class="flex items-center gap-1 text-emerald-600"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-600"></span>Bunches</span>
+                                <span class="flex items-center gap-1 text-teal-400"><span class="w-2.5 h-2.5 rounded-sm bg-teal-400"></span>Fronds</span>
+                            </div>
                         </div>
+                        <div id="chart-harvest" class="h-56 flex items-end gap-2 pt-6 pb-2 px-2 overflow-x-auto"></div>
+                    </div>
 
-                        <div class="max-h-[420px] overflow-y-auto border border-slate-200 rounded-xl">
-                            <table class="w-full text-left border-collapse text-xs sm:text-sm">
-                                <thead class="bg-slate-100 sticky top-0 text-[11px] font-bold uppercase text-slate-600">
-                                    <tr>
-                                        <th class="py-2.5 px-3 w-12 text-center">Tick</th>
-                                        <th class="py-2.5 px-3">Tree ID</th>
-                                        <th class="py-2.5 px-3">GPS Coordinates</th>
-                                        <th class="py-2.5 px-3">Weight (kg)</th>
-                                        <th class="py-2.5 px-3">Current Round Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="fert-checklist-tbody" class="divide-y divide-slate-100"></tbody>
-                            </table>
+                    <!-- Chart 2: Fertilizer & Hierarchy Breakdown -->
+                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm print-card">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="layers" class="w-4 h-4 text-amber-600"></i>
+                                <span id="chart-breakdown-title" class="text-xs font-bold text-slate-800">Breakdown &amp; Fertilizer (kg)</span>
+                            </div>
+                            <div id="fert-pills" class="flex items-center gap-1.5 text-[11px] font-mono-code"></div>
                         </div>
+                        <div id="chart-breakdown" class="space-y-2.5 max-h-56 overflow-y-auto pr-1"></div>
                     </div>
                 </div>
             </section>
 
-            <!-- =========================================================== -->
-            <!-- TAB 4: MONTHLY ROLL-UP SUMMARY (R1 + R2 + R3 AGGREGATION)   -->
-            <!-- =========================================================== -->
-            <section id="panel-rollup" class="tab-panel hidden tab-transition space-y-5">
-                <!-- Header + Export Actions -->
-                <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                        <h2 id="rollup-heading" class="text-base sm:text-lg font-extrabold text-slate-900">
-                            Monthly End Wrap-Up Summary (Round 1 + Round 2 + Round 3)
-                        </h2>
-                        <p class="text-xs text-slate-500">
-                            Automated monthly roll-up of bunches cut and fronds pruned per Division, per Field Block, and per Individual Palm Tree.
-                        </p>
+            <!-- ================================================================
+                 PAGE 2: HARVEST DATA ENTRY (Mobile-First 2D Palm Card Map)
+                 ================================================================ -->
+            <section id="page-harvest" class="page-view hidden space-y-3">
+                <!-- Context Bar -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-sm space-y-2.5">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
+                                <i data-lucide="scissors" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <div class="text-xs font-extrabold text-slate-900">Harvest Entry &bull; 2D Palm Map</div>
+                                <div id="harv-auto-meta" class="text-[11px] font-mono-code text-emerald-700 font-semibold">Auto Date &bull; Round</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input id="harv-date" type="date" class="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold" />
+                            <div id="harv-progress-pill" class="px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono-code font-bold">
+                                0 / 0
+                            </div>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2 no-print">
-                        <button type="button" onclick="exportMonthlyRollupCSV()" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-sm">
-                            <svg class="w-4 h-4"><use href="#v-download"></use></svg>
-                            <span>Export Block CSV</span>
+
+                    <!-- Cascade Selectors -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <select id="harv-estate" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                        <select id="harv-division" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                        <select id="harv-field" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                        <select id="harv-block" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                    </div>
+
+                    <!-- Search & Status Filter -->
+                    <div class="flex items-center justify-between gap-2 pt-1">
+                        <div class="relative flex-1 max-w-xs">
+                            <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                            <input id="harv-search" type="number" min="1" placeholder="Tree #"
+                                class="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code" />
+                        </div>
+                        <div class="inline-flex rounded-xl bg-slate-100 p-0.5 text-xs font-bold">
+                            <button type="button" data-harv-filter="all" class="harv-flt-btn px-2.5 py-1 rounded-lg bg-white text-slate-900 shadow-sm">All</button>
+                            <button type="button" data-harv-filter="pending" class="harv-flt-btn px-2.5 py-1 rounded-lg text-slate-500">Pending</button>
+                            <button type="button" data-harv-filter="done" class="harv-flt-btn px-2.5 py-1 rounded-lg text-slate-500">Cut</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2D Palm Card Map Grid -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-sm">
+                    <div id="harv-grid" class="palm-grid"></div>
+                </div>
+            </section>
+
+            <!-- ================================================================
+                 PAGE 3: FERTILIZER & FIELD MAINTENANCE (Supervisors & Admins)
+                 ================================================================ -->
+            <section id="page-maintenance" class="page-view hidden space-y-3">
+                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-sm space-y-2.5">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
+                                <i data-lucide="sprout" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <div class="text-xs font-extrabold text-slate-900">Fertilizer &amp; Field Care &bull; 2D Palm Map</div>
+                                <div class="text-[11px] text-slate-500">Tap any palm card for Fertilizer, Weed &amp; Sanitation</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input id="maint-date" type="date" class="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold" />
+                            <div id="maint-progress-pill" class="px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono-code font-bold">
+                                0 / 0
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cascade Selectors -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <select id="maint-estate" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                        <select id="maint-division" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                        <select id="maint-field" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                        <select id="maint-block" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                    </div>
+
+                    <div class="flex items-center justify-between gap-2 pt-1">
+                        <div class="relative flex-1 max-w-xs">
+                            <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                            <input id="maint-search" type="number" min="1" placeholder="Tree #"
+                                class="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code" />
+                        </div>
+                        <div class="inline-flex rounded-xl bg-slate-100 p-0.5 text-xs font-bold">
+                            <button type="button" data-maint-filter="all" class="maint-flt-btn px-2.5 py-1 rounded-lg bg-white text-slate-900 shadow-sm">All</button>
+                            <button type="button" data-maint-filter="pending" class="maint-flt-btn px-2.5 py-1 rounded-lg text-slate-500">Pending</button>
+                            <button type="button" data-maint-filter="done" class="maint-flt-btn px-2.5 py-1 rounded-lg text-slate-500">Logged</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2D Palm Card Map Grid -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-sm">
+                    <div id="maint-grid" class="palm-grid"></div>
+                </div>
+            </section>
+
+            <!-- ================================================================
+                 PAGE 4: GPS TREE MAPPER (Admins Only)
+                 ================================================================ -->
+            <section id="page-mapper" class="page-view hidden space-y-3">
+                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-sm space-y-2.5">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center">
+                                <i data-lucide="map-pin" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <div class="text-xs font-extrabold text-slate-900">GPS Tree Mapper</div>
+                                <div id="map-stats-label" class="text-[11px] font-mono-code text-slate-500">0 mapped</div>
+                            </div>
+                        </div>
+                        <button type="button" id="btn-mapper-add-tree" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition">
+                            <i data-lucide="locate-fixed" class="w-4 h-4"></i>
+                            <span>Add Tree (Live GPS)</span>
                         </button>
-                        <button type="button" onclick="window.print()" class="px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-xs text-slate-700">
-                            Print Report
-                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <select id="map-estate" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                        <select id="map-division" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                        <select id="map-field" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                        <select id="map-block" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
                     </div>
                 </div>
 
-                <!-- 1. Division-Level Monthly Roll-Up Table -->
-                <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-                    <h3 class="text-sm font-extrabold uppercase tracking-wider text-emerald-800 mb-3">
-                        1. Division-Level Monthly Roll-Up (R1 + R2 + R3)
-                    </h3>
+                <!-- 2D Palm Card Map for GPS Tagging -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-sm">
+                    <div id="map-grid" class="palm-grid"></div>
+                </div>
+            </section>
+
+            <!-- ================================================================
+                 PAGE 5: GPS VERIFICATION / COMPLIANCE LOG (Admins Only)
+                 ================================================================ -->
+            <section id="page-compliance" class="page-view hidden space-y-3">
+                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-sm space-y-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-lg bg-red-600 text-white flex items-center justify-center">
+                                <i data-lucide="shield-alert" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <div class="text-xs font-extrabold text-slate-900">GPS Compliance Verification Log</div>
+                                <div class="text-[11px] text-slate-500">Flags submissions in <span class="text-red-600 font-bold">RED</span> when user &gt; <span id="comp-thresh-label" class="font-mono-code font-bold">20m</span> from palm</div>
+                            </div>
+                        </div>
+                        <div class="inline-flex rounded-xl bg-slate-100 p-0.5 text-xs font-bold">
+                            <button type="button" data-comp-filter="all" class="comp-flt-btn px-2.5 py-1 rounded-lg bg-white text-slate-900 shadow-sm">All</button>
+                            <button type="button" data-comp-filter="far" class="comp-flt-btn px-2.5 py-1 rounded-lg text-red-600">Flagged (&gt;20m)</button>
+                            <button type="button" data-comp-filter="ok" class="comp-flt-btn px-2.5 py-1 rounded-lg text-emerald-700">Verified (&le;20m)</button>
+                        </div>
+                    </div>
+
+                    <!-- Summary KPI Strip -->
+                    <div class="grid grid-cols-3 gap-2">
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                            <span class="text-xs font-semibold text-slate-500">Total</span>
+                            <span id="comp-count-all" class="font-mono-code font-extrabold text-sm text-slate-900">0</span>
+                        </div>
+                        <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+                            <span class="text-xs font-semibold text-emerald-700">&le;20m OK</span>
+                            <span id="comp-count-ok" class="font-mono-code font-extrabold text-sm text-emerald-800">0</span>
+                        </div>
+                        <div class="p-2.5 rounded-xl bg-red-50 border border-red-200 flex items-center justify-between">
+                            <span class="text-xs font-semibold text-red-700">&gt;20m Alert</span>
+                            <span id="comp-count-far" class="font-mono-code font-extrabold text-sm text-red-700">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Compliance Table -->
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse text-xs sm:text-sm">
-                            <thead class="bg-slate-50 text-[11px] font-bold uppercase text-slate-500 border-b border-slate-200">
-                                <tr>
-                                    <th class="py-2.5 px-3">Division</th>
-                                    <th class="py-2.5 px-3">Blocks / Trees</th>
-                                    <th class="py-2.5 px-3">Round 1 (1-10)</th>
-                                    <th class="py-2.5 px-3">Round 2 (11-20)</th>
-                                    <th class="py-2.5 px-3">Round 3 (21-31)</th>
-                                    <th class="py-2.5 px-3 text-emerald-800">Monthly Total Bunches</th>
-                                    <th class="py-2.5 px-3 text-amber-800">Monthly Total Fronds</th>
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase text-slate-400">
+                                    <th class="py-2.5 px-3">Status / Dist</th>
+                                    <th class="py-2.5 px-3">Palm &amp; Block</th>
+                                    <th class="py-2.5 px-3">Staff &amp; Activity</th>
+                                    <th class="py-2.5 px-3">Tree GPS</th>
+                                    <th class="py-2.5 px-3">User GPS</th>
+                                    <th class="py-2.5 px-3">Time</th>
                                 </tr>
                             </thead>
-                            <tbody id="rollup-division-tbody" class="divide-y divide-slate-100"></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- 2. Block-Level Monthly Roll-Up Table -->
-                <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-                    <h3 class="text-sm font-extrabold uppercase tracking-wider text-emerald-800 mb-3">
-                        2. Field Block Monthly Roll-Up (R1 + R2 + R3)
-                    </h3>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse text-xs sm:text-sm">
-                            <thead class="bg-slate-50 text-[11px] font-bold uppercase text-slate-500 border-b border-slate-200">
-                                <tr>
-                                    <th class="py-2.5 px-3">Block</th>
-                                    <th class="py-2.5 px-3">Division</th>
-                                    <th class="py-2.5 px-3">Palm Count</th>
-                                    <th class="py-2.5 px-3">Round 1 (1-10)</th>
-                                    <th class="py-2.5 px-3">Round 2 (11-20)</th>
-                                    <th class="py-2.5 px-3">Round 3 (21-31)</th>
-                                    <th class="py-2.5 px-3 text-emerald-800">Monthly Total Bunches</th>
-                                    <th class="py-2.5 px-3 text-amber-800">Monthly Total Fronds</th>
-                                </tr>
-                            </thead>
-                            <tbody id="rollup-block-tbody" class="divide-y divide-slate-100"></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- 3. Tree-by-Tree Monthly Roll-Up Table for Selected Block -->
-                <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-                    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                        <h3 id="rollup-tree-table-title" class="text-sm font-extrabold uppercase tracking-wider text-emerald-800">
-                            3. Per-Tree Monthly Wrap-Up Table (Selected Block)
-                        </h3>
-                        <span class="text-xs text-slate-500">Showing Round 1 + Round 2 + Round 3 = Monthly End Total per Palm</span>
-                    </div>
-                    <div class="max-h-[460px] overflow-y-auto border border-slate-200 rounded-xl">
-                        <table class="w-full text-left border-collapse text-xs sm:text-sm">
-                            <thead class="bg-slate-100 sticky top-0 text-[11px] font-bold uppercase text-slate-600">
-                                <tr>
-                                    <th class="py-2.5 px-3">Tree ID</th>
-                                    <th class="py-2.5 px-3">GPS Status &amp; Coords</th>
-                                    <th class="py-2.5 px-3">Round 1 (1-10)</th>
-                                    <th class="py-2.5 px-3">Round 2 (11-20)</th>
-                                    <th class="py-2.5 px-3">Round 3 (21-31)</th>
-                                    <th class="py-2.5 px-3 bg-emerald-50 text-emerald-900">Monthly Bunches</th>
-                                    <th class="py-2.5 px-3 bg-amber-50 text-amber-900">Monthly Fronds</th>
-                                    <th class="py-2.5 px-3">Fertilizer (ERP/AOP)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="rollup-tree-tbody" class="divide-y divide-slate-100"></tbody>
+                            <tbody id="comp-tbody" class="divide-y divide-slate-100"></tbody>
                         </table>
                     </div>
                 </div>
             </section>
 
-            <!-- =========================================================== -->
-            <!-- TAB 5: HIERARCHY & BATCH TREE GENERATOR (ADMIN ROLE ONLY)   -->
-            <!-- =========================================================== -->
-            <section id="panel-admin" class="tab-panel hidden tab-transition space-y-5">
-                <!-- RBAC Lock Screen for Non-Admins (Supervisor / Harvester) -->
-                <div id="admin-rbac-locked" class="hidden bg-white rounded-2xl border-2 border-amber-200 p-8 text-center max-w-xl mx-auto my-6 shadow-sm space-y-3">
-                    <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
-                        <svg class="w-6 h-6"><use href="#v-lock"></use></svg>
-                    </div>
-                    <h3 class="text-lg font-extrabold text-slate-900">Admin Permission Required (RBAC Enforced)</h3>
-                    <p class="text-xs sm:text-sm text-slate-600">
-                        Your current role (<strong id="locked-role-name">Supervisor</strong>) has read-only access to the Estate Hierarchy. Only <strong>Admin</strong> users can create, edit, or delete Estates, Divisions, Field Blocks, or Batch Generate Trees.
-                    </p>
-                    <button
-                        type="button"
-                        onclick="onRoleSwitchChange('Admin')"
-                        class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm"
-                    >
-                        Switch to Admin Role to Unlock
+            <!-- ================================================================
+                 PAGE 6: ADMIN INFRASTRUCTURE SETTINGS (Admins Only)
+                 ================================================================ -->
+            <section id="page-admin" class="page-view hidden space-y-3">
+                <!-- Sub-navigation tabs -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-2 shadow-sm flex items-center gap-1.5 overflow-x-auto">
+                    <button type="button" data-admin-tab="users" class="adm-tab-btn px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 text-white flex items-center gap-1.5 shrink-0">
+                        <i data-lucide="users" class="w-4 h-4"></i>
+                        <span>Users &amp; Roles</span>
+                        <span id="adm-pending-badge" class="px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 text-[10px] font-extrabold">0</span>
+                    </button>
+                    <button type="button" data-admin-tab="hierarchy" class="adm-tab-btn px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 flex items-center gap-1.5 shrink-0">
+                        <i data-lucide="layers" class="w-4 h-4"></i>
+                        <span>5-Tier Estate CRUD</span>
+                    </button>
+                    <button type="button" data-admin-tab="agronomy" class="adm-tab-btn px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 flex items-center gap-1.5 shrink-0">
+                        <i data-lucide="flask-conical" class="w-4 h-4"></i>
+                        <span>Fertilizer Master Data</span>
                     </button>
                 </div>
 
-                <!-- Admin Controls Container -->
-                <div id="admin-rbac-unlocked" class="space-y-5">
-                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-                        <!-- Featured Tool: Batch Generate Trees inside a Block (100 - 300 Trees in 1 Click) -->
-                        <div class="lg:col-span-6 bg-white rounded-2xl border-2 border-emerald-500/80 p-5 shadow-sm space-y-4">
-                            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
-                                <div>
-                                    <span class="text-[10px] font-mono-code font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                                        Admin Power Tool
-                                    </span>
-                                    <h3 class="text-base sm:text-lg font-extrabold text-slate-900 mt-1">
-                                        Batch Generate Palm Trees in Block
-                                    </h3>
-                                    <p class="text-xs text-slate-500">
-                                        Automatically generate 100 to 300+ sequential trees (e.g., Tree #1 to Tree #250) in the selected block.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <form onsubmit="handleBatchGenerateTrees(event)" class="space-y-3.5">
-                                <div>
-                                    <label class="block text-xs font-bold text-slate-700 mb-1">Target Block</label>
-                                    <select id="batch-target-block" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50 font-bold text-sm text-slate-900 outline-none"></select>
-                                </div>
-
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                    <div>
-                                        <label class="block text-xs font-bold text-slate-700 mb-1">Total Trees to Generate</label>
-                                        <input
-                                            type="number"
-                                            id="batch-tree-count"
-                                            min="1"
-                                            max="500"
-                                            value="250"
-                                            class="w-full px-3 py-2.5 rounded-xl border-2 border-emerald-600 font-mono-code font-extrabold text-base text-emerald-900 outline-none"
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs font-bold text-slate-700 mb-1">Base Latitude (N)</label>
-                                        <input
-                                            type="number"
-                                            step="0.000001"
-                                            id="batch-base-lat"
-                                            value="6.142500"
-                                            class="w-full px-3 py-2.5 rounded-xl border border-slate-300 font-mono-code text-sm outline-none"
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs font-bold text-slate-700 mb-1">Base Longitude (E)</label>
-                                        <input
-                                            type="number"
-                                            step="0.000001"
-                                            id="batch-base-lng"
-                                            value="80.365200"
-                                            class="w-full px-3 py-2.5 rounded-xl border border-slate-300 font-mono-code text-sm outline-none"
-                                            required
-                                        />
-                                    </div>
-                                </div>
-
-                                <button
-                                    type="submit"
-                                    class="w-full py-3.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm shadow-sm flex items-center justify-center gap-2 transition"
-                                >
-                                    <svg class="w-4 h-4"><use href="#v-plus"></use></svg>
-                                    <span>Batch Generate Trees (1 to N) Now</span>
-                                </button>
-                            </form>
-                        </div>
-
-                        <!-- Create Estate / Division / Block Manager -->
-                        <div class="lg:col-span-6 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
-                            <h3 class="text-base font-extrabold text-slate-900 border-b border-slate-100 pb-3">
-                                Create New Estate, Division, or Field Block
-                            </h3>
-
-                            <!-- Create Division -->
-                            <form onsubmit="handleCreateDivision(event)" class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2.5">
-                                <div class="text-xs font-extrabold uppercase text-slate-700">Add Division (Capacity: 1 - 3,000 Trees)</div>
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                    <input type="text" id="new-div-code" placeholder="Code (e.g. DIV-C)" class="px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono-code" required />
-                                    <input type="text" id="new-div-name" placeholder="Division Name (e.g. East Division)" class="px-3 py-2 rounded-lg border border-slate-300 text-xs sm:col-span-2" required />
-                                </div>
-                                <button type="submit" class="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold">
-                                    + Create Division
-                                </button>
-                            </form>
-
-                            <!-- Create Field Block with Auto-Generated Trees -->
-                            <form onsubmit="handleCreateBlockWithBatch(event)" class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2.5">
-                                <div class="text-xs font-extrabold uppercase text-slate-700">Add Field Block (100 - 300 Trees)</div>
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                    <input type="text" id="new-blk-code" placeholder="Block Code (e.g. BLK-A3)" class="px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono-code" required />
-                                    <input type="text" id="new-blk-name" placeholder="Block Name (e.g. Block A3)" class="px-3 py-2 rounded-lg border border-slate-300 text-xs" required />
-                                    <input type="number" id="new-blk-count" min="1" max="500" value="200" placeholder="Initial Trees (e.g. 200)" class="px-3 py-2 rounded-lg border border-emerald-400 text-xs font-mono-code font-bold" required />
-                                </div>
-                                <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">
-                                    + Create Block &amp; Generate Trees
-                                </button>
-                            </form>
+                <!-- TAB 1: USER MANAGEMENT -->
+                <div id="adm-panel-users" class="adm-panel bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="user-check" class="w-4 h-4 text-emerald-600"></i>
+                            <span class="text-xs font-extrabold text-slate-900">Approve Normal Users &amp; Assign RBAC Roles</span>
                         </div>
                     </div>
+                    <div id="adm-users-list" class="divide-y divide-slate-100"></div>
+                </div>
 
-                    <!-- Hierarchy Overview & Delete/Manage Table -->
-                    <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-                        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                            <h3 class="text-sm font-extrabold uppercase tracking-wider text-slate-800">
-                                Estate Hierarchy Overview (Admin Edit / Delete)
-                            </h3>
-                            <button type="button" onclick="resetDemoStateToDefaults()" class="text-xs font-bold text-red-600 hover:underline">
-                                Reset All Sample Data to Defaults
+                <!-- TAB 2: 5-TIER ESTATE HIERARCHY CRUD -->
+                <div id="adm-panel-hierarchy" class="adm-panel hidden space-y-3">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <!-- Estates Card -->
+                        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-2.5">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5"><i data-lucide="building-2" class="w-4 h-4 text-emerald-600"></i> 1. Estates</span>
+                                <button type="button" id="btn-add-estate" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i> Add</button>
+                            </div>
+                            <div id="crud-estates" class="space-y-1.5 max-h-48 overflow-y-auto"></div>
+                        </div>
+
+                        <!-- Divisions Card -->
+                        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-2.5">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5"><i data-lucide="map" class="w-4 h-4 text-emerald-600"></i> 2. Divisions</span>
+                                <button type="button" id="btn-add-division" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i> Add</button>
+                            </div>
+                            <div id="crud-divisions" class="space-y-1.5 max-h-48 overflow-y-auto"></div>
+                        </div>
+
+                        <!-- Fields Card (Year + Ha) -->
+                        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-2.5">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5"><i data-lucide="compass" class="w-4 h-4 text-emerald-600"></i> 3. Fields (Year &amp; Ha)</span>
+                                <button type="button" id="btn-add-field" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i> Add</button>
+                            </div>
+                            <div id="crud-fields" class="space-y-1.5 max-h-56 overflow-y-auto"></div>
+                        </div>
+
+                        <!-- Blocks & Batch Tree Generator Card -->
+                        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-2.5">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5"><i data-lucide="grid" class="w-4 h-4 text-emerald-600"></i> 4. Blocks &amp; 5. Batch Trees</span>
+                                <button type="button" id="btn-add-block" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i> Add Block</button>
+                            </div>
+                            <div id="crud-blocks" class="space-y-1.5 max-h-56 overflow-y-auto"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: AGRONOMY MASTER DATA (ERP, AOP, kg/palm) -->
+                <div id="adm-panel-agronomy" class="adm-panel hidden grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                                <i data-lucide="flask-conical" class="w-4 h-4 text-emerald-600"></i> Fertilizer Varieties (kg / palm)
+                            </span>
+                            <button type="button" id="btn-add-fert" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center gap-1">
+                                <i data-lucide="plus" class="w-3.5 h-3.5"></i> New Variety
                             </button>
                         </div>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left border-collapse text-xs sm:text-sm">
-                                <thead class="bg-slate-100 text-[11px] font-bold uppercase text-slate-600">
-                                    <tr>
-                                        <th class="py-2.5 px-3">Estate</th>
-                                        <th class="py-2.5 px-3">Division</th>
-                                        <th class="py-2.5 px-3">Block Code &amp; Name</th>
-                                        <th class="py-2.5 px-3">Generated Palms</th>
-                                        <th class="py-2.5 px-3">GPS Verified</th>
-                                        <th class="py-2.5 px-3 text-right">Admin Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="admin-hierarchy-tbody" class="divide-y divide-slate-100"></tbody>
-                            </table>
+                        <div id="crud-fertilizers" class="divide-y divide-slate-100"></div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+                        <span class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                            <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600"></i> GPS &amp; Season Thresholds
+                        </span>
+                        <div class="space-y-2.5">
+                            <div>
+                                <label class="text-[11px] font-bold text-slate-500">Max Allowed GPS Distance (Meters)</label>
+                                <input id="set-gps-thresh" type="number" min="1" max="500" value="20"
+                                    class="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono-code text-xs font-bold" />
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-bold text-slate-500">Season Start Month (1-12)</label>
+                                <input id="set-season-month" type="number" min="1" max="12" value="4"
+                                    class="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono-code text-xs font-bold" />
+                            </div>
+                            <button type="button" id="btn-save-settings" class="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5">
+                                <i data-lucide="save" class="w-4 h-4"></i> Save Settings
+                            </button>
                         </div>
                     </div>
                 </div>
             </section>
         </main>
+
+        <!-- MOBILE FIXED BOTTOM TAB MENU (One-Handed Field Use) -->
+        <nav id="mobile-nav" class="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 mobile-bottom-nav no-print">
+            <div class="grid grid-flow-col auto-cols-fr h-16 px-1">
+                <button type="button" data-nav="dashboard" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition">
+                    <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+                    <span>Home</span>
+                </button>
+                <button type="button" data-nav="harvest" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition">
+                    <i data-lucide="scissors" class="w-5 h-5"></i>
+                    <span>Harvest</span>
+                </button>
+                <button type="button" data-nav="maintenance" data-min-role="supervisor" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition">
+                    <i data-lucide="sprout" class="w-5 h-5"></i>
+                    <span>Care</span>
+                </button>
+                <button type="button" data-nav="mapper" data-min-role="admin" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition">
+                    <i data-lucide="map-pin" class="w-5 h-5"></i>
+                    <span>Mapper</span>
+                </button>
+                <button type="button" data-nav="compliance" data-min-role="admin" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition">
+                    <i data-lucide="shield-alert" class="w-5 h-5"></i>
+                    <span>GPS Log</span>
+                </button>
+                <button type="button" data-nav="admin" data-min-role="admin" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition">
+                    <i data-lucide="sliders" class="w-5 h-5"></i>
+                    <span>Admin</span>
+                </button>
+            </div>
+        </nav>
     </div>
 
-    <!-- Toast Notification -->
-    <div id="toast" class="hidden fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl text-xs sm:text-sm font-bold flex items-center gap-2 border border-slate-700"></div>
+    <!-- ========================================================================
+         4. MODALS (Harvest Entry, Field Care Entry, GPS Mapper, Admin CRUD)
+         ======================================================================== -->
+
+    <!-- HARVEST MODAL -->
+    <div id="modal-harvest" class="hidden fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="modal-sheet bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl border border-slate-200 p-5 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-mono-code font-extrabold text-sm" id="mh-tree-badge">#1</div>
+                    <div>
+                        <div class="text-sm font-extrabold text-slate-900" id="mh-title">Palm #1</div>
+                        <div class="text-[11px] font-mono-code text-slate-400" id="mh-sub">Round 2 &bull; Auto GPS</div>
+                    </div>
+                </div>
+                <button type="button" data-close-modal="modal-harvest" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Bunches Stepper -->
+            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="package-check" class="w-5 h-5 text-emerald-600"></i>
+                    <div>
+                        <div class="text-xs font-extrabold text-slate-800">Bunches</div>
+                        <div class="text-[10px] text-slate-400">Fresh Fruit Bunches</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" data-step="mh-bunches:-1" class="w-10 h-10 rounded-xl bg-white border border-slate-200 font-bold text-lg flex items-center justify-center active:scale-95">-</button>
+                    <input id="mh-bunches" type="number" min="0" max="60" value="2" class="w-14 text-center font-mono-code font-extrabold text-lg bg-transparent outline-none" />
+                    <button type="button" data-step="mh-bunches:1" class="w-10 h-10 rounded-xl bg-emerald-600 text-white font-bold text-lg flex items-center justify-center active:scale-95">+</button>
+                </div>
+            </div>
+
+            <!-- Fronds Stepper -->
+            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="scissors" class="w-5 h-5 text-teal-600"></i>
+                    <div>
+                        <div class="text-xs font-extrabold text-slate-800">Fronds</div>
+                        <div class="text-[10px] text-slate-400">Pruned Fronds</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" data-step="mh-fronds:-1" class="w-10 h-10 rounded-xl bg-white border border-slate-200 font-bold text-lg flex items-center justify-center active:scale-95">-</button>
+                    <input id="mh-fronds" type="number" min="0" max="60" value="2" class="w-14 text-center font-mono-code font-extrabold text-lg bg-transparent outline-none" />
+                    <button type="button" data-step="mh-fronds:1" class="w-10 h-10 rounded-xl bg-teal-600 text-white font-bold text-lg flex items-center justify-center active:scale-95">+</button>
+                </div>
+            </div>
+
+            <button type="button" id="btn-submit-harvest" class="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
+                <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                <span>Submit (Verify GPS)</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- MAINTENANCE MODAL -->
+    <div id="modal-maint" class="hidden fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="modal-sheet bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl border border-slate-200 p-5 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-mono-code font-extrabold text-sm" id="mm-tree-badge">#1</div>
+                    <div>
+                        <div class="text-sm font-extrabold text-slate-900" id="mm-title">Field Care &bull; Palm #1</div>
+                        <div class="text-[11px] font-mono-code text-slate-400" id="mm-sub">Fertilizer, Weed &amp; Sanitation</div>
+                    </div>
+                </div>
+                <button type="button" data-close-modal="modal-maint" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Fertilizer Variety Selector -->
+            <div class="space-y-1.5">
+                <label class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                    <i data-lucide="flask-conical" class="w-3.5 h-3.5 text-amber-600"></i> Fertilizer Variety
+                </label>
+                <div class="grid grid-cols-3 gap-2">
+                    <select id="mm-fert-id" class="col-span-2 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold"></select>
+                    <div class="relative">
+                        <input id="mm-fert-kg" type="number" step="0.1" min="0" max="50" placeholder="kg"
+                            class="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-bold" />
+                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono-code">kg</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Weed Condition Icon Toggle -->
+            <div class="space-y-1.5">
+                <label class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                    <i data-lucide="leaf" class="w-3.5 h-3.5 text-emerald-600"></i> Weed Circle Condition
+                </label>
+                <div class="grid grid-cols-3 gap-2" id="mm-weed-group">
+                    <button type="button" data-weed="clean" class="weed-btn py-2.5 px-2 rounded-xl border border-slate-200 text-xs font-bold flex flex-col items-center gap-1">
+                        <i data-lucide="sparkles" class="w-4 h-4 text-emerald-600"></i> Clean
+                    </button>
+                    <button type="button" data-weed="moderate" class="weed-btn py-2.5 px-2 rounded-xl border border-slate-200 text-xs font-bold flex flex-col items-center gap-1">
+                        <i data-lucide="alert-circle" class="w-4 h-4 text-amber-500"></i> Moderate
+                    </button>
+                    <button type="button" data-weed="heavy" class="weed-btn py-2.5 px-2 rounded-xl border border-slate-200 text-xs font-bold flex flex-col items-center gap-1">
+                        <i data-lucide="flame" class="w-4 h-4 text-red-500"></i> Heavy
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sanitation Condition Icon Toggle (Good / Medium / Bad) -->
+            <div class="space-y-1.5">
+                <label class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                    <i data-lucide="shield-check" class="w-3.5 h-3.5 text-blue-600"></i> Sanitation Condition
+                </label>
+                <div class="grid grid-cols-3 gap-2" id="mm-san-group">
+                    <button type="button" data-san="good" class="san-btn py-2.5 px-2 rounded-xl border border-slate-200 text-xs font-bold flex flex-col items-center gap-1">
+                        <i data-lucide="smile" class="w-4 h-4 text-emerald-600"></i> Good
+                    </button>
+                    <button type="button" data-san="medium" class="san-btn py-2.5 px-2 rounded-xl border border-slate-200 text-xs font-bold flex flex-col items-center gap-1">
+                        <i data-lucide="meh" class="w-4 h-4 text-amber-500"></i> Medium
+                    </button>
+                    <button type="button" data-san="bad" class="san-btn py-2.5 px-2 rounded-xl border border-slate-200 text-xs font-bold flex flex-col items-center gap-1">
+                        <i data-lucide="frown" class="w-4 h-4 text-red-500"></i> Bad
+                    </button>
+                </div>
+            </div>
+
+            <button type="button" id="btn-submit-maint" class="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
+                <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                <span>Submit Care (Verify GPS)</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- GPS MAPPER MODAL -->
+    <div id="modal-mapper" class="hidden fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="modal-sheet bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl border border-slate-200 p-5 shadow-2xl space-y-3.5">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <i data-lucide="map-pin" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <div class="text-sm font-extrabold text-slate-900" id="mp-title">Map Tree GPS</div>
+                        <div class="text-[11px] text-slate-400" id="mp-sub">Capture live coordinates</div>
+                    </div>
+                </div>
+                <button type="button" data-close-modal="modal-mapper" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div>
+                <label class="text-[11px] font-bold text-slate-500">Tree Number (#)</label>
+                <input id="mp-tree-no" type="number" min="1" class="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono-code text-sm font-bold" />
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="text-[11px] font-bold text-slate-500">Latitude</label>
+                    <input id="mp-lat" type="number" step="0.000001" class="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono-code text-xs" />
+                </div>
+                <div>
+                    <label class="text-[11px] font-bold text-slate-500">Longitude</label>
+                    <input id="mp-lng" type="number" step="0.000001" class="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono-code text-xs" />
+                </div>
+            </div>
+
+            <button type="button" id="btn-mp-capture" class="w-full py-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold flex items-center justify-center gap-1.5">
+                <i data-lucide="locate-fixed" class="w-4 h-4"></i> Capture Phone GPS
+            </button>
+
+            <div class="flex gap-2 pt-1">
+                <button type="button" id="btn-mp-delete" class="hidden py-2.5 px-3 rounded-xl border border-red-200 bg-red-50 text-red-600 text-xs font-bold flex items-center justify-center">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+                <button type="button" id="btn-mp-save" class="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5">
+                    <i data-lucide="save" class="w-4 h-4"></i> Save Tree GPS
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADMIN GENERIC CRUD MODAL (Estate / Division / Field / Block / Batch Trees / Fertilizer) -->
+    <div id="modal-admin-crud" class="hidden fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="modal-sheet bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl border border-slate-200 p-5 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <i data-lucide="sliders" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <div class="text-sm font-extrabold text-slate-900" id="ac-title">Edit Item</div>
+                        <div class="text-[11px] text-slate-400" id="ac-sub">Master Configuration</div>
+                    </div>
+                </div>
+                <button type="button" data-close-modal="modal-admin-crud" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div id="ac-body" class="space-y-3"></div>
+            <div class="flex gap-2 pt-1">
+                <button type="button" data-close-modal="modal-admin-crud" class="py-2.5 px-4 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold">
+                    Cancel
+                </button>
+                <button type="button" id="btn-ac-save" class="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5">
+                    <i data-lucide="check" class="w-4 h-4"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
 
     <script src="/app.js"></script>
 </body>

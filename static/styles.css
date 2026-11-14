@@ -1,26 +1,53 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+/* ============================================================================
+   ELAEIS — Palm-based Crop Monitoring System
+   Modern Minimal Icon-First Agri-Tech Stylesheet
+   ============================================================================ */
 
 :root {
+    --emerald-50: #ecfdf5;
+    --emerald-100: #d1fae5;
+    --emerald-500: #10b981;
     --emerald-600: #059669;
     --emerald-700: #047857;
-    --emerald-50: #ecfdf5;
+    --emerald-900: #064e3b;
     --slate-50: #f8fafc;
+    --slate-100: #f1f5f9;
+    --slate-200: #e2e8f0;
+    --slate-300: #cbd5e1;
+    --slate-400: #94a3b8;
+    --slate-500: #64748b;
+    --slate-600: #475569;
+    --slate-700: #334155;
+    --slate-800: #1e293b;
     --slate-900: #0f172a;
+    --red-50: #fef2f2;
+    --red-100: #fee2e2;
+    --red-500: #ef4444;
+    --red-600: #dc2626;
+    --red-700: #b91c1c;
+    --amber-50: #fffbeb;
+    --amber-100: #fef3c7;
+    --amber-500: #f59e0b;
+    --amber-600: #d97706;
 }
 
 * {
     box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
 }
 
-body {
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    background-color: #F8FAFC;
-    color: #0F172A;
-    -webkit-font-smoothing: antialiased;
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--slate-50);
+    color: var(--slate-900);
+    min-height: 100vh;
+    overflow-x: hidden;
 }
 
 .font-mono-code {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 /* Custom Scrollbar */
@@ -28,48 +55,134 @@ body {
     width: 6px;
     height: 6px;
 }
-
 ::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: var(--slate-100);
 }
-
 ::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: var(--slate-300);
     border-radius: 9999px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: var(--slate-400);
 }
 
-/* Smooth transitions */
-.tab-transition {
-    animation: fadeIn 0.18s ease-out;
+/* 2D Palm Card Map Grid */
+.palm-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(82px, 1fr));
+    gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+    .palm-grid {
+        grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+        gap: 0.625rem;
+    }
+}
+
+.palm-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 82px;
+    padding: 0.5rem 0.375rem;
+    border-radius: 0.875rem;
+    border: 1.5px solid var(--slate-200);
+    background: #ffffff;
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, background-color 0.14s ease;
+}
+
+.palm-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--emerald-500);
+    box-shadow: 0 6px 14px -4px rgba(5, 150, 105, 0.16);
+}
+
+.palm-card:active {
+    transform: scale(0.96);
+}
+
+.palm-card.done-harvest {
+    background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
+    border-color: #10b981;
+}
+
+.palm-card.done-maint {
+    background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%);
+    border-color: #059669;
+}
+
+.palm-card.done-maint.warn-cond {
+    background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+    border-color: #f59e0b;
+}
+
+.palm-card.done-maint.bad-cond {
+    background: linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%);
+    border-color: #ef4444;
+}
+
+.palm-card.mapped-gps {
+    background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+    border-color: #3b82f6;
+}
+
+.palm-card.inactive-tree {
+    opacity: 0.45;
+    background: var(--slate-100);
+    border-style: dashed;
+}
+
+/* Compliance red-flagged row */
+.row-flagged {
+    background-color: #fef2f2 !important;
+    border-left: 4px solid #dc2626 !important;
+}
+.row-flagged:hover {
+    background-color: #fee2e2 !important;
+}
+
+/* Bottom Navigation safe area for mobile */
+.mobile-bottom-nav {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Modal backdrop animation */
+.modal-backdrop {
+    background-color: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.15s ease-out;
+}
+
+.modal-sheet {
+    animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(4px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
-/* Prevent iOS input zoom on mobile */
-@media (max-width: 640px) {
-    input, select, textarea {
-        font-size: 16px !important;
-    }
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0.8; }
+    to { transform: translateY(0); opacity: 1; }
 }
 
+/* Print / PDF Export Styling */
 @media print {
     .no-print {
         display: none !important;
     }
     body {
         background: #ffffff !important;
+    }
+    .print-card {
+        box-shadow: none !important;
+        border: 1px solid #cbd5e1 !important;
+        break-inside: avoid;
     }
 }
