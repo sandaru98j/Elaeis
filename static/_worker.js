@@ -3,16 +3,14 @@
 // Cloudflare Worker API + D1 (SQLite)
 //
 // Hierarchy : Estate > Division > Field (year, ha) > Block > Tree
-// Roles     : pending (normal user, no access) < harvester < supervisor < admin
-//             The seeded Master Admin can never be demoted or deleted.
+// Scope     : Harvest (Bunches & Fronds) + Mill Dispatch Weight (kg)
+// Analytics : Total Bunches, Total Fronds, Dispatch Weight, ABW, YPH
 // ============================================================================
 
-const PBKDF2_ITER = 20000; // kept moderate to stay inside Workers CPU limits
+const PBKDF2_ITER = 20000;
 const SESSION_DAYS = 30;
 const RESET_MINUTES = 30;
 const ROLE_RANK = { pending: 0, harvester: 1, supervisor: 2, admin: 3 };
-const WEED = ["clean", "moderate", "heavy"];
-const SANITATION = ["good", "medium", "bad"];
 
 const SCHEMA = [
     `CREATE TABLE IF NOT EXISTS el_users (
@@ -92,27 +90,15 @@ const SCHEMA = [
         recorded_at TEXT NOT NULL,
         UNIQUE (tree_id, year_month, round_no)
     )`,
-    `CREATE TABLE IF NOT EXISTS el_maintenance (
+    `CREATE TABLE IF NOT EXISTS el_dispatch (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        tree_id INTEGER NOT NULL,
-        work_date TEXT NOT NULL,
-        fertilizer_id INTEGER,
-        fertilizer_kg REAL,
-        weed TEXT,
-        sanitation TEXT,
+        division_id INTEGER NOT NULL,
+        dispatch_date TEXT NOT NULL,
+        year_month TEXT NOT NULL,
+        round_no INTEGER NOT NULL,
+        weight_kg REAL NOT NULL,
         user_id INTEGER NOT NULL,
-        user_lat REAL,
-        user_lng REAL,
-        user_acc REAL,
-        recorded_at TEXT NOT NULL,
-        UNIQUE (tree_id, work_date)
-    )`,
-    `CREATE TABLE IF NOT EXISTS el_fertilizers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        code TEXT NOT NULL UNIQUE COLLATE NOCASE,
-        name TEXT NOT NULL,
-        std_kg REAL NOT NULL,
-        active INTEGER NOT NULL DEFAULT 1
+        recorded_at TEXT NOT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS el_settings (
         key TEXT PRIMARY KEY,
@@ -121,8 +107,8 @@ const SCHEMA = [
     `CREATE INDEX IF NOT EXISTS idx_el_trees_block ON el_trees (block_id)`,
     `CREATE INDEX IF NOT EXISTS idx_el_harvest_date ON el_harvest (harvest_date)`,
     `CREATE INDEX IF NOT EXISTS idx_el_harvest_tree ON el_harvest (tree_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_el_maint_date ON el_maintenance (work_date)`,
-    `CREATE INDEX IF NOT EXISTS idx_el_maint_tree ON el_maintenance (tree_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_el_dispatch_date ON el_dispatch (dispatch_date)`,
+    `CREATE INDEX IF NOT EXISTS idx_el_dispatch_div ON el_dispatch (division_id, year_month, round_no)`,
     `CREATE INDEX IF NOT EXISTS idx_el_sessions_user ON el_sessions (user_id)`,
 ];
 
@@ -220,8 +206,16 @@ function randomCode() {
     return String(n).padStart(6, "0");
 }
 
-function roundOf(dateStr) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr || "")) fail(400, "Invalid date.");
+function validDate(s) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(s || "");
+}
+
+function roundOf(dateStr, explicitRound = null) {
+    if (!validDate(dateStr)) fail(400, "Invalid date.");
+    const r = toInt(explicitRound);
+    if (r === 1 || r === 2 || r === 3) {
+        return { yearMonth: dateStr.slice(0, 7), round: r };
+    }
     const day = Number(dateStr.slice(8, 10));
     return { yearMonth: dateStr.slice(0, 7), round: day <= 10 ? 1 : day <= 20 ? 2 : 3 };
 }
@@ -240,7 +234,6 @@ function distanceM(lat1, lng1, lat2, lng2) {
 function publicUser(u) {
     return {
         id: u.id,
-        username: u.username,
         email: u.email,
         phone: u.phone,
         full_name: u.full_name,
@@ -249,12 +242,8 @@ function publicUser(u) {
     };
 }
 
-function validDate(s) {
-    return /^\d{4}-\d{2}-\d{2}$/.test(s || "");
-}
-
 // ---------------------------------------------------------------------------
-// Schema bootstrap + Uskvalley seed (runs once per database)
+// Schema bootstrap + Uskvalley seed
 // ---------------------------------------------------------------------------
 let schemaReady = false;
 
@@ -263,7 +252,7 @@ async function ensureSchema(env) {
     const db = env.DB;
     await db.batch(SCHEMA.map((s) => db.prepare(s)));
     const lock = await db
-        .prepare("INSERT OR IGNORE INTO el_settings (key, value) VALUES ('seeded_v2', ?)")
+        .prepare("INSERT OR IGNORE INTO el_settings (key, value) VALUES ('seeded_v3', ?)")
         .bind(nowIso())
         .run();
     if (lock.meta && lock.meta.changes === 1) {
@@ -279,6 +268,7 @@ async function seed(env) {
     const now = nowIso();
     const today = now.slice(0, 10);
     const ym = today.slice(0, 7);
+    const curRound = roundOf(today).round;
 
     const fields = [
         // [id, division_id, name, year, ha]
@@ -318,20 +308,8 @@ async function seed(env) {
                  VALUES (3, 'harvester', 'harvester@uskvalley.lk', '+94772222222', 'Nimal Silva', 'harvester', 0, ?, 1, ?)`
             )
             .bind(adminHash, now),
-        db
-            .prepare(
-                `INSERT OR IGNORE INTO el_users (id, username, email, phone, full_name, role, is_master, pass_hash)
-                 VALUES (4, 'ruwan', 'ruwan@uskvalley.lk', '+94773333333', 'Ruwan Fernando', 'pending', 0, ?)`
-            )
-            .bind(adminHash),
         db.prepare("INSERT OR IGNORE INTO el_settings (key, value) VALUES ('gps_threshold_m', '20')"),
         db.prepare("INSERT OR IGNORE INTO el_settings (key, value) VALUES ('season_start_month', '4')"),
-        db.prepare(
-            "INSERT OR IGNORE INTO el_fertilizers (id, code, name, std_kg) VALUES (1, 'ERP', 'Eppawala Rock Phosphate', 2.0)"
-        ),
-        db.prepare(
-            "INSERT OR IGNORE INTO el_fertilizers (id, code, name, std_kg) VALUES (2, 'AOP', 'Adult Oil Palm Mixture', 2.5)"
-        ),
         db.prepare("INSERT OR IGNORE INTO el_estates (id, name) VALUES (1, 'Uskvalley Estate')"),
         db.prepare("INSERT OR IGNORE INTO el_divisions (id, estate_id, name) VALUES (1, 1, 'Uskvalley Division')"),
         db.prepare("INSERT OR IGNORE INTO el_divisions (id, estate_id, name) VALUES (2, 1, 'Trafalgar Division')"),
@@ -358,7 +336,7 @@ async function seed(env) {
         }
     }
 
-    // Pre-map GPS coordinates on Block 1 (Trees 1..150) so GPS Mapper & Compliance Log have real plantation coordinates
+    // Pre-map GPS coordinates on Block 1 (Trees 1..150)
     stmts.push(
         db
             .prepare(
@@ -373,19 +351,19 @@ async function seed(env) {
             .bind(now)
     );
 
-    // Seed sample harvest & maintenance logs (including Tree 121 and both compliant <=20m and red-flagged >20m GPS entries)
+    // Seed sample harvest logs across Rounds 1, 2, 3 so Round-by-Round and Month-by-Month comparisons work out of the box
     const sampleHarvest = [
         // [tree_no, date, ym, round, bunches, fronds, user_id, dLat, dLng, acc]
-        [1, today, ym, roundOf(today).round, 3, 2, 3, 0.00002, 0.00001, 4.1],
-        [2, today, ym, roundOf(today).round, 2, 2, 3, 0.00003, -0.00002, 3.9],
-        [3, today, ym, roundOf(today).round, 4, 3, 3, 0.00042, 0.00035, 6.2], // >20m violation (~60m away)
-        [4, today, ym, roundOf(today).round, 2, 1, 2, 0.00001, 0.00002, 3.5],
-        [5, today, ym, roundOf(today).round, 3, 2, 3, 0.00002, 0.00002, 4.0],
-        [6, today, ym, roundOf(today).round, 1, 2, 3, 0.00075, -0.00048, 8.0], // >20m violation (~98m away)
-        [7, today, ym, roundOf(today).round, 3, 2, 3, 0.00001, -0.00001, 3.7],
-        [8, today, ym, roundOf(today).round, 2, 2, 2, 0.00002, 0.00001, 4.2],
-        [12, today, ym, roundOf(today).round, 4, 2, 3, 0.00003, 0.00001, 4.4],
-        [121, today, ym, roundOf(today).round, 3, 2, 2, 0.00001, 0.00001, 3.2],
+        [1, `${ym}-04`, ym, 1, 12, 8, 3, 0.00002, 0.00001, 4.1],
+        [2, `${ym}-04`, ym, 1, 10, 7, 3, 0.00003, -0.00002, 3.9],
+        [3, `${ym}-05`, ym, 1, 14, 9, 3, 0.00042, 0.00035, 6.2], // >20m violation
+        [4, `${ym}-05`, ym, 1, 11, 8, 2, 0.00001, 0.00002, 3.5],
+        [5, today, ym, curRound, 15, 10, 3, 0.00002, 0.00002, 4.0],
+        [6, today, ym, curRound, 9, 6, 3, 0.00075, -0.00048, 8.0], // >20m violation
+        [7, today, ym, curRound, 13, 8, 3, 0.00001, -0.00001, 3.7],
+        [8, today, ym, curRound, 11, 7, 2, 0.00002, 0.00001, 4.2],
+        [12, today, ym, curRound, 14, 9, 3, 0.00003, 0.00001, 4.4],
+        [121, today, ym, curRound, 16, 10, 2, 0.00001, 0.00001, 3.2],
     ];
     for (const [tno, dt, ymo, rnd, b, f, uid, dLat, dLng, acc] of sampleHarvest) {
         const baseLat = 6.1420 + Math.floor((tno - 1) / 10) * 0.00008;
@@ -402,27 +380,20 @@ async function seed(env) {
         );
     }
 
-    const sampleMaint = [
-        // [tree_no, date, fert_id, kg, weed, sanitation, user_id, dLat, dLng, acc]
-        [1, today, 1, 2.0, "clean", "good", 2, 0.00001, 0.00002, 3.6],
-        [2, today, 1, 2.0, "clean", "good", 2, 0.00002, -0.00001, 3.8],
-        [3, today, 2, 2.5, "moderate", "medium", 2, 0.00002, 0.00002, 4.1],
-        [4, today, 2, 2.5, "heavy", "bad", 2, 0.00055, 0.00040, 7.5], // >20m violation (~75m away)
-        [5, today, 1, 2.0, "clean", "good", 2, 0.00001, 0.00001, 3.4],
-        [121, today, 2, 2.5, "clean", "good", 2, 0.00001, -0.00001, 3.3],
+    // Seed sample Mill Dispatch Crop Weight logs (in kg)
+    const sampleDispatches = [
+        [1, `${ym}-05`, ym, 1, 895.0, 2, now],
+        [1, today, ym, curRound, 1480.0, 2, now],
+        [2, today, ym, curRound, 640.0, 2, now],
     ];
-    for (const [tno, dt, fid, kg, weed, san, uid, dLat, dLng, acc] of sampleMaint) {
-        const baseLat = 6.1420 + Math.floor((tno - 1) / 10) * 0.00008;
-        const baseLng = 80.3650 + ((tno - 1) % 10) * 0.00008;
+    for (const [divId, dt, ymo, rnd, wkg, uid, recAt] of sampleDispatches) {
         stmts.push(
             db
                 .prepare(
-                    `INSERT OR IGNORE INTO el_maintenance
-                     (tree_id, work_date, fertilizer_id, fertilizer_kg, weed, sanitation, user_id, user_lat, user_lng, user_acc, recorded_at)
-                     SELECT id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                     FROM el_trees WHERE block_id = 1 AND tree_no = ?`
+                    `INSERT INTO el_dispatch (division_id, dispatch_date, year_month, round_no, weight_kg, user_id, recorded_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)`
                 )
-                .bind(dt, fid, kg, weed, san, uid, Number((baseLat + dLat).toFixed(6)), Number((baseLng + dLng).toFixed(6)), acc, now, tno)
+                .bind(divId, dt, ymo, rnd, wkg, uid, recAt)
         );
     }
 
@@ -448,7 +419,7 @@ async function getSettings(db) {
 }
 
 // ---------------------------------------------------------------------------
-// Auth
+// Auth (Strictly Email + Password Login, Clean Pending Sign-Up)
 // ---------------------------------------------------------------------------
 async function currentUser(request, db) {
     const header = request.headers.get("Authorization") || "";
@@ -466,17 +437,17 @@ async function currentUser(request, db) {
 
 function requireRole(user, minRole) {
     if (!user) fail(401, "Please log in.");
-    if (user.role === "pending") fail(403, "Your account is waiting for admin approval.");
+    if (user.role === "pending") fail(403, "Pending admin approval.");
     if ((ROLE_RANK[user.role] ?? 0) < ROLE_RANK[minRole]) {
         fail(403, "You do not have permission for this action.");
     }
 }
 
-async function findUserByIdentifier(db, identifier) {
-    const idf = str(identifier, 120);
+async function findUserByEmailOrId(db, identifier) {
+    const idf = str(identifier, 120).toLowerCase();
     if (!idf) return null;
     return db
-        .prepare("SELECT * FROM el_users WHERE username = ? OR email = ? OR phone = ? LIMIT 1")
+        .prepare("SELECT * FROM el_users WHERE LOWER(email) = ? OR LOWER(username) = ? OR phone = ? LIMIT 1")
         .bind(idf, idf, normPhone(idf))
         .first();
 }
@@ -493,44 +464,53 @@ async function createSession(db, userId) {
 
 async function handleRegister(db, body) {
     const full_name = str(body.full_name, 80);
-    const username = str(body.username, 32);
     const email = str(body.email, 120).toLowerCase();
-    const phone = normPhone(body.phone);
+    const phone = normPhone(body.phone || `+94${Math.floor(700000000 + Math.random() * 99999999)}`);
     const password = String(body.password || "");
+    const baseUser = email.split("@")[0]?.replace(/[^a-zA-Z0-9._-]/g, "") || "user";
+    const username = str(body.username || `${baseUser}_${Math.floor(100 + Math.random() * 900)}`, 32);
 
     if (full_name.length < 2) fail(400, "Enter your full name.");
-    if (!/^[a-zA-Z0-9._-]{3,32}$/.test(username)) fail(400, "Username: 3-32 letters, numbers, . _ -");
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail(400, "Enter a valid email address.");
     if (!/^\+?\d{9,15}$/.test(phone)) fail(400, "Enter a valid mobile number.");
     if (password.length < 8) fail(400, "Password must be at least 8 characters.");
 
     const clash = await db
-        .prepare("SELECT username, email, phone FROM el_users WHERE username = ? OR email = ? OR phone = ?")
-        .bind(username, email, phone)
+        .prepare("SELECT email, phone FROM el_users WHERE LOWER(email) = ? OR phone = ?")
+        .bind(email, phone)
         .first();
     if (clash) {
-        if (clash.username.toLowerCase() === username.toLowerCase()) fail(409, "Username is already taken.");
         if (clash.email.toLowerCase() === email) fail(409, "Email is already registered.");
         fail(409, "Mobile number is already registered.");
     }
 
     const pass_hash = await hashPassword(password);
-    const res = await db
+    await db
         .prepare(
             `INSERT INTO el_users (username, email, phone, full_name, role, pass_hash)
              VALUES (?, ?, ?, ?, 'pending', ?)`
         )
         .bind(username, email, phone, full_name, pass_hash)
         .run();
-    const user = await db.prepare("SELECT * FROM el_users WHERE id = ?").bind(res.meta.last_row_id).first();
-    const token = await createSession(db, user.id);
-    return { token, user: publicUser(user) };
+
+    return {
+        ok: true,
+        message: "Account created successfully. Pending admin approval.",
+    };
 }
 
 async function handleLogin(db, body) {
-    const user = await findUserByIdentifier(db, body.identifier);
+    const email = str(body.email || body.identifier, 120).toLowerCase();
+    if (!email) fail(400, "Enter your email address.");
+    const user = await db
+        .prepare("SELECT * FROM el_users WHERE LOWER(email) = ? LIMIT 1")
+        .bind(email)
+        .first();
     const ok = user && (await verifyPassword(String(body.password || ""), user.pass_hash));
-    if (!ok) fail(401, "Incorrect login details.");
+    if (!ok) fail(401, "Invalid email or password.");
+    if (user.role === "pending") {
+        fail(403, "Account created successfully. Pending admin approval.");
+    }
     await db.prepare("DELETE FROM el_sessions WHERE user_id = ? AND expires_at <= ?").bind(user.id, nowIso()).run();
     const token = await createSession(db, user.id);
     return { token, user: publicUser(user) };
@@ -538,10 +518,8 @@ async function handleLogin(db, body) {
 
 async function handleForgot(db, body) {
     const channel = body.channel === "email" ? "email" : "sms";
-    const user = await findUserByIdentifier(db, body.identifier);
-    let code = null;
+    const user = await findUserByEmailOrId(db, body.email || body.identifier);
     if (user) {
-        code = randomCode();
         await db
             .prepare("UPDATE el_resets SET used = 1 WHERE user_id = ? AND used = 0")
             .bind(user.id)
@@ -551,18 +529,18 @@ async function handleForgot(db, body) {
                 `INSERT INTO el_resets (user_id, code, channel, created_at, expires_at)
                  VALUES (?, ?, ?, ?, ?)`
             )
-            .bind(user.id, code, channel, nowIso(), addMinutes(RESET_MINUTES))
+            .bind(user.id, randomCode(), channel, nowIso(), addMinutes(RESET_MINUTES))
             .run();
     }
-    return { ok: true, demo_code: code };
+    return { ok: true };
 }
 
 async function handleReset(db, body) {
-    const user = await findUserByIdentifier(db, body.identifier);
+    const user = await findUserByEmailOrId(db, body.email || body.identifier);
     const code = str(body.code, 6);
     const next = String(body.new_password || "");
     if (next.length < 8) fail(400, "Password must be at least 8 characters.");
-    if (!user) fail(400, "Invalid or expired code.");
+    if (!user) fail(400, "Invalid or expired recovery code.");
 
     const reset = await db
         .prepare(
@@ -571,7 +549,7 @@ async function handleReset(db, body) {
         )
         .bind(user.id, nowIso())
         .first();
-    if (!reset) fail(400, "Invalid or expired code.");
+    if (!reset) fail(400, "Invalid or expired recovery code.");
 
     if (!safeEqual(reset.code, code)) {
         const attempts = reset.attempts + 1;
@@ -579,7 +557,7 @@ async function handleReset(db, body) {
             .prepare("UPDATE el_resets SET attempts = ?, used = ? WHERE id = ?")
             .bind(attempts, attempts >= 5 ? 1 : 0, reset.id)
             .run();
-        fail(400, "Invalid or expired code.");
+        fail(400, "Invalid or expired recovery code.");
     }
 
     await db.batch([
@@ -590,21 +568,8 @@ async function handleReset(db, body) {
     return { ok: true };
 }
 
-async function handleChangePassword(db, user, body) {
-    if (!(await verifyPassword(String(body.current || ""), user.pass_hash))) {
-        fail(400, "Current password is incorrect.");
-    }
-    const next = String(body.next || "");
-    if (next.length < 8) fail(400, "Password must be at least 8 characters.");
-    await db.batch([
-        db.prepare("UPDATE el_users SET pass_hash = ? WHERE id = ?").bind(await hashPassword(next), user.id),
-        db.prepare("DELETE FROM el_sessions WHERE user_id = ? AND token <> ?").bind(user.id, user.token),
-    ]);
-    return { ok: true };
-}
-
 // ---------------------------------------------------------------------------
-// Hierarchy & block data
+// Hierarchy & Block Data (Bunches & Fronds Only)
 // ---------------------------------------------------------------------------
 async function getHierarchy(db) {
     const [estates, divisions, fields, blocks] = await db.batch([
@@ -648,40 +613,16 @@ async function getBlockData(db, params) {
 
     const records = {};
     if (mode === "harvest") {
-        const { yearMonth, round } = roundOf(date);
+        const { yearMonth, round } = roundOf(date, params.round_no);
         const { results } = await db
             .prepare(
-                `SELECT h.tree_id, h.bunches, h.fronds, h.harvest_date
+                `SELECT h.tree_id, h.bunches, h.fronds, h.harvest_date, h.round_no
                  FROM el_harvest h JOIN el_trees t ON t.id = h.tree_id
                  WHERE t.block_id = ? AND h.year_month = ? AND h.round_no = ?`
             )
             .bind(blockId, yearMonth, round)
             .all();
         results.forEach((r) => (records[r.tree_id] = r));
-    } else if (mode === "maintenance") {
-        const month = date.slice(0, 7);
-        const { results } = await db
-            .prepare(
-                `SELECT m.tree_id, m.work_date, m.fertilizer_kg, m.weed, m.sanitation, f.code AS fertilizer_code
-                 FROM el_maintenance m
-                 JOIN el_trees t ON t.id = m.tree_id
-                 LEFT JOIN el_fertilizers f ON f.id = m.fertilizer_id
-                 WHERE t.block_id = ? AND substr(m.work_date, 1, 7) = ?
-                 ORDER BY m.work_date ASC`
-            )
-            .bind(blockId, month)
-            .all();
-        // Later rows overwrite earlier ones, keeping the latest state per tree this month.
-        results.forEach((r) => {
-            const prev = records[r.tree_id] || {};
-            records[r.tree_id] = {
-                work_date: r.work_date,
-                fertilizer_code: r.fertilizer_code || prev.fertilizer_code || null,
-                fertilizer_kg: r.fertilizer_code ? r.fertilizer_kg : prev.fertilizer_kg || null,
-                weed: r.weed || prev.weed || null,
-                sanitation: r.sanitation || prev.sanitation || null,
-            };
-        });
     }
 
     return {
@@ -717,7 +658,7 @@ async function handleHarvest(db, user, body) {
     requireRole(user, "harvester");
     const tree = await requireTree(db, body.tree_id);
     const date = str(body.date, 10);
-    const { yearMonth, round } = roundOf(date);
+    const { yearMonth, round } = roundOf(date, body.round_no);
     const bunches = toInt(body.bunches);
     const fronds = toInt(body.fronds);
     if (bunches === null || bunches < 0 || bunches > 60) fail(400, "Bunches must be 0-60.");
@@ -740,48 +681,76 @@ async function handleHarvest(db, user, body) {
     return { ok: true, round, distance_m: distanceInfo(tree, gps) };
 }
 
-async function handleMaintenance(db, user, body) {
-    requireRole(user, "supervisor");
-    const tree = await requireTree(db, body.tree_id);
-    const date = str(body.date, 10);
-    if (!validDate(date)) fail(400, "Invalid date.");
-
-    let fertilizerId = toInt(body.fertilizer_id);
-    let fertilizerKg = toNum(body.fertilizer_kg);
-    if (fertilizerId) {
-        const fert = await db.prepare("SELECT id FROM el_fertilizers WHERE id = ? AND active = 1").bind(fertilizerId).first();
-        if (!fert) fail(400, "Unknown fertilizer.");
-        if (fertilizerKg === null || fertilizerKg <= 0 || fertilizerKg > 50) fail(400, "Fertilizer kg must be 0-50.");
-    } else {
-        fertilizerId = null;
-        fertilizerKg = null;
+// ---------------------------------------------------------------------------
+// Dispatch Crop Weight Logger
+// ---------------------------------------------------------------------------
+async function getDispatches(db, params) {
+    const divId = toInt(params.division_id);
+    const roundNo = toInt(params.round_no);
+    const where = [];
+    const binds = [];
+    if (divId) {
+        where.push("x.division_id = ?");
+        binds.push(divId);
     }
-    const weed = WEED.includes(body.weed) ? body.weed : null;
-    const sanitation = SANITATION.includes(body.sanitation) ? body.sanitation : null;
-    if (!fertilizerId && !weed && !sanitation) fail(400, "Enter fertilizer, weed, or sanitation.");
-    const gps = readGps(body);
+    if (roundNo) {
+        where.push("x.round_no = ?");
+        binds.push(roundNo);
+    }
+    const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const { results } = await db
+        .prepare(
+            `SELECT x.id, x.division_id, d.name AS division_name, x.dispatch_date, x.year_month,
+                    x.round_no, x.weight_kg, u.full_name AS recorded_by, x.recorded_at
+             FROM el_dispatch x
+             JOIN el_divisions d ON d.id = x.division_id
+             LEFT JOIN el_users u ON u.id = x.user_id
+             ${clause}
+             ORDER BY x.dispatch_date DESC, x.id DESC LIMIT 200`
+        )
+        .bind(...binds)
+        .all();
+    return { dispatches: results };
+}
 
+async function handleCreateDispatch(db, user, body) {
+    requireRole(user, "harvester");
+    const divisionId = toInt(body.division_id);
+    const roundNo = toInt(body.round_no);
+    const date = str(body.date, 10);
+    const weightKg = toNum(body.weight_kg);
+
+    if (!divisionId) fail(400, "Select a division.");
+    const div = await db.prepare("SELECT id FROM el_divisions WHERE id = ?").bind(divisionId).first();
+    if (!div) fail(404, "Division not found.");
+    if (roundNo !== 1 && roundNo !== 2 && roundNo !== 3) fail(400, "Select Round 1, 2, or 3.");
+    if (!validDate(date)) fail(400, "Select a valid date.");
+    if (weightKg === null || weightKg <= 0 || weightKg > 500000) {
+        fail(400, "Enter a valid dispatch crop weight in kg.");
+    }
+
+    const yearMonth = date.slice(0, 7);
     await db
         .prepare(
-            `INSERT INTO el_maintenance
-               (tree_id, work_date, fertilizer_id, fertilizer_kg, weed, sanitation, user_id, user_lat, user_lng, user_acc, recorded_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT (tree_id, work_date) DO UPDATE SET
-               fertilizer_id = COALESCE(excluded.fertilizer_id, el_maintenance.fertilizer_id),
-               fertilizer_kg = COALESCE(excluded.fertilizer_kg, el_maintenance.fertilizer_kg),
-               weed = COALESCE(excluded.weed, el_maintenance.weed),
-               sanitation = COALESCE(excluded.sanitation, el_maintenance.sanitation),
-               user_id = excluded.user_id, user_lat = excluded.user_lat, user_lng = excluded.user_lng,
-               user_acc = excluded.user_acc, recorded_at = excluded.recorded_at`
+            `INSERT INTO el_dispatch (division_id, dispatch_date, year_month, round_no, weight_kg, user_id, recorded_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`
         )
-        .bind(tree.id, date, fertilizerId, fertilizerKg, weed, sanitation, user.id, gps.lat, gps.lng, gps.acc, nowIso())
+        .bind(divisionId, date, yearMonth, roundNo, weightKg, user.id, nowIso())
         .run();
 
-    return { ok: true, distance_m: distanceInfo(tree, gps) };
+    return { ok: true };
+}
+
+async function handleDeleteDispatch(db, user, body) {
+    requireRole(user, "supervisor");
+    const id = toInt(body.id);
+    if (!id) fail(400, "Missing dispatch ID.");
+    await db.prepare("DELETE FROM el_dispatch WHERE id = ?").bind(id).run();
+    return { ok: true };
 }
 
 // ---------------------------------------------------------------------------
-// Reports
+// Advanced Yield Analytics Engine (Bunches, Fronds, Dispatch Weight, ABW, YPH)
 // ---------------------------------------------------------------------------
 const JOINS = `JOIN el_trees t ON t.id = x.tree_id
     JOIN el_blocks b ON b.id = t.block_id
@@ -789,109 +758,273 @@ const JOINS = `JOIN el_trees t ON t.id = x.tree_id
     JOIN el_divisions d ON d.id = f.division_id
     JOIN el_estates e ON e.id = d.estate_id`;
 
-function reportScope(params) {
+async function getReport(db, params) {
     const from = validDate(params.from) ? params.from : "1900-01-01";
     const to = validDate(params.to) ? params.to : "2999-12-31";
-    const where = [];
-    const binds = [];
-    let group;
-    if (toInt(params.tree_id)) {
-        where.push("t.id = ?");
-        binds.push(toInt(params.tree_id));
-        group = { level: "Month", key: "substr(DATE, 1, 7)", label: "substr(DATE, 1, 7)" };
-    } else if (toInt(params.block_id)) {
-        where.push("t.block_id = ?");
-        binds.push(toInt(params.block_id));
-        group = { level: "Tree", key: "t.id", label: "'Tree ' || t.tree_no" };
-    } else if (toInt(params.field_id)) {
-        where.push("b.field_id = ?");
-        binds.push(toInt(params.field_id));
-        group = { level: "Block", key: "b.id", label: "b.name" };
-    } else if (toInt(params.division_id)) {
-        where.push("f.division_id = ?");
-        binds.push(toInt(params.division_id));
-        group = {
-            level: "Field",
-            key: "f.id",
-            label: "f.name || ' (' || f.planting_year || ' - ' || printf('%.2f', f.area_ha) || ' Ha)'",
-        };
-    } else if (toInt(params.estate_id)) {
-        where.push("d.estate_id = ?");
-        binds.push(toInt(params.estate_id));
-        group = { level: "Division", key: "d.id", label: "d.name" };
-    } else {
-        group = { level: "Estate", key: "e.id", label: "e.name" };
+    const roundFilter = toInt(params.round_no);
+
+    const estateId = toInt(params.estate_id);
+    const divisionId = toInt(params.division_id);
+    const fieldId = toInt(params.field_id);
+    const blockId = toInt(params.block_id);
+    const treeId = toInt(params.tree_id);
+
+    // 1. Determine Hectares (area_ha) for YPH calculation
+    let haSql = "SELECT COALESCE(SUM(f.area_ha), 0) AS total_ha FROM el_fields f JOIN el_divisions d ON d.id = f.division_id";
+    const haBinds = [];
+    if (fieldId) {
+        haSql += " WHERE f.id = ?";
+        haBinds.push(fieldId);
+    } else if (blockId) {
+        haSql += " JOIN el_blocks b ON b.field_id = f.id WHERE b.id = ?";
+        haBinds.push(blockId);
+    } else if (treeId) {
+        haSql += " JOIN el_blocks b ON b.field_id = f.id JOIN el_trees t ON t.block_id = b.id WHERE t.id = ?";
+        haBinds.push(treeId);
+    } else if (divisionId) {
+        haSql += " WHERE f.division_id = ?";
+        haBinds.push(divisionId);
+    } else if (estateId) {
+        haSql += " WHERE d.estate_id = ?";
+        haBinds.push(estateId);
     }
-    return { from, to, where, binds, group };
-}
+    const haRow = await db.prepare(haSql).bind(...haBinds).first();
+    const totalHa = Number(haRow?.total_ha || 0);
 
-async function getReport(db, params) {
-    const s = reportScope(params);
-    const extra = s.where.length ? " AND " + s.where.join(" AND ") : "";
-    const hWhere = `WHERE x.harvest_date BETWEEN ? AND ?${extra}`;
-    const mWhere = `WHERE x.work_date BETWEEN ? AND ?${extra}`;
-    const binds = [s.from, s.to, ...s.binds];
-    const spanDays = (Date.parse(s.to) - Date.parse(s.from)) / 86400000;
-    const bucketLen = !Number.isFinite(spanDays) || spanDays > 62 ? 7 : 10;
-    const hKey = s.group.key.replaceAll("DATE", "x.harvest_date");
-    const hLabel = s.group.label.replaceAll("DATE", "x.harvest_date");
-    const mKey = s.group.key.replaceAll("DATE", "x.work_date");
-    const mLabel = s.group.label.replaceAll("DATE", "x.work_date");
+    // 2. Build Harvest filter clauses
+    const hWhere = ["x.harvest_date BETWEEN ? AND ?"];
+    const hBinds = [from, to];
+    if (roundFilter) {
+        hWhere.push("x.round_no = ?");
+        hBinds.push(roundFilter);
+    }
+    if (treeId) {
+        hWhere.push("t.id = ?");
+        hBinds.push(treeId);
+    } else if (blockId) {
+        hWhere.push("t.block_id = ?");
+        hBinds.push(blockId);
+    } else if (fieldId) {
+        hWhere.push("b.field_id = ?");
+        hBinds.push(fieldId);
+    } else if (divisionId) {
+        hWhere.push("f.division_id = ?");
+        hBinds.push(divisionId);
+    } else if (estateId) {
+        hWhere.push("d.estate_id = ?");
+        hBinds.push(estateId);
+    }
+    const hClause = `WHERE ${hWhere.join(" AND ")}`;
 
-    const q = (sql) => db.prepare(sql).bind(...binds);
-    const [hTot, mTot, fertByType, weed, sanit, hSeries, mSeries, hGroup, mGroup] = await db.batch([
-        q(`SELECT COALESCE(SUM(bunches), 0) AS bunches, COALESCE(SUM(fronds), 0) AS fronds,
-                  COUNT(*) AS records, COUNT(DISTINCT x.tree_id) AS trees
-           FROM el_harvest x ${JOINS} ${hWhere}`),
-        q(`SELECT COALESCE(SUM(fertilizer_kg), 0) AS fert_kg,
-                  SUM(CASE WHEN fertilizer_id IS NOT NULL THEN 1 ELSE 0 END) AS fert_records,
-                  COUNT(DISTINCT CASE WHEN fertilizer_id IS NOT NULL THEN x.tree_id END) AS fert_trees,
-                  COUNT(*) AS records
-           FROM el_maintenance x ${JOINS} ${mWhere}`),
-        q(`SELECT fz.code, COALESCE(SUM(x.fertilizer_kg), 0) AS kg, COUNT(*) AS records
-           FROM el_maintenance x ${JOINS} JOIN el_fertilizers fz ON fz.id = x.fertilizer_id
-           ${mWhere} GROUP BY fz.code ORDER BY kg DESC`),
-        q(`SELECT x.weed AS k, COUNT(*) AS n FROM el_maintenance x ${JOINS}
-           ${mWhere} AND x.weed IS NOT NULL GROUP BY x.weed`),
-        q(`SELECT x.sanitation AS k, COUNT(*) AS n FROM el_maintenance x ${JOINS}
-           ${mWhere} AND x.sanitation IS NOT NULL GROUP BY x.sanitation`),
-        q(`SELECT substr(x.harvest_date, 1, ${bucketLen}) AS p, SUM(bunches) AS bunches, SUM(fronds) AS fronds
-           FROM el_harvest x ${JOINS} ${hWhere} GROUP BY p ORDER BY p`),
-        q(`SELECT substr(x.work_date, 1, ${bucketLen}) AS p, COALESCE(SUM(fertilizer_kg), 0) AS fert_kg
-           FROM el_maintenance x ${JOINS} ${mWhere} GROUP BY p ORDER BY p`),
-        q(`SELECT ${hKey} AS k, ${hLabel} AS label, SUM(bunches) AS bunches, SUM(fronds) AS fronds
-           FROM el_harvest x ${JOINS} ${hWhere} GROUP BY k ORDER BY bunches DESC LIMIT 60`),
-        q(`SELECT ${mKey} AS k, ${mLabel} AS label, COALESCE(SUM(fertilizer_kg), 0) AS fert_kg
-           FROM el_maintenance x ${JOINS} ${mWhere} GROUP BY k`),
+    // 3. Build Dispatch filter clauses (Dispatch is logged at Division level)
+    // Resolve target division if field/block/tree is selected
+    let targetDivisionId = divisionId;
+    if (!targetDivisionId && (fieldId || blockId || treeId)) {
+        let divLookupSql = "SELECT f.division_id FROM el_fields f";
+        let divArg = fieldId;
+        if (blockId) {
+            divLookupSql += " JOIN el_blocks b ON b.field_id = f.id WHERE b.id = ?";
+            divArg = blockId;
+        } else if (treeId) {
+            divLookupSql += " JOIN el_blocks b ON b.field_id = f.id JOIN el_trees t ON t.block_id = b.id WHERE t.id = ?";
+            divArg = treeId;
+        } else {
+            divLookupSql += " WHERE f.id = ?";
+        }
+        const dRow = await db.prepare(divLookupSql).bind(divArg).first();
+        if (dRow) targetDivisionId = dRow.division_id;
+    }
+
+    const dWhere = ["x.dispatch_date BETWEEN ? AND ?"];
+    const dBinds = [from, to];
+    if (roundFilter) {
+        dWhere.push("x.round_no = ?");
+        dBinds.push(roundFilter);
+    }
+    if (targetDivisionId) {
+        dWhere.push("x.division_id = ?");
+        dBinds.push(targetDivisionId);
+    } else if (estateId) {
+        dWhere.push("d.estate_id = ?");
+        dBinds.push(estateId);
+    }
+    const dClause = `WHERE ${dWhere.join(" AND ")}`;
+
+    // 4. Execute batch queries for Totals, Round-by-Round, Month-by-Month, and Division Breakdown
+    const [
+        hTot,
+        dTot,
+        hByRound,
+        dByRound,
+        hByMonth,
+        dByMonth,
+        hByDiv,
+        dByDiv,
+        divHaRows,
+    ] = await db.batch([
+        db
+            .prepare(
+                `SELECT COALESCE(SUM(bunches), 0) AS bunches,
+                        COALESCE(SUM(fronds), 0) AS fronds,
+                        COUNT(*) AS records,
+                        COUNT(DISTINCT x.tree_id) AS trees
+                 FROM el_harvest x ${JOINS} ${hClause}`
+            )
+            .bind(...hBinds),
+        db
+            .prepare(
+                `SELECT COALESCE(SUM(x.weight_kg), 0) AS dispatch_kg,
+                        COUNT(*) AS dispatch_records
+                 FROM el_dispatch x JOIN el_divisions d ON d.id = x.division_id ${dClause}`
+            )
+            .bind(...dBinds),
+        db
+            .prepare(
+                `SELECT x.round_no, COALESCE(SUM(bunches), 0) AS bunches, COALESCE(SUM(fronds), 0) AS fronds
+                 FROM el_harvest x ${JOINS} ${hClause}
+                 GROUP BY x.round_no ORDER BY x.round_no`
+            )
+            .bind(...hBinds),
+        db
+            .prepare(
+                `SELECT x.round_no, COALESCE(SUM(x.weight_kg), 0) AS dispatch_kg
+                 FROM el_dispatch x JOIN el_divisions d ON d.id = x.division_id ${dClause}
+                 GROUP BY x.round_no ORDER BY x.round_no`
+            )
+            .bind(...dBinds),
+        db
+            .prepare(
+                `SELECT x.year_month AS ym, COALESCE(SUM(bunches), 0) AS bunches, COALESCE(SUM(fronds), 0) AS fronds
+                 FROM el_harvest x ${JOINS} ${hClause}
+                 GROUP BY x.year_month ORDER BY x.year_month`
+            )
+            .bind(...hBinds),
+        db
+            .prepare(
+                `SELECT x.year_month AS ym, COALESCE(SUM(x.weight_kg), 0) AS dispatch_kg
+                 FROM el_dispatch x JOIN el_divisions d ON d.id = x.division_id ${dClause}
+                 GROUP BY x.year_month ORDER BY x.year_month`
+            )
+            .bind(...dBinds),
+        db
+            .prepare(
+                `SELECT d.id AS div_id, d.name AS label, COALESCE(SUM(bunches), 0) AS bunches, COALESCE(SUM(fronds), 0) AS fronds
+                 FROM el_harvest x ${JOINS} ${hClause}
+                 GROUP BY d.id ORDER BY bunches DESC`
+            )
+            .bind(...hBinds),
+        db
+            .prepare(
+                `SELECT d.id AS div_id, d.name AS label, COALESCE(SUM(x.weight_kg), 0) AS dispatch_kg
+                 FROM el_dispatch x JOIN el_divisions d ON d.id = x.division_id ${dClause}
+                 GROUP BY d.id`
+            )
+            .bind(...dBinds),
+        db.prepare(
+            `SELECT d.id AS div_id, d.name AS label, COALESCE(SUM(f.area_ha), 0) AS area_ha
+             FROM el_divisions d LEFT JOIN el_fields f ON f.division_id = d.id
+             GROUP BY d.id ORDER BY d.id`
+        ),
     ]);
 
-    const series = {};
-    hSeries.results.forEach((r) => (series[r.p] = { p: r.p, bunches: r.bunches, fronds: r.fronds, fert_kg: 0 }));
-    mSeries.results.forEach((r) => {
-        series[r.p] = series[r.p] || { p: r.p, bunches: 0, fronds: 0, fert_kg: 0 };
-        series[r.p].fert_kg = r.fert_kg;
+    const totalBunches = Number(hTot.results[0]?.bunches || 0);
+    const totalFronds = Number(hTot.results[0]?.fronds || 0);
+    const totalDispatchKg = Number(dTot.results[0]?.dispatch_kg || 0);
+
+    // Formulas:
+    // ABW = Total Dispatch Weight / Total Bunches
+    // YPH = Total Dispatch Weight / Total Hectares of selected Division/Field
+    const abw = totalBunches > 0 ? Number((totalDispatchKg / totalBunches).toFixed(2)) : 0;
+    const yph = totalHa > 0 ? Number((totalDispatchKg / totalHa).toFixed(2)) : 0;
+
+    // Round-by-Round Comparison (R1, R2, R3)
+    const roundsMap = {
+        1: { round_no: 1, label: "Round 1 (Days 1-10)", bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 },
+        2: { round_no: 2, label: "Round 2 (Days 11-20)", bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 },
+        3: { round_no: 3, label: "Round 3 (Days 21-End)", bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 },
+    };
+    hByRound.results.forEach((r) => {
+        if (roundsMap[r.round_no]) {
+            roundsMap[r.round_no].bunches = Number(r.bunches || 0);
+            roundsMap[r.round_no].fronds = Number(r.fronds || 0);
+        }
+    });
+    dByRound.results.forEach((r) => {
+        if (roundsMap[r.round_no]) {
+            roundsMap[r.round_no].dispatch_kg = Number(r.dispatch_kg || 0);
+        }
+    });
+    Object.values(roundsMap).forEach((r) => {
+        r.abw = r.bunches > 0 ? Number((r.dispatch_kg / r.bunches).toFixed(2)) : 0;
+        r.yph = totalHa > 0 ? Number((r.dispatch_kg / totalHa).toFixed(2)) : 0;
     });
 
-    const breakdown = {};
-    hGroup.results.forEach((r) => (breakdown[r.k] = { label: r.label, bunches: r.bunches, fronds: r.fronds, fert_kg: 0 }));
-    mGroup.results.forEach((r) => {
-        breakdown[r.k] = breakdown[r.k] || { label: r.label, bunches: 0, fronds: 0, fert_kg: 0 };
-        breakdown[r.k].fert_kg = r.fert_kg;
+    // Month-by-Month Comparison
+    const monthsMap = {};
+    hByMonth.results.forEach((r) => {
+        monthsMap[r.ym] = { ym: r.ym, bunches: Number(r.bunches || 0), fronds: Number(r.fronds || 0), dispatch_kg: 0, abw: 0, yph: 0 };
     });
+    dByMonth.results.forEach((r) => {
+        monthsMap[r.ym] = monthsMap[r.ym] || { ym: r.ym, bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 };
+        monthsMap[r.ym].dispatch_kg = Number(r.dispatch_kg || 0);
+    });
+    const monthComparison = Object.values(monthsMap)
+        .sort((a, b) => (a.ym < b.ym ? -1 : 1))
+        .map((m) => ({
+            ...m,
+            abw: m.bunches > 0 ? Number((m.dispatch_kg / m.bunches).toFixed(2)) : 0,
+            yph: totalHa > 0 ? Number((m.dispatch_kg / totalHa).toFixed(2)) : 0,
+        }));
+
+    // Division Breakdown
+    const divMap = {};
+    divHaRows.results.forEach((r) => {
+        if (targetDivisionId && r.div_id !== targetDivisionId) return;
+        divMap[r.div_id] = {
+            div_id: r.div_id,
+            label: r.label,
+            area_ha: Number(r.area_ha || 0),
+            bunches: 0,
+            fronds: 0,
+            dispatch_kg: 0,
+            abw: 0,
+            yph: 0,
+        };
+    });
+    hByDiv.results.forEach((r) => {
+        if (divMap[r.div_id]) {
+            divMap[r.div_id].bunches = Number(r.bunches || 0);
+            divMap[r.div_id].fronds = Number(r.fronds || 0);
+        }
+    });
+    dByDiv.results.forEach((r) => {
+        if (divMap[r.div_id]) {
+            divMap[r.div_id].dispatch_kg = Number(r.dispatch_kg || 0);
+        }
+    });
+    const breakdown = Object.values(divMap).map((d) => ({
+        ...d,
+        abw: d.bunches > 0 ? Number((d.dispatch_kg / d.bunches).toFixed(2)) : 0,
+        yph: d.area_ha > 0 ? Number((d.dispatch_kg / d.area_ha).toFixed(2)) : 0,
+    }));
 
     return {
-        from: s.from,
-        to: s.to,
-        bucket: bucketLen === 7 ? "month" : "day",
-        totals: { ...hTot.results[0], ...mTot.results[0], maint_records: mTot.results[0].records },
-        fertilizer: fertByType.results,
-        weed: Object.fromEntries(weed.results.map((r) => [r.k, r.n])),
-        sanitation: Object.fromEntries(sanit.results.map((r) => [r.k, r.n])),
-        series: Object.values(series).sort((a, b) => (a.p < b.p ? -1 : 1)),
-        group_level: s.group.level,
-        breakdown: Object.values(breakdown)
-            .sort((a, b) => b.bunches - a.bunches || b.fert_kg - a.fert_kg)
-            .slice(0, 40),
+        from,
+        to,
+        totals: {
+            bunches: totalBunches,
+            fronds: totalFronds,
+            records: Number(hTot.results[0]?.records || 0),
+            trees: Number(hTot.results[0]?.trees || 0),
+            dispatch_kg: totalDispatchKg,
+            dispatch_records: Number(dTot.results[0]?.dispatch_records || 0),
+            area_ha: totalHa,
+            abw,
+            yph,
+        },
+        round_comparison: Object.values(roundsMap),
+        month_comparison: monthComparison,
+        breakdown,
     };
 }
 
@@ -902,81 +1035,57 @@ function csvCell(v) {
 }
 
 async function getReportCsv(db, params) {
-    const s = reportScope(params);
-    const extra = s.where.length ? " AND " + s.where.join(" AND ") : "";
-    const binds = [s.from, s.to, ...s.binds];
-    const [h, m] = await db.batch([
-        db
-            .prepare(
-                `SELECT 'Harvest' AS activity, x.harvest_date AS date, 'R' || x.round_no AS round,
-                        e.name AS estate, d.name AS division, f.name AS field, f.planting_year, f.area_ha,
-                        b.name AS block, t.tree_no, x.bunches, x.fronds, NULL AS fertilizer, NULL AS fertilizer_kg,
-                        NULL AS weed, NULL AS sanitation, u.full_name AS recorded_by, x.recorded_at
-                 FROM el_harvest x ${JOINS} JOIN el_users u ON u.id = x.user_id
-                 WHERE x.harvest_date BETWEEN ? AND ?${extra} ORDER BY x.harvest_date LIMIT 20000`
-            )
-            .bind(...binds),
-        db
-            .prepare(
-                `SELECT 'Field Care' AS activity, x.work_date AS date, NULL AS round,
-                        e.name AS estate, d.name AS division, f.name AS field, f.planting_year, f.area_ha,
-                        b.name AS block, t.tree_no, NULL AS bunches, NULL AS fronds, fz.code AS fertilizer,
-                        x.fertilizer_kg, x.weed, x.sanitation, u.full_name AS recorded_by, x.recorded_at
-                 FROM el_maintenance x ${JOINS} JOIN el_users u ON u.id = x.user_id
-                 LEFT JOIN el_fertilizers fz ON fz.id = x.fertilizer_id
-                 WHERE x.work_date BETWEEN ? AND ?${extra} ORDER BY x.work_date LIMIT 20000`
-            )
-            .bind(...binds),
-    ]);
-    const cols = [
-        "activity", "date", "round", "estate", "division", "field", "planting_year", "area_ha", "block",
-        "tree_no", "bunches", "fronds", "fertilizer", "fertilizer_kg", "weed", "sanitation", "recorded_by", "recorded_at",
+    const rep = await getReport(db, params);
+    const lines = [
+        "Metric,Value",
+        `From Date,${rep.from}`,
+        `To Date,${rep.to}`,
+        `Total Bunches Cut,${rep.totals.bunches}`,
+        `Total Fronds Cut,${rep.totals.fronds}`,
+        `Total Dispatch Weight (kg),${rep.totals.dispatch_kg}`,
+        `Selected Area (Ha),${rep.totals.area_ha}`,
+        `Average Bunch Weight ABW (kg/bunch),${rep.totals.abw}`,
+        `Yield Per Hectare YPH (kg/Ha),${rep.totals.yph}`,
+        "",
+        "Round,Bunches,Fronds,Dispatch Weight (kg),ABW (kg/bunch),YPH (kg/Ha)",
+        ...rep.round_comparison.map((r) =>
+            [csvCell(r.label), r.bunches, r.fronds, r.dispatch_kg, r.abw, r.yph].join(",")
+        ),
+        "",
+        "Month,Bunches,Fronds,Dispatch Weight (kg),ABW (kg/bunch),YPH (kg/Ha)",
+        ...rep.month_comparison.map((m) =>
+            [csvCell(m.ym), m.bunches, m.fronds, m.dispatch_kg, m.abw, m.yph].join(",")
+        ),
     ];
-    const lines = [cols.join(",")];
-    [...h.results, ...m.results].forEach((r) => lines.push(cols.map((c) => csvCell(r[c])).join(",")));
     return new Response(lines.join("\n"), {
         headers: {
             "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": `attachment; filename="elaeis_report_${s.from}_${s.to}.csv"`,
+            "Content-Disposition": `attachment; filename="elaeis_yield_report_${rep.from}_${rep.to}.csv"`,
             "Cache-Control": "no-store",
         },
     });
 }
 
 // ---------------------------------------------------------------------------
-// Admin: compliance log
+// Admin: GPS Compliance Log (Harvest Only)
 // ---------------------------------------------------------------------------
 async function getCompliance(db, params) {
     const from = validDate(params.from) ? params.from : "1900-01-01";
     const to = validDate(params.to) ? params.to : "2999-12-31";
-    const userId = toInt(params.user_id);
-    const userClause = userId ? " AND x.user_id = ?" : "";
-    const binds = userId ? [from, to, userId, from, to, userId] : [from, to, from, to];
     const settings = await getSettings(db);
 
     const { results } = await db
         .prepare(
-            `SELECT * FROM (
-                SELECT 'harvest' AS activity, x.id, x.recorded_at, x.harvest_date AS work_date,
-                       x.user_lat, x.user_lng, x.user_acc, u.full_name, u.role,
-                       t.tree_no, t.lat AS tree_lat, t.lng AS tree_lng,
-                       b.name AS block, f.name AS field, d.name AS division,
-                       x.bunches || ' B / ' || x.fronds || ' F' AS detail
-                FROM el_harvest x ${JOINS} JOIN el_users u ON u.id = x.user_id
-                WHERE x.harvest_date BETWEEN ? AND ?${userClause}
-                UNION ALL
-                SELECT 'maintenance', x.id, x.recorded_at, x.work_date,
-                       x.user_lat, x.user_lng, x.user_acc, u.full_name, u.role,
-                       t.tree_no, t.lat, t.lng, b.name, f.name, d.name,
-                       TRIM(COALESCE(fz.code || ' ' || x.fertilizer_kg || 'kg ', '') ||
-                            COALESCE('Weed:' || x.weed || ' ', '') ||
-                            COALESCE('San:' || x.sanitation, ''))
-                FROM el_maintenance x ${JOINS} JOIN el_users u ON u.id = x.user_id
-                LEFT JOIN el_fertilizers fz ON fz.id = x.fertilizer_id
-                WHERE x.work_date BETWEEN ? AND ?${userClause}
-             ) ORDER BY recorded_at DESC LIMIT 1000`
+            `SELECT 'harvest' AS activity, x.id, x.recorded_at, x.harvest_date AS work_date,
+                    x.round_no, x.user_lat, x.user_lng, x.user_acc, u.full_name, u.role,
+                    t.tree_no, t.lat AS tree_lat, t.lng AS tree_lng,
+                    b.name AS block, f.name AS field, d.name AS division,
+                    x.bunches || ' Bunches / ' || x.fronds || ' Fronds (R' || x.round_no || ')' AS detail
+             FROM el_harvest x ${JOINS} JOIN el_users u ON u.id = x.user_id
+             WHERE x.harvest_date BETWEEN ? AND ?
+             ORDER BY x.recorded_at DESC LIMIT 1000`
         )
-        .bind(...binds)
+        .bind(from, to)
         .all();
 
     const rows = results.map((r) => {
@@ -994,7 +1103,7 @@ async function getCompliance(db, params) {
 }
 
 // ---------------------------------------------------------------------------
-// Admin: users
+// Admin: Users
 // ---------------------------------------------------------------------------
 async function adminUsers(db) {
     const [users, resets] = await db.batch([
@@ -1005,7 +1114,7 @@ async function adminUsers(db) {
         db
             .prepare(
                 `SELECT r.id, r.code, r.channel, r.created_at, r.expires_at, u.id AS user_id,
-                        u.full_name, u.username, u.phone, u.email
+                        u.full_name, u.email, u.phone
                  FROM el_resets r JOIN el_users u ON u.id = r.user_id
                  WHERE r.used = 0 AND r.expires_at > ? ORDER BY r.id DESC`
             )
@@ -1055,14 +1164,6 @@ async function adminDeleteUser(db, admin, body) {
     const target = await adminTargetUser(db, admin, body.user_id);
     if (target.is_master) fail(400, "The Master Admin cannot be deleted.");
     if (target.id === admin.id) fail(400, "You cannot delete your own account.");
-    const used = await db
-        .prepare(
-            `SELECT (SELECT COUNT(*) FROM el_harvest WHERE user_id = ?1) +
-                    (SELECT COUNT(*) FROM el_maintenance WHERE user_id = ?1) AS n`
-        )
-        .bind(target.id)
-        .first();
-    if (used.n > 0) fail(400, "User has field records. Set role to Normal User instead.");
     await db.batch([
         db.prepare("DELETE FROM el_sessions WHERE user_id = ?").bind(target.id),
         db.prepare("DELETE FROM el_resets WHERE user_id = ?").bind(target.id),
@@ -1072,7 +1173,7 @@ async function adminDeleteUser(db, admin, body) {
 }
 
 // ---------------------------------------------------------------------------
-// Admin: estate CRUD
+// Admin: 5-Tier Estate CRUD
 // ---------------------------------------------------------------------------
 const TREE_SUBQ = {
     tree: "SELECT ?1",
@@ -1184,29 +1285,6 @@ async function adminSave(db, user, entity, body) {
                 )
                 .run();
         }
-    } else if (entity === "fertilizer") {
-        const code = str(body.code, 12).toUpperCase();
-        const stdKg = toNum(body.std_kg);
-        const active = body.active === false || body.active === 0 || body.active === "0" ? 0 : 1;
-        if (!code) fail(400, "Code is required.");
-        if (!name) fail(400, "Name is required.");
-        if (stdKg === null || stdKg <= 0 || stdKg > 50) fail(400, "Standard kg must be 0-50.");
-        const dup = await db
-            .prepare("SELECT id FROM el_fertilizers WHERE code = ? AND id <> ?")
-            .bind(code, id || 0)
-            .first();
-        if (dup) fail(409, "Fertilizer code already exists.");
-        if (id) {
-            await db
-                .prepare("UPDATE el_fertilizers SET code = ?, name = ?, std_kg = ?, active = ? WHERE id = ?")
-                .bind(code, name, stdKg, active, id)
-                .run();
-        } else {
-            await db
-                .prepare("INSERT INTO el_fertilizers (code, name, std_kg, active) VALUES (?, ?, ?, ?)")
-                .bind(code, name, stdKg, active)
-                .run();
-        }
     } else {
         fail(404, "Unknown entity.");
     }
@@ -1216,22 +1294,10 @@ async function adminSave(db, user, entity, body) {
 async function adminDelete(db, entity, body) {
     const id = toInt(body.id);
     if (!id) fail(400, "Missing id.");
-
-    if (entity === "fertilizer") {
-        const used = await db.prepare("SELECT COUNT(*) AS n FROM el_maintenance WHERE fertilizer_id = ?").bind(id).first();
-        if (used.n > 0) {
-            await db.prepare("UPDATE el_fertilizers SET active = 0 WHERE id = ?").bind(id).run();
-            return { ok: true, deactivated: true };
-        }
-        await db.prepare("DELETE FROM el_fertilizers WHERE id = ?").bind(id).run();
-        return { ok: true };
-    }
-
     if (!TREE_SUBQ[entity]) fail(404, "Unknown entity.");
     const treeIds = TREE_SUBQ[entity];
     const stmts = [
         db.prepare(`DELETE FROM el_harvest WHERE tree_id IN (${treeIds})`).bind(id),
-        db.prepare(`DELETE FROM el_maintenance WHERE tree_id IN (${treeIds})`).bind(id),
         db.prepare(`DELETE FROM el_trees WHERE id IN (${treeIds})`).bind(id),
     ];
     if (entity === "estate") {
@@ -1241,6 +1307,7 @@ async function adminDelete(db, entity, body) {
                  JOIN el_divisions d ON d.id = f.division_id WHERE d.estate_id = ?1)`
             ).bind(id),
             db.prepare("DELETE FROM el_fields WHERE division_id IN (SELECT id FROM el_divisions WHERE estate_id = ?1)").bind(id),
+            db.prepare("DELETE FROM el_dispatch WHERE division_id IN (SELECT id FROM el_divisions WHERE estate_id = ?1)").bind(id),
             db.prepare("DELETE FROM el_divisions WHERE estate_id = ?1").bind(id),
             db.prepare("DELETE FROM el_estates WHERE id = ?1").bind(id)
         );
@@ -1248,6 +1315,7 @@ async function adminDelete(db, entity, body) {
         stmts.push(
             db.prepare("DELETE FROM el_blocks WHERE field_id IN (SELECT id FROM el_fields WHERE division_id = ?1)").bind(id),
             db.prepare("DELETE FROM el_fields WHERE division_id = ?1").bind(id),
+            db.prepare("DELETE FROM el_dispatch WHERE division_id = ?1").bind(id),
             db.prepare("DELETE FROM el_divisions WHERE id = ?1").bind(id)
         );
     } else if (entity === "field") {
@@ -1308,25 +1376,12 @@ async function route(request, env, url) {
         await db.prepare("DELETE FROM el_sessions WHERE token = ?").bind(user.token).run();
         return json({ ok: true });
     }
-    if (method === "POST" && path === "/api/auth/change-password") {
-        return json(await handleChangePassword(db, user, body));
-    }
 
     // Approved users
     if (method === "GET" && path === "/api/bootstrap") {
         requireRole(user, "harvester");
-        const [hierarchy, settings, ferts] = await Promise.all([
-            getHierarchy(db),
-            getSettings(db),
-            db
-                .prepare(
-                    user.role === "admin"
-                        ? "SELECT * FROM el_fertilizers ORDER BY code"
-                        : "SELECT * FROM el_fertilizers WHERE active = 1 ORDER BY code"
-                )
-                .all(),
-        ]);
-        return json({ hierarchy, settings, fertilizers: ferts.results });
+        const [hierarchy, settings] = await Promise.all([getHierarchy(db), getSettings(db)]);
+        return json({ hierarchy, settings });
     }
     if (method === "GET" && path === "/api/block") {
         requireRole(user, "harvester");
@@ -1341,7 +1396,18 @@ async function route(request, env, url) {
         return getReportCsv(db, params);
     }
     if (method === "POST" && path === "/api/harvest") return json(await handleHarvest(db, user, body));
-    if (method === "POST" && path === "/api/maintenance") return json(await handleMaintenance(db, user, body));
+
+    // Dispatch Crop Weight endpoints
+    if (method === "GET" && path === "/api/dispatch") {
+        requireRole(user, "harvester");
+        return json(await getDispatches(db, params));
+    }
+    if (method === "POST" && path === "/api/dispatch") {
+        return json(await handleCreateDispatch(db, user, body));
+    }
+    if (method === "POST" && path === "/api/dispatch/delete") {
+        return json(await handleDeleteDispatch(db, user, body));
+    }
 
     // Admin only
     if (path.startsWith("/api/admin/")) {
@@ -1353,7 +1419,7 @@ async function route(request, env, url) {
         if (method === "POST" && path === "/api/admin/users/delete") return json(await adminDeleteUser(db, user, body));
         if (method === "POST" && path === "/api/admin/trees/batch") return json(await adminBatchTrees(db, body));
         if (method === "POST" && path === "/api/admin/settings") return json(await adminSaveSettings(db, body));
-        const m = path.match(/^\/api\/admin\/(estate|division|field|block|tree|fertilizer)\/(save|delete)$/);
+        const m = path.match(/^\/api\/admin\/(estate|division|field|block|tree)\/(save|delete)$/);
         if (method === "POST" && m) {
             return json(m[2] === "save" ? await adminSave(db, user, m[1], body) : await adminDelete(db, m[1], body));
         }

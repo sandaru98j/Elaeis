@@ -1,34 +1,32 @@
 ﻿// ============================================================================
 // ELAEIS — Palm-based Crop Monitoring System
-// Frontend SPA Controller (Cloudflare Worker D1 API + Offline Fallback Engine)
+// Frontend SPA Controller (Bunches, Fronds, Dispatch Weight, ABW & YPH Engine)
 // ============================================================================
 
 const ROLE_RANK = { pending: 0, harvester: 1, supervisor: 2, admin: 3 };
 const ROLE_LABELS = {
-    pending: "Normal User (Pending)",
+    pending: "Pending Approval",
     harvester: "Harvester",
     supervisor: "Supervisor",
-    admin: "Master Admin",
+    admin: "Admin",
 };
 
 const state = {
     token: localStorage.getItem("el_token") || "",
     user: null,
     activePage: "dashboard",
-    forgotChannel: "sms",
+    forgotChannel: "email",
     gps: { lat: 6.14224, lng: 80.36518, acc: 4.2, live: false },
     hierarchy: { estates: [], divisions: [], fields: [], blocks: [] },
-    fertilizers: [],
     settings: { gps_threshold_m: 20, season_start_month: 4 },
     dashTrees: [],
     harvBlock: { block_id: null, trees: [], filter: "all", search: "" },
-    maintBlock: { block_id: null, trees: [], filter: "all", search: "" },
+    dispatches: [],
     mapBlock: { block_id: null, trees: [] },
     compliance: { threshold_m: 20, rows: [], filter: "all" },
     adminUsers: { users: [], resets: [] },
     adminTab: "users",
     modalTree: null,
-    maintForm: { weed: "clean", sanitation: "good" },
     crudCallback: null,
 };
 
@@ -51,11 +49,17 @@ function todayStr() {
     return `${y}-${m}-${day}`;
 }
 
-function roundOfDate(dateStr) {
+function roundOfDate(dateStr, explicitRound = null) {
+    const r = Number(explicitRound);
+    const ym = (dateStr || todayStr()).slice(0, 7);
+    if (r === 1 || r === 2 || r === 3) {
+        const rangeLabel = r === 1 ? "Days 1-10" : r === 2 ? "Days 11-20" : "Days 21-End";
+        return { round: r, rangeLabel, yearMonth: ym };
+    }
     const d = Number((dateStr || todayStr()).slice(8, 10)) || 1;
     const round = d <= 10 ? 1 : d <= 20 ? 2 : 3;
     const rangeLabel = round === 1 ? "Days 1-10" : round === 2 ? "Days 11-20" : "Days 21-End";
-    return { round, rangeLabel, yearMonth: (dateStr || todayStr()).slice(0, 7) };
+    return { round, rangeLabel, yearMonth: ym };
 }
 
 function distanceMeters(lat1, lng1, lat2, lng2) {
@@ -153,7 +157,7 @@ function updateGpsHeader() {
 // Offline / Local Fallback Store (mirrors Cloudflare Worker D1 when offline)
 // ----------------------------------------------------------------------------
 const LocalDB = {
-    key: "elaeis_local_db_v2",
+    key: "elaeis_local_db_v3",
     load() {
         try {
             const raw = localStorage.getItem(this.key);
@@ -176,7 +180,6 @@ const LocalDB = {
             { id: 1, username: "admin", email: "sandaru98j@gmail.com", phone: "+94770000000", full_name: "Sandaruwan Gunathilaka", role: "admin", is_master: true, pass: "Elaeis@2026", created_at: now, approved_at: now },
             { id: 2, username: "supervisor", email: "supervisor@uskvalley.lk", phone: "+94771111111", full_name: "Kasun Perera", role: "supervisor", is_master: false, pass: "Elaeis@2026", created_at: now, approved_at: now },
             { id: 3, username: "harvester", email: "harvester@uskvalley.lk", phone: "+94772222222", full_name: "Nimal Silva", role: "harvester", is_master: false, pass: "Elaeis@2026", created_at: now, approved_at: now },
-            { id: 4, username: "ruwan", email: "ruwan@uskvalley.lk", phone: "+94773333333", full_name: "Ruwan Fernando", role: "pending", is_master: false, pass: "Elaeis@2026", created_at: now, approved_at: null },
         ];
         const estates = [{ id: 1, name: "Uskvalley Estate" }];
         const divisions = [
@@ -222,23 +225,19 @@ const LocalDB = {
                 }
             }
         }
-        const fertilizers = [
-            { id: 1, code: "ERP", name: "Eppawala Rock Phosphate", std_kg: 2.0, active: 1 },
-            { id: 2, code: "AOP", name: "Adult Oil Palm Mixture", std_kg: 2.5, active: 1 },
-        ];
         const harvest = [
-            { id: 1, tree_id: 1, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 3, fronds: 2, user_id: 3, user_lat: 6.14202, user_lng: 80.36501, user_acc: 4.1, recorded_at: now },
-            { id: 2, tree_id: 2, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 2, fronds: 2, user_id: 3, user_lat: 6.14203, user_lng: 80.36506, user_acc: 3.9, recorded_at: now },
-            { id: 3, tree_id: 3, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 4, fronds: 3, user_id: 3, user_lat: 6.14242, user_lng: 80.36551, user_acc: 6.2, recorded_at: now },
-            { id: 4, tree_id: 4, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 2, fronds: 1, user_id: 2, user_lat: 6.14201, user_lng: 80.36526, user_acc: 3.5, recorded_at: now },
-            { id: 5, tree_id: 6, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 1, fronds: 2, user_id: 3, user_lat: 6.14275, user_lng: 80.36492, user_acc: 8.0, recorded_at: now },
-            { id: 6, tree_id: 121, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 3, fronds: 2, user_id: 2, user_lat: 6.14297, user_lng: 80.36501, user_acc: 3.2, recorded_at: now },
+            { id: 1, tree_id: 1, harvest_date: `${yearMonth}-04`, year_month: yearMonth, round_no: 1, bunches: 12, fronds: 8, user_id: 3, user_lat: 6.14202, user_lng: 80.36501, user_acc: 4.1, recorded_at: now },
+            { id: 2, tree_id: 2, harvest_date: `${yearMonth}-04`, year_month: yearMonth, round_no: 1, bunches: 10, fronds: 7, user_id: 3, user_lat: 6.14203, user_lng: 80.36506, user_acc: 3.9, recorded_at: now },
+            { id: 3, tree_id: 3, harvest_date: `${yearMonth}-05`, year_month: yearMonth, round_no: 1, bunches: 14, fronds: 9, user_id: 3, user_lat: 6.14242, user_lng: 80.36551, user_acc: 6.2, recorded_at: now },
+            { id: 4, tree_id: 4, harvest_date: `${yearMonth}-05`, year_month: yearMonth, round_no: 1, bunches: 11, fronds: 8, user_id: 2, user_lat: 6.14201, user_lng: 80.36526, user_acc: 3.5, recorded_at: now },
+            { id: 5, tree_id: 5, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 15, fronds: 10, user_id: 3, user_lat: 6.14202, user_lng: 80.36534, user_acc: 4.0, recorded_at: now },
+            { id: 6, tree_id: 6, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 9, fronds: 6, user_id: 3, user_lat: 6.14275, user_lng: 80.36492, user_acc: 8.0, recorded_at: now },
+            { id: 7, tree_id: 121, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 16, fronds: 10, user_id: 2, user_lat: 6.14297, user_lng: 80.36501, user_acc: 3.2, recorded_at: now },
         ];
-        const maintenance = [
-            { id: 1, tree_id: 1, work_date: today, fertilizer_id: 1, fertilizer_kg: 2.0, weed: "clean", sanitation: "good", user_id: 2, user_lat: 6.14201, user_lng: 80.36502, user_acc: 3.6, recorded_at: now },
-            { id: 2, tree_id: 2, work_date: today, fertilizer_id: 1, fertilizer_kg: 2.0, weed: "clean", sanitation: "good", user_id: 2, user_lat: 6.14202, user_lng: 80.36507, user_acc: 3.8, recorded_at: now },
-            { id: 3, tree_id: 4, work_date: today, fertilizer_id: 2, fertilizer_kg: 2.5, weed: "heavy", sanitation: "bad", user_id: 2, user_lat: 6.14255, user_lng: 80.36564, user_acc: 7.5, recorded_at: now },
-            { id: 4, tree_id: 121, work_date: today, fertilizer_id: 2, fertilizer_kg: 2.5, weed: "clean", sanitation: "good", user_id: 2, user_lat: 6.14297, user_lng: 80.36501, user_acc: 3.3, recorded_at: now },
+        const dispatch = [
+            { id: 1, division_id: 1, dispatch_date: `${yearMonth}-05`, year_month: yearMonth, round_no: 1, weight_kg: 895.0, user_id: 2, recorded_at: now },
+            { id: 2, division_id: 1, dispatch_date: today, year_month: yearMonth, round_no: round, weight_kg: 1480.0, user_id: 2, recorded_at: now },
+            { id: 3, division_id: 2, dispatch_date: today, year_month: yearMonth, round_no: round, weight_kg: 640.0, user_id: 2, recorded_at: now },
         ];
         return {
             users,
@@ -248,9 +247,8 @@ const LocalDB = {
             fields,
             blocks,
             trees,
-            fertilizers,
             harvest,
-            maintenance,
+            dispatch,
             settings: { gps_threshold_m: 20, season_start_month: 4 },
         };
     },
@@ -292,19 +290,22 @@ function localApiFallback(path, method, body) {
     const curUser = db.users.find((u) => `local-token-${u.id}` === state.token) || db.users[0];
 
     if (pathname === "/api/auth/login") {
-        const idf = String(body.identifier || "").trim().toLowerCase();
-        const u = db.users.find(
-            (x) => x.username.toLowerCase() === idf || x.email.toLowerCase() === idf || x.phone === idf
-        );
-        if (!u || u.pass !== body.password) throw new Error("Incorrect login details.");
+        const email = String(body.email || body.identifier || "").trim().toLowerCase();
+        const u = db.users.find((x) => x.email.toLowerCase() === email);
+        if (!u || u.pass !== body.password) throw new Error("Invalid email or password.");
+        if (u.role === "pending") throw new Error("Account created successfully. Pending admin approval.");
         return { token: `local-token-${u.id}`, user: u };
     }
     if (pathname === "/api/auth/register") {
+        const email = String(body.email || "").trim().toLowerCase();
+        if (db.users.some((u) => u.email.toLowerCase() === email)) {
+            throw new Error("Email is already registered.");
+        }
         const id = db.users.reduce((m, x) => Math.max(m, x.id), 0) + 1;
         const nu = {
             id,
-            username: body.username.trim(),
-            email: body.email.trim().toLowerCase(),
+            username: email.split("@")[0] + "_" + id,
+            email,
             phone: body.phone.trim(),
             full_name: body.full_name.trim(),
             role: "pending",
@@ -314,18 +315,15 @@ function localApiFallback(path, method, body) {
         };
         db.users.push(nu);
         LocalDB.save(db);
-        return { token: `local-token-${nu.id}`, user: nu };
+        return { ok: true, message: "Account created successfully. Pending admin approval." };
     }
     if (pathname === "/api/auth/forgot") {
-        const code = String(Math.floor(100000 + Math.random() * 900000));
-        db.resets.push({ identifier: body.identifier, code, channel: body.channel || "sms", created_at: new Date().toISOString() });
-        LocalDB.save(db);
-        return { ok: true, demo_code: code };
+        return { ok: true };
     }
     if (pathname === "/api/auth/reset") {
-        const idf = String(body.identifier || "").trim().toLowerCase();
-        const u = db.users.find((x) => x.username.toLowerCase() === idf || x.email.toLowerCase() === idf || x.phone === idf);
-        if (!u) throw new Error("Invalid code.");
+        const email = String(body.email || body.identifier || "").trim().toLowerCase();
+        const u = db.users.find((x) => x.email.toLowerCase() === email);
+        if (!u) throw new Error("Invalid or expired recovery code.");
         u.pass = body.new_password;
         LocalDB.save(db);
         return { ok: true };
@@ -349,14 +347,12 @@ function localApiFallback(path, method, body) {
         return {
             hierarchy: { estates: db.estates, divisions: db.divisions, fields: db.fields, blocks },
             settings: db.settings,
-            fertilizers: db.fertilizers,
         };
     }
     if (pathname === "/api/block") {
         const bid = Number(params.block_id);
         const date = params.date || todayStr();
-        const { yearMonth, round } = roundOfDate(date);
-        const month = date.slice(0, 7);
+        const { yearMonth, round } = roundOfDate(date, params.round_no);
         const bt = db.trees.filter((t) => t.block_id === bid).sort((a, b) => a.tree_no - b.tree_no);
         return {
             block_id: bid,
@@ -365,19 +361,6 @@ function localApiFallback(path, method, body) {
                 let rec = null;
                 if (params.mode === "harvest") {
                     rec = db.harvest.find((h) => h.tree_id === t.id && h.year_month === yearMonth && h.round_no === round) || null;
-                } else if (params.mode === "maintenance") {
-                    const ms = db.maintenance.filter((m) => m.tree_id === t.id && m.work_date.startsWith(month));
-                    if (ms.length) {
-                        const last = ms[ms.length - 1];
-                        const fz = db.fertilizers.find((f) => f.id === last.fertilizer_id);
-                        rec = {
-                            work_date: last.work_date,
-                            fertilizer_code: fz ? fz.code : null,
-                            fertilizer_kg: last.fertilizer_kg,
-                            weed: last.weed,
-                            sanitation: last.sanitation,
-                        };
-                    }
                 }
                 return { ...t, rec };
             }),
@@ -385,7 +368,7 @@ function localApiFallback(path, method, body) {
     }
     if (pathname === "/api/harvest" && method === "POST") {
         const t = db.trees.find((x) => x.id === Number(body.tree_id));
-        const { yearMonth, round } = roundOfDate(body.date);
+        const { yearMonth, round } = roundOfDate(body.date, body.round_no);
         const idx = db.harvest.findIndex((h) => h.tree_id === t.id && h.year_month === yearMonth && h.round_no === round);
         const row = {
             id: idx >= 0 ? db.harvest[idx].id : db.harvest.length + 1,
@@ -407,32 +390,68 @@ function localApiFallback(path, method, body) {
         const dist = t.lat !== null && body.lat !== null ? distanceMeters(t.lat, t.lng, body.lat, body.lng) : null;
         return { ok: true, round, distance_m: dist };
     }
-    if (pathname === "/api/maintenance" && method === "POST") {
-        const t = db.trees.find((x) => x.id === Number(body.tree_id));
-        const idx = db.maintenance.findIndex((m) => m.tree_id === t.id && m.work_date === body.date);
-        const row = {
-            id: idx >= 0 ? db.maintenance[idx].id : db.maintenance.length + 1,
-            tree_id: t.id,
-            work_date: body.date,
-            fertilizer_id: body.fertilizer_id ? Number(body.fertilizer_id) : null,
-            fertilizer_kg: body.fertilizer_id ? Number(body.fertilizer_kg) : null,
-            weed: body.weed || null,
-            sanitation: body.sanitation || null,
+    if (pathname === "/api/dispatch" && method === "GET") {
+        const list = (db.dispatch || []).map((x) => {
+            const div = db.divisions.find((d) => d.id === x.division_id);
+            const u = db.users.find((usr) => usr.id === x.user_id);
+            return {
+                ...x,
+                division_name: div ? div.name : "Division",
+                recorded_by: u ? u.full_name : "Staff",
+            };
+        });
+        return { dispatches: list.reverse() };
+    }
+    if (pathname === "/api/dispatch" && method === "POST") {
+        db.dispatch = db.dispatch || [];
+        const id = db.dispatch.reduce((m, x) => Math.max(m, x.id), 0) + 1;
+        db.dispatch.push({
+            id,
+            division_id: Number(body.division_id),
+            dispatch_date: body.date,
+            year_month: body.date.slice(0, 7),
+            round_no: Number(body.round_no),
+            weight_kg: Number(body.weight_kg),
             user_id: curUser.id,
-            user_lat: body.lat,
-            user_lng: body.lng,
-            user_acc: body.acc,
             recorded_at: new Date().toISOString(),
-        };
-        if (idx >= 0) db.maintenance[idx] = row;
-        else db.maintenance.push(row);
+        });
         LocalDB.save(db);
-        const dist = t.lat !== null && body.lat !== null ? distanceMeters(t.lat, t.lng, body.lat, body.lng) : null;
-        return { ok: true, distance_m: dist };
+        return { ok: true };
+    }
+    if (pathname === "/api/dispatch/delete" && method === "POST") {
+        db.dispatch = (db.dispatch || []).filter((x) => x.id !== Number(body.id));
+        LocalDB.save(db);
+        return { ok: true };
     }
     if (pathname === "/api/report") {
         const from = params.from || "1900-01-01";
         const to = params.to || "2999-12-31";
+        const rFlt = params.round_no ? Number(params.round_no) : null;
+
+        let targetDivId = params.division_id ? Number(params.division_id) : null;
+        let totalHa = 0;
+
+        if (params.field_id) {
+            const f = db.fields.find((x) => x.id === Number(params.field_id));
+            totalHa = f ? f.area_ha : 0;
+            if (f && !targetDivId) targetDivId = f.division_id;
+        } else if (params.block_id) {
+            const b = db.blocks.find((x) => x.id === Number(params.block_id));
+            const f = b ? db.fields.find((x) => x.id === b.field_id) : null;
+            totalHa = f ? f.area_ha : 0;
+            if (f && !targetDivId) targetDivId = f.division_id;
+        } else if (params.tree_id) {
+            const t = db.trees.find((x) => x.id === Number(params.tree_id));
+            const b = t ? db.blocks.find((x) => x.id === t.block_id) : null;
+            const f = b ? db.fields.find((x) => x.id === b.field_id) : null;
+            totalHa = f ? f.area_ha : 0;
+            if (f && !targetDivId) targetDivId = f.division_id;
+        } else if (targetDivId) {
+            totalHa = db.fields.filter((f) => f.division_id === targetDivId).reduce((s, f) => s + f.area_ha, 0);
+        } else {
+            totalHa = db.fields.reduce((s, f) => s + f.area_ha, 0);
+        }
+
         const matchTree = (tid) => {
             const t = db.trees.find((x) => x.id === tid);
             if (!t) return false;
@@ -446,49 +465,89 @@ function localApiFallback(path, method, body) {
             if (params.estate_id && d.estate_id !== Number(params.estate_id)) return false;
             return true;
         };
-        const hRows = db.harvest.filter((h) => h.harvest_date >= from && h.harvest_date <= to && matchTree(h.tree_id));
-        const mRows = db.maintenance.filter((m) => m.work_date >= from && m.work_date <= to && matchTree(m.tree_id));
+
+        const hRows = db.harvest.filter(
+            (h) => h.harvest_date >= from && h.harvest_date <= to && (!rFlt || h.round_no === rFlt) && matchTree(h.tree_id)
+        );
+        const dRows = (db.dispatch || []).filter(
+            (d) =>
+                d.dispatch_date >= from &&
+                d.dispatch_date <= to &&
+                (!rFlt || d.round_no === rFlt) &&
+                (!targetDivId || d.division_id === targetDivId)
+        );
+
         const bunches = hRows.reduce((s, r) => s + r.bunches, 0);
         const fronds = hRows.reduce((s, r) => s + r.fronds, 0);
-        const fert_kg = mRows.reduce((s, r) => s + (r.fertilizer_kg || 0), 0);
-        const weed = {};
-        const sanitation = {};
-        const fertMap = {};
-        mRows.forEach((m) => {
-            if (m.weed) weed[m.weed] = (weed[m.weed] || 0) + 1;
-            if (m.sanitation) sanitation[m.sanitation] = (sanitation[m.sanitation] || 0) + 1;
-            if (m.fertilizer_id) {
-                const fz = db.fertilizers.find((x) => x.id === m.fertilizer_id);
-                const code = fz ? fz.code : "OTHER";
-                fertMap[code] = (fertMap[code] || 0) + (m.fertilizer_kg || 0);
+        const dispatch_kg = dRows.reduce((s, r) => s + r.weight_kg, 0);
+        const abw = bunches > 0 ? Number((dispatch_kg / bunches).toFixed(2)) : 0;
+        const yph = totalHa > 0 ? Number((dispatch_kg / totalHa).toFixed(2)) : 0;
+
+        const roundsMap = {
+            1: { round_no: 1, label: "Round 1 (Days 1-10)", bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 },
+            2: { round_no: 2, label: "Round 2 (Days 11-20)", bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 },
+            3: { round_no: 3, label: "Round 3 (Days 21-End)", bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 },
+        };
+        hRows.forEach((h) => {
+            if (roundsMap[h.round_no]) {
+                roundsMap[h.round_no].bunches += h.bunches;
+                roundsMap[h.round_no].fronds += h.fronds;
             }
         });
-        const seriesMap = {};
+        dRows.forEach((d) => {
+            if (roundsMap[d.round_no]) {
+                roundsMap[d.round_no].dispatch_kg += d.weight_kg;
+            }
+        });
+        Object.values(roundsMap).forEach((r) => {
+            r.abw = r.bunches > 0 ? Number((r.dispatch_kg / r.bunches).toFixed(2)) : 0;
+            r.yph = totalHa > 0 ? Number((r.dispatch_kg / totalHa).toFixed(2)) : 0;
+        });
+
+        const monthsMap = {};
         hRows.forEach((h) => {
-            const p = h.harvest_date.slice(0, 7);
-            seriesMap[p] = seriesMap[p] || { p, bunches: 0, fronds: 0, fert_kg: 0 };
-            seriesMap[p].bunches += h.bunches;
-            seriesMap[p].fronds += h.fronds;
+            monthsMap[h.year_month] = monthsMap[h.year_month] || { ym: h.year_month, bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 };
+            monthsMap[h.year_month].bunches += h.bunches;
+            monthsMap[h.year_month].fronds += h.fronds;
         });
-        mRows.forEach((m) => {
-            const p = m.work_date.slice(0, 7);
-            seriesMap[p] = seriesMap[p] || { p, bunches: 0, fronds: 0, fert_kg: 0 };
-            seriesMap[p].fert_kg += m.fertilizer_kg || 0;
+        dRows.forEach((d) => {
+            monthsMap[d.year_month] = monthsMap[d.year_month] || { ym: d.year_month, bunches: 0, fronds: 0, dispatch_kg: 0, abw: 0, yph: 0 };
+            monthsMap[d.year_month].dispatch_kg += d.weight_kg;
         });
-        const breakdownMap = {};
-        hRows.forEach((h) => {
-            const t = db.trees.find((x) => x.id === h.tree_id);
-            const lbl = `Tree #${t.tree_no}`;
-            breakdownMap[lbl] = breakdownMap[lbl] || { label: lbl, bunches: 0, fronds: 0, fert_kg: 0 };
-            breakdownMap[lbl].bunches += h.bunches;
-            breakdownMap[lbl].fronds += h.fronds;
-        });
-        mRows.forEach((m) => {
-            const t = db.trees.find((x) => x.id === m.tree_id);
-            const lbl = `Tree #${t.tree_no}`;
-            breakdownMap[lbl] = breakdownMap[lbl] || { label: lbl, bunches: 0, fronds: 0, fert_kg: 0 };
-            breakdownMap[lbl].fert_kg += m.fertilizer_kg || 0;
-        });
+        const month_comparison = Object.values(monthsMap)
+            .sort((a, b) => (a.ym < b.ym ? -1 : 1))
+            .map((m) => ({
+                ...m,
+                abw: m.bunches > 0 ? Number((m.dispatch_kg / m.bunches).toFixed(2)) : 0,
+                yph: totalHa > 0 ? Number((m.dispatch_kg / totalHa).toFixed(2)) : 0,
+            }));
+
+        const breakdown = db.divisions
+            .filter((div) => !targetDivId || div.id === targetDivId)
+            .map((div) => {
+                const area_ha = db.fields.filter((f) => f.division_id === div.id).reduce((s, f) => s + f.area_ha, 0);
+                const divHarvest = hRows.filter((h) => {
+                    const t = db.trees.find((x) => x.id === h.tree_id);
+                    const b = t ? db.blocks.find((x) => x.id === t.block_id) : null;
+                    const f = b ? db.fields.find((x) => x.id === b.field_id) : null;
+                    return f && f.division_id === div.id;
+                });
+                const divDisp = dRows.filter((d) => d.division_id === div.id);
+                const dBunches = divHarvest.reduce((s, r) => s + r.bunches, 0);
+                const dFronds = divHarvest.reduce((s, r) => s + r.fronds, 0);
+                const dKg = divDisp.reduce((s, r) => s + r.weight_kg, 0);
+                return {
+                    div_id: div.id,
+                    label: div.name,
+                    area_ha,
+                    bunches: dBunches,
+                    fronds: dFronds,
+                    dispatch_kg: dKg,
+                    abw: dBunches > 0 ? Number((dKg / dBunches).toFixed(2)) : 0,
+                    yph: area_ha > 0 ? Number((dKg / area_ha).toFixed(2)) : 0,
+                };
+            });
+
         return {
             from,
             to,
@@ -497,20 +556,20 @@ function localApiFallback(path, method, body) {
                 fronds,
                 records: hRows.length,
                 trees: new Set(hRows.map((x) => x.tree_id)).size,
-                fert_kg,
-                maint_records: mRows.length,
+                dispatch_kg,
+                dispatch_records: dRows.length,
+                area_ha: totalHa,
+                abw,
+                yph,
             },
-            fertilizer: Object.entries(fertMap).map(([code, kg]) => ({ code, kg })),
-            weed,
-            sanitation,
-            series: Object.values(seriesMap),
-            group_level: "Palm",
-            breakdown: Object.values(breakdownMap),
+            round_comparison: Object.values(roundsMap),
+            month_comparison,
+            breakdown,
         };
     }
     if (pathname === "/api/admin/compliance") {
         const rows = [];
-        const pushRow = (activity, r, dateField, detail) => {
+        db.harvest.forEach((r) => {
             const t = db.trees.find((x) => x.id === r.tree_id) || {};
             const b = db.blocks.find((x) => x.id === t.block_id) || {};
             const f = db.fields.find((x) => x.id === b.field_id) || {};
@@ -525,10 +584,10 @@ function localApiFallback(path, method, body) {
                 status = distance_m > db.settings.gps_threshold_m ? "far" : "ok";
             }
             rows.push({
-                activity,
+                activity: "harvest",
                 id: r.id,
                 recorded_at: r.recorded_at,
-                work_date: r[dateField],
+                work_date: r.harvest_date,
                 user_lat: r.user_lat,
                 user_lng: r.user_lng,
                 user_acc: r.user_acc,
@@ -540,16 +599,10 @@ function localApiFallback(path, method, body) {
                 block: b.name,
                 field: f.name,
                 division: d.name,
-                detail,
+                detail: `${r.bunches} Bunches / ${r.fronds} Fronds (R${r.round_no})`,
                 distance_m,
                 status,
             });
-        };
-        db.harvest.forEach((h) => pushRow("harvest", h, "harvest_date", `${h.bunches} B / ${h.fronds} F`));
-        db.maintenance.forEach((m) => {
-            const fz = db.fertilizers.find((x) => x.id === m.fertilizer_id);
-            const det = `${fz ? fz.code + " " + m.fertilizer_kg + "kg " : ""}Weed:${m.weed || "-"} San:${m.sanitation || "-"}`;
-            pushRow("maintenance", m, "work_date", det);
         });
         return { threshold_m: db.settings.gps_threshold_m, rows: rows.reverse() };
     }
@@ -585,10 +638,10 @@ function localApiFallback(path, method, body) {
         LocalDB.save(db);
         return { ok: true };
     }
-    const m = pathname.match(/^\/api\/admin\/(estate|division|field|block|tree|fertilizer)\/(save|delete)$/);
+    const m = pathname.match(/^\/api\/admin\/(estate|division|field|block|tree)\/(save|delete)$/);
     if (m) {
         const [, ent, act] = m;
-        const mapKey = { estate: "estates", division: "divisions", field: "fields", block: "blocks", tree: "trees", fertilizer: "fertilizers" }[ent];
+        const mapKey = { estate: "estates", division: "divisions", field: "fields", block: "blocks", tree: "trees" }[ent];
         if (act === "delete") {
             db[mapKey] = db[mapKey].filter((x) => x.id !== Number(body.id));
         } else {
@@ -597,7 +650,7 @@ function localApiFallback(path, method, body) {
                 if (item) Object.assign(item, body);
             } else {
                 const nextId = db[mapKey].reduce((mx, x) => Math.max(mx, x.id), 0) + 1;
-                db[mapKey].push({ ...body, id: nextId, active: 1, status: "active" });
+                db[mapKey].push({ ...body, id: nextId, status: "active" });
             }
         }
         LocalDB.save(db);
@@ -615,11 +668,11 @@ function updateClockAndGreeting() {
     const mins = String(now.getMinutes()).padStart(2, "0");
     const secs = String(now.getSeconds()).padStart(2, "0");
     const period = hrs < 12 ? "Good morning" : hrs < 17 ? "Good afternoon" : "Good evening";
-    const name = state.user ? state.user.full_name.split(" ")[0] : "Planter";
+    const name = state.user ? state.user.full_name.split(" ")[0] : "";
     const gEl = $("hdr-greeting");
     const cEl = $("hdr-clock");
     const rEl = $("hdr-round-pill");
-    if (gEl) gEl.textContent = `${period}, ${name}`;
+    if (gEl) gEl.textContent = name ? `${period}, ${name}` : period;
     if (cEl) cEl.textContent = `${todayStr()} ${String(hrs).padStart(2, "0")}:${mins}:${secs}`;
     if (rEl) {
         const { round, rangeLabel } = roundOfDate(todayStr());
@@ -630,25 +683,33 @@ function updateClockAndGreeting() {
 // ----------------------------------------------------------------------------
 // Auth & Session Flow
 // ----------------------------------------------------------------------------
-function showAuthView(mode = "login") {
+function showAuthView(mode = "login", noticeMessage = "") {
     $("auth-screen").classList.remove("hidden");
-    $("pending-screen").classList.add("hidden");
     $("app-shell").classList.add("hidden");
     $("form-login").classList.toggle("hidden", mode !== "login");
     $("form-signup").classList.toggle("hidden", mode !== "signup");
     $("form-forgot").classList.toggle("hidden", mode !== "forgot");
+
+    const banner = $("auth-notice");
+    const bannerTxt = $("auth-notice-text");
+    if (noticeMessage) {
+        bannerTxt.textContent = noticeMessage;
+        banner.classList.remove("hidden");
+    } else {
+        banner.classList.add("hidden");
+    }
     refreshIcons();
 }
 
-async function loginWithCredentials(identifier, password) {
+async function loginWithEmail(email, password) {
     try {
-        const res = await api("/api/auth/login", "POST", { identifier, password });
+        const res = await api("/api/auth/login", "POST", { email, password });
         state.token = res.token;
         state.user = res.user;
         localStorage.setItem("el_token", res.token);
         await enterApplication();
     } catch (err) {
-        toast(err.message || "Login failed", "err");
+        toast(err.message || "Invalid email or password.", "err");
     }
 }
 
@@ -665,32 +726,16 @@ async function enterApplication() {
         }
     }
 
-    updateClockAndGreeting();
-
-    // Sync Role Switcher dropdown
-    const rs = $("role-switcher");
-    if (rs) {
-        const uname = state.user.username.toLowerCase();
-        if (["admin", "supervisor", "harvester", "ruwan"].includes(uname)) {
-            rs.value = uname;
-        }
-    }
-
-    // Normal User (pending) -> Waiting for Admin Approval screen
     if (state.user.role === "pending") {
-        $("auth-screen").classList.add("hidden");
-        $("app-shell").classList.add("hidden");
-        $("pending-screen").classList.remove("hidden");
-        $("pending-name").textContent = state.user.full_name;
-        $("pending-username").textContent = `@${state.user.username}`;
-        $("pending-phone").textContent = state.user.phone;
-        refreshIcons();
+        state.token = "";
+        state.user = null;
+        localStorage.removeItem("el_token");
+        showAuthView("login", "Account created successfully. Pending admin approval.");
         return;
     }
 
-    // Approved Role -> Load Bootstrap Data & Show Shell
+    updateClockAndGreeting();
     $("auth-screen").classList.add("hidden");
-    $("pending-screen").classList.add("hidden");
     $("app-shell").classList.remove("hidden");
 
     applyRbacNavigation();
@@ -709,7 +754,7 @@ function applyRbacNavigation() {
     const currentMin = {
         dashboard: "harvester",
         harvest: "harvester",
-        maintenance: "supervisor",
+        dispatch: "harvester",
         mapper: "admin",
         compliance: "admin",
         admin: "admin",
@@ -723,13 +768,11 @@ async function loadBootstrap() {
     const data = await api("/api/bootstrap");
     state.hierarchy = data.hierarchy;
     state.settings = data.settings;
-    state.fertilizers = data.fertilizers;
 
-    // Populate cascade selectors on Dashboard, Harvest, Maintenance, Mapper
     initDashboardFilters();
-    initCascade("harv", () => loadHarvestBlock());
-    initCascade("maint", () => loadMaintBlock());
-    initCascade("map", () => loadMapperBlock());
+    initDivisionCascade("harv", () => loadHarvestBlock());
+    initDivisionCascade("map", () => loadMapperBlock());
+    initDispatchForm();
 }
 
 function switchPage(page) {
@@ -752,7 +795,7 @@ function switchPage(page) {
 
     if (page === "dashboard") refreshDashboard();
     if (page === "harvest") loadHarvestBlock();
-    if (page === "maintenance") loadMaintBlock();
+    if (page === "dispatch") loadDispatches();
     if (page === "mapper") loadMapperBlock();
     if (page === "compliance") loadCompliance();
     if (page === "admin") loadAdminPage();
@@ -760,24 +803,17 @@ function switchPage(page) {
 }
 
 // ----------------------------------------------------------------------------
-// Hierarchy Cascade Helpers
+// Hierarchy Cascade Helpers (Division -> Field -> Block)
 // ----------------------------------------------------------------------------
-function initCascade(prefix, onChange) {
-    const estEl = $(`${prefix}-estate`);
+function initDivisionCascade(prefix, onChange) {
     const divEl = $(`${prefix}-division`);
     const fldEl = $(`${prefix}-field`);
     const blkEl = $(`${prefix}-block`);
-    if (!estEl || !divEl || !fldEl || !blkEl) return;
+    if (!divEl || !fldEl || !blkEl) return;
 
-    const { estates, divisions, fields, blocks } = state.hierarchy;
-    estEl.innerHTML = estates.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join("");
+    const { divisions, fields, blocks } = state.hierarchy;
+    divEl.innerHTML = divisions.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
 
-    const syncDivs = () => {
-        const eid = Number(estEl.value);
-        const dList = divisions.filter((d) => d.estate_id === eid);
-        divEl.innerHTML = dList.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
-        syncFields();
-    };
     const syncFields = () => {
         const did = Number(divEl.value);
         const fList = fields.filter((f) => f.division_id === did);
@@ -795,16 +831,15 @@ function initCascade(prefix, onChange) {
         onChange();
     };
 
-    estEl.onchange = syncDivs;
     divEl.onchange = syncFields;
     fldEl.onchange = syncBlocks;
     blkEl.onchange = onChange;
 
-    syncDivs();
+    syncFields();
 }
 
 // ----------------------------------------------------------------------------
-// PAGE 1: HOME / ANALYTICS DASHBOARD
+// PAGE 1: ADVANCED ANALYTICS DASHBOARD (Bunches, Fronds, Dispatch, ABW, YPH)
 // ----------------------------------------------------------------------------
 function initDashboardFilters() {
     const estEl = $("flt-estate");
@@ -887,33 +922,37 @@ function getDashboardQuery() {
     const sMonth = String(state.settings.season_start_month || 4).padStart(2, "0");
     let from = "2026-04-01";
     let to = "2027-03-31";
-    let timeLabel = "2026/27 Season";
+    let timeLabel = "Season-to-Date";
+
+    const q = new URLSearchParams();
 
     if (mode === "season" || mode === "std") {
         const yr = Number($("flt-season-year").value) || 2026;
         from = `${yr}-${sMonth}-01`;
         to = mode === "std" ? todayStr() : `${yr + 1}-03-31`;
-        timeLabel = mode === "std" ? `${yr}/${String(yr + 1).slice(2)} STD` : `${yr}/${String(yr + 1).slice(2)} Season`;
+        timeLabel = mode === "std" ? `${yr}/${String(yr + 1).slice(2)} Season-to-Date` : `${yr}/${String(yr + 1).slice(2)} Full Season`;
     } else if (mode === "month") {
         const ym = $("flt-month").value || todayStr().slice(0, 7);
         from = `${ym}-01`;
         to = `${ym}-31`;
-        timeLabel = ym;
+        timeLabel = `Month: ${ym}`;
     } else if (mode === "round") {
         const ym = $("flt-month").value || todayStr().slice(0, 7);
         const r = Number($("flt-round").value) || 1;
-        from = r === 1 ? `${ym}-01` : r === 2 ? `${ym}-11` : `${ym}-21`;
-        to = r === 1 ? `${ym}-10` : r === 2 ? `${ym}-20` : `${ym}-31`;
-        timeLabel = `${ym} R${r}`;
+        from = `${ym}-01`;
+        to = `${ym}-31`;
+        q.set("round_no", String(r));
+        timeLabel = `${ym} • Round ${r}`;
     } else if (mode === "custom") {
         from = $("flt-from").value || "2026-01-01";
         to = $("flt-to").value || todayStr();
         timeLabel = `${from} to ${to}`;
     }
 
-    const q = new URLSearchParams({ from, to });
-    const parts = [timeLabel];
+    q.set("from", from);
+    q.set("to", to);
 
+    const parts = [timeLabel];
     const addPart = (id, param) => {
         const el = $(id);
         if (el && el.value) {
@@ -934,100 +973,120 @@ function getDashboardQuery() {
 async function refreshDashboard() {
     const qs = getDashboardQuery();
     const rep = await api(`/api/report?${qs}`);
+    const tot = rep.totals || {};
 
-    $("kpi-bunches").textContent = Number(rep.totals.bunches || 0).toLocaleString();
-    $("kpi-harvest-trees").textContent = `${rep.totals.trees || 0} palms harvested`;
-    $("kpi-fronds").textContent = Number(rep.totals.fronds || 0).toLocaleString();
-    $("kpi-harvest-recs").textContent = `${rep.totals.records || 0} round logs`;
-    $("kpi-fert-kg").textContent = Number(rep.totals.fert_kg || 0).toFixed(1);
-    $("kpi-fert-types").textContent =
-        rep.fertilizer && rep.fertilizer.length
-            ? rep.fertilizer.map((f) => `${f.code}: ${Number(f.kg).toFixed(1)}kg`).join(" • ")
-            : "No fertilizer in range";
+    $("kpi-bunches").textContent = Number(tot.bunches || 0).toLocaleString();
+    $("kpi-harvest-trees").textContent = `${tot.trees || 0} palms cut`;
+    $("kpi-fronds").textContent = Number(tot.fronds || 0).toLocaleString();
+    $("kpi-harvest-recs").textContent = `${tot.records || 0} harvest logs`;
+    $("kpi-dispatch-kg").textContent = `${Number(tot.dispatch_kg || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`;
+    $("kpi-dispatch-recs").textContent = `${tot.dispatch_records || 0} mill loads`;
+    $("kpi-abw").textContent = `${Number(tot.abw || 0).toFixed(2)} kg`;
+    $("kpi-yph").textContent = `${Number(tot.yph || 0).toFixed(2)} kg/Ha`;
+    $("kpi-area-ha").textContent = `Extent: ${Number(tot.area_ha || 0).toFixed(2)} Ha`;
 
-    const sanGood = rep.sanitation?.good || 0;
-    const sanMed = rep.sanitation?.medium || 0;
-    const sanBad = rep.sanitation?.bad || 0;
-    $("kpi-sanitation").textContent = `${sanGood}G / ${sanMed}M / ${sanBad}B`;
-    const wClean = rep.weed?.clean || 0;
-    const wMod = rep.weed?.moderate || 0;
-    const wHvy = rep.weed?.heavy || 0;
-    $("kpi-weed").textContent = `Weed: ${wClean}C • ${wMod}M • ${wHvy}H`;
-
-    renderHarvestChart(rep.series || []);
-    renderBreakdownChart(rep);
+    renderRoundComparison(rep.round_comparison || []);
+    renderMonthComparison(rep.month_comparison || []);
+    renderDivisionTable(rep.breakdown || []);
 }
 
-function renderHarvestChart(series) {
-    const box = $("chart-harvest");
-    if (!series.length) {
-        box.innerHTML = `<div class="w-full h-full flex items-center justify-center text-xs text-slate-400">No harvest logs in selected filter range</div>`;
+function renderRoundComparison(rounds) {
+    const box = $("chart-rounds");
+    if (!rounds.length) {
+        box.innerHTML = `<div class="py-8 text-center text-xs text-slate-400">No round data in selected filter</div>`;
         return;
     }
-    const maxVal = Math.max(1, ...series.map((s) => Math.max(s.bunches || 0, s.fronds || 0)));
-    box.innerHTML = series
-        .map((s) => {
-            const bh = Math.max(8, Math.round(((s.bunches || 0) / maxVal) * 145));
-            const fh = Math.max(8, Math.round(((s.fronds || 0) / maxVal) * 145));
-            return `
-            <div class="flex flex-col items-center gap-1 min-w-[54px] flex-1">
-                <div class="text-[10px] font-mono-code font-bold text-slate-600">${s.bunches}B/${s.fronds}F</div>
-                <div class="w-full flex items-end justify-center gap-1 h-36">
-                    <div class="w-4 rounded-t-md bg-emerald-600 transition-all" style="height:${bh}px" title="Bunches: ${s.bunches}"></div>
-                    <div class="w-4 rounded-t-md bg-teal-400 transition-all" style="height:${fh}px" title="Fronds: ${s.fronds}"></div>
-                </div>
-                <div class="text-[10px] font-mono-code text-slate-500 truncate">${esc(s.p)}</div>
-            </div>`;
-        })
-        .join("");
-}
-
-function renderBreakdownChart(rep) {
-    $("chart-breakdown-title").textContent = `${rep.group_level || "Hierarchy"} Breakdown & Fertilizer`;
-    $("fert-pills").innerHTML = (rep.fertilizer || [])
-        .map(
-            (f) =>
-                `<span class="px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-bold">${esc(f.code)}: ${Number(f.kg).toFixed(1)}kg</span>`
-        )
-        .join("");
-
-    const box = $("chart-breakdown");
-    const list = rep.breakdown || [];
-    if (!list.length) {
-        box.innerHTML = `<div class="py-12 text-center text-xs text-slate-400">No breakdown records in selected filter</div>`;
-        return;
-    }
-    const maxB = Math.max(1, ...list.map((r) => r.bunches || 0));
-    box.innerHTML = list
+    const maxBunches = Math.max(1, ...rounds.map((r) => r.bunches || 0));
+    box.innerHTML = rounds
         .map((r) => {
-            const pct = Math.min(100, Math.round(((r.bunches || 0) / maxB) * 100));
+            const pct = Math.min(100, Math.round(((r.bunches || 0) / maxBunches) * 100));
             return `
-            <div class="space-y-1">
-                <div class="flex items-center justify-between text-xs">
-                    <span class="font-bold text-slate-800 truncate">${esc(r.label)}</span>
-                    <span class="font-mono-code text-[11px] text-slate-600">
-                        <b class="text-emerald-700">${r.bunches || 0}B</b> &bull; ${r.fronds || 0}F &bull; <b class="text-amber-700">${Number(r.fert_kg || 0).toFixed(1)}kg</b>
-                    </span>
+            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span class="font-extrabold text-slate-800">${esc(r.label)}</span>
+                    <div class="flex items-center gap-2 font-mono-code text-[11px]">
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">ABW: ${Number(r.abw || 0).toFixed(2)} kg</span>
+                        <span class="px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-bold">YPH: ${Number(r.yph || 0).toFixed(2)} kg/Ha</span>
+                    </div>
                 </div>
-                <div class="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                    <div class="h-full rounded-full bg-emerald-600" style="width:${pct}%"></div>
+                <div class="flex items-center justify-between text-[11px] font-mono-code text-slate-600">
+                    <span><b>${r.bunches || 0}</b> Bunches &bull; <b>${r.fronds || 0}</b> Fronds</span>
+                    <span class="text-blue-700 font-bold">Dispatch: ${Number(r.dispatch_kg || 0).toLocaleString()} kg</span>
+                </div>
+                <div class="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
+                    <div class="h-full rounded-full bg-emerald-600 transition-all" style="width:${pct}%"></div>
                 </div>
             </div>`;
         })
+        .join("");
+}
+
+function renderMonthComparison(months) {
+    const box = $("chart-months");
+    if (!months.length) {
+        box.innerHTML = `<div class="py-12 text-center text-xs text-slate-400">No monthly data in selected range</div>`;
+        return;
+    }
+    const maxB = Math.max(1, ...months.map((m) => m.bunches || 0));
+    box.innerHTML = months
+        .map((m) => {
+            const pct = Math.min(100, Math.round(((m.bunches || 0) / maxB) * 100));
+            return `
+            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span class="font-mono-code font-extrabold text-slate-900">${esc(m.ym)}</span>
+                    <div class="flex items-center gap-2 font-mono-code text-[11px]">
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">ABW: ${Number(m.abw || 0).toFixed(2)} kg</span>
+                        <span class="px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-bold">YPH: ${Number(m.yph || 0).toFixed(2)} kg/Ha</span>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between text-[11px] font-mono-code text-slate-600">
+                    <span><b>${m.bunches || 0}</b> Bunches &bull; <b>${m.fronds || 0}</b> Fronds</span>
+                    <span class="text-blue-700 font-bold">Dispatch: ${Number(m.dispatch_kg || 0).toLocaleString()} kg</span>
+                </div>
+                <div class="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
+                    <div class="h-full rounded-full bg-blue-600 transition-all" style="width:${pct}%"></div>
+                </div>
+            </div>`;
+        })
+        .join("");
+}
+
+function renderDivisionTable(rows) {
+    const tbody = $("dash-div-tbody");
+    if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-slate-400">No division data available</td></tr>`;
+        return;
+    }
+    tbody.innerHTML = rows
+        .map(
+            (r) => `
+        <tr class="hover:bg-slate-50">
+            <td class="py-2.5 px-4 font-bold text-slate-900">${esc(r.label)}</td>
+            <td class="py-2.5 px-4 font-mono-code text-slate-600">${Number(r.area_ha || 0).toFixed(2)} Ha</td>
+            <td class="py-2.5 px-4 font-mono-code font-bold text-emerald-700">${Number(r.bunches || 0).toLocaleString()}</td>
+            <td class="py-2.5 px-4 font-mono-code text-slate-700">${Number(r.fronds || 0).toLocaleString()}</td>
+            <td class="py-2.5 px-4 font-mono-code font-bold text-blue-700">${Number(r.dispatch_kg || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg</td>
+            <td class="py-2.5 px-4 font-mono-code font-extrabold text-slate-900">${Number(r.abw || 0).toFixed(2)} kg</td>
+            <td class="py-2.5 px-4 font-mono-code font-extrabold text-emerald-800">${Number(r.yph || 0).toFixed(2)} kg/Ha</td>
+        </tr>`
+        )
         .join("");
 }
 
 // ----------------------------------------------------------------------------
-// PAGE 2: HARVEST DATA ENTRY (2D Palm Card Map)
+// PAGE 2: UPDATED HARVEST DATA ENTRY FLOW
+// Order: 1. Round -> 2. Date -> 3. Division -> Field -> Block -> Tree (2D Cards) -> 4. Bunches & Fronds
 // ----------------------------------------------------------------------------
 async function loadHarvestBlock() {
     const bid = Number($("harv-block")?.value);
     if (!bid) return;
     const date = $("harv-date").value || todayStr();
-    const { round, rangeLabel, yearMonth } = roundOfDate(date);
-    $("harv-auto-meta").textContent = `${yearMonth} • Round ${round} (${rangeLabel})`;
+    const roundNo = Number($("harv-round").value) || roundOfDate(date).round;
+    const { rangeLabel, yearMonth } = roundOfDate(date, roundNo);
+    $("harv-auto-meta").textContent = `Round ${roundNo} (${rangeLabel}) • ${date}`;
 
-    const data = await api(`/api/block?block_id=${bid}&mode=harvest&date=${date}`);
+    const data = await api(`/api/block?block_id=${bid}&mode=harvest&date=${date}&round_no=${roundNo}`);
     state.harvBlock.block_id = bid;
     state.harvBlock.trees = data.trees || [];
     renderHarvestGrid();
@@ -1079,10 +1138,11 @@ function openHarvestModal(treeId) {
     if (!tree) return;
     state.modalTree = tree;
     const date = $("harv-date").value || todayStr();
-    const { round, rangeLabel } = roundOfDate(date);
+    const roundNo = Number($("harv-round").value) || roundOfDate(date).round;
+    const { rangeLabel } = roundOfDate(date, roundNo);
     $("mh-tree-badge").textContent = `#${tree.tree_no}`;
     $("mh-title").textContent = `Palm #${tree.tree_no}`;
-    $("mh-sub").textContent = `${date} • Round ${round} (${rangeLabel})`;
+    $("mh-sub").textContent = `Round ${roundNo} (${rangeLabel}) • ${date}`;
     $("mh-bunches").value = tree.rec ? tree.rec.bunches : 2;
     $("mh-fronds").value = tree.rec ? tree.rec.fronds : 2;
     $("modal-harvest").classList.remove("hidden");
@@ -1096,10 +1156,12 @@ async function submitHarvestModal() {
     try {
         const gps = await captureDeviceGps(tree);
         const date = $("harv-date").value || todayStr();
+        const round_no = Number($("harv-round").value) || roundOfDate(date).round;
         const bunches = Number($("mh-bunches").value) || 0;
         const fronds = Number($("mh-fronds").value) || 0;
         const res = await api("/api/harvest", "POST", {
             tree_id: tree.id,
+            round_no,
             date,
             bunches,
             fronds,
@@ -1109,7 +1171,7 @@ async function submitHarvestModal() {
         });
         $("modal-harvest").classList.add("hidden");
         const distMsg = res.distance_m !== null && res.distance_m !== undefined ? ` (${res.distance_m}m)` : "";
-        toast(`Saved Palm #${tree.tree_no}: ${bunches}B / ${fronds}F${distMsg}`);
+        toast(`Saved Palm #${tree.tree_no} (R${round_no}): ${bunches}B / ${fronds}F${distMsg}`);
         await loadHarvestBlock();
     } catch (err) {
         toast(err.message, "err");
@@ -1119,144 +1181,67 @@ async function submitHarvestModal() {
 }
 
 // ----------------------------------------------------------------------------
-// PAGE 3: FERTILIZER & FIELD MAINTENANCE (2D Palm Card Map)
+// PAGE 3: DISPATCH CROP WEIGHT LOGGER
+// Order: Select Round -> Select Date -> Select Division -> Enter Dispatch Crop Load Weight (in kg)
 // ----------------------------------------------------------------------------
-async function loadMaintBlock() {
-    const bid = Number($("maint-block")?.value);
-    if (!bid) return;
-    const date = $("maint-date").value || todayStr();
-    const data = await api(`/api/block?block_id=${bid}&mode=maintenance&date=${date}`);
-    state.maintBlock.block_id = bid;
-    state.maintBlock.trees = data.trees || [];
-    renderMaintGrid();
+function initDispatchForm() {
+    const divEl = $("disp-division");
+    if (!divEl) return;
+    const { divisions } = state.hierarchy;
+    divEl.innerHTML = divisions.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
 }
 
-function renderMaintGrid() {
-    const trees = state.maintBlock.trees;
-    const doneCount = trees.filter((t) => t.rec).length;
-    $("maint-progress-pill").textContent = `${doneCount} / ${trees.length} Logged`;
+async function loadDispatches() {
+    const data = await api("/api/dispatch");
+    state.dispatches = data.dispatches || [];
+    const totalKg = state.dispatches.reduce((s, d) => s + Number(d.weight_kg || 0), 0);
+    $("disp-total-badge").textContent = `Total: ${totalKg.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`;
 
-    const flt = state.maintBlock.filter;
-    const q = state.maintBlock.search.trim();
-    const filtered = trees.filter((t) => {
-        if (q && String(t.tree_no) !== q) return false;
-        if (flt === "done" && !t.rec) return false;
-        if (flt === "pending" && t.rec) return false;
-        return true;
-    });
+    const tbody = $("disp-tbody");
+    if (!state.dispatches.length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400">No mill dispatch crop weights logged yet</td></tr>`;
+        return;
+    }
 
-    const grid = $("maint-grid");
-    grid.innerHTML = filtered
-        .map((t) => {
-            const r = t.rec;
-            let cls = "";
-            if (r) {
-                cls = "done-maint";
-                if (r.sanitation === "bad" || r.weed === "heavy") cls += " bad-cond";
-                else if (r.sanitation === "medium" || r.weed === "moderate") cls += " warn-cond";
-            }
-            const tag = r
-                ? `${r.fertilizer_code ? r.fertilizer_code + " " : ""}${r.sanitation ? r.sanitation[0].toUpperCase() : ""}`
-                : "Tap";
-            return `
-            <div data-maint-tree="${t.id}" class="palm-card ${cls}">
-                <div class="w-full flex items-center justify-between text-[10px] font-mono-code text-slate-400">
-                    <span>#${t.tree_no}</span>
-                    ${r?.fertilizer_code ? `<span class="text-[9px] font-bold text-amber-700">${esc(r.fertilizer_code)}</span>` : ""}
-                </div>
-                <div class="my-1 text-emerald-700">
-                    <i data-lucide="${r ? "sprout" : "palmtree"}" class="w-5 h-5"></i>
-                </div>
-                <div class="text-[10px] font-mono-code font-extrabold ${r ? "text-slate-800" : "text-slate-400"} truncate max-w-full">
-                    ${esc(tag)}
-                </div>
-            </div>`;
-        })
+    const canDelete = (ROLE_RANK[state.user?.role] || 0) >= ROLE_RANK.supervisor;
+    tbody.innerHTML = state.dispatches
+        .map(
+            (d) => `
+        <tr class="hover:bg-slate-50">
+            <td class="py-2.5 px-4 font-mono-code text-slate-700">${esc(d.dispatch_date)}</td>
+            <td class="py-2.5 px-4">
+                <span class="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono-code font-bold text-[11px]">
+                    Round ${d.round_no}
+                </span>
+            </td>
+            <td class="py-2.5 px-4 font-bold text-slate-900">${esc(d.division_name)}</td>
+            <td class="py-2.5 px-4 font-mono-code font-extrabold text-blue-700">${Number(d.weight_kg).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg</td>
+            <td class="py-2.5 px-4 text-slate-500">${esc(d.recorded_by || "Staff")}</td>
+            <td class="py-2.5 px-4 text-right">
+                ${
+                    canDelete
+                        ? `<button type="button" data-del-dispatch="${d.id}" class="p-1.5 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600">
+                               <i data-lucide="trash-2" class="w-4 h-4"></i>
+                           </button>`
+                        : ""
+                }
+            </td>
+        </tr>`
+        )
         .join("");
 
-    grid.querySelectorAll("[data-maint-tree]").forEach((card) => {
-        card.onclick = () => openMaintModal(Number(card.getAttribute("data-maint-tree")));
+    document.querySelectorAll("[data-del-dispatch]").forEach((btn) => {
+        btn.onclick = async () => {
+            try {
+                await api("/api/dispatch/delete", "POST", { id: Number(btn.getAttribute("data-del-dispatch")) });
+                toast("Dispatch entry removed");
+                await loadDispatches();
+            } catch (err) {
+                toast(err.message, "err");
+            }
+        };
     });
     refreshIcons();
-}
-
-function openMaintModal(treeId) {
-    const tree = state.maintBlock.trees.find((t) => t.id === treeId);
-    if (!tree) return;
-    state.modalTree = tree;
-    $("mm-tree-badge").textContent = `#${tree.tree_no}`;
-    $("mm-title").textContent = `Field Care • Palm #${tree.tree_no}`;
-
-    const activeFerts = state.fertilizers.filter((f) => f.active !== 0);
-    const sel = $("mm-fert-id");
-    sel.innerHTML =
-        `<option value="">No Fertilizer</option>` +
-        activeFerts.map((f) => `<option value="${f.id}" data-kg="${f.std_kg}">${esc(f.code)} — ${esc(f.name)} (${f.std_kg}kg)</option>`).join("");
-
-    if (activeFerts.length) {
-        sel.value = String(activeFerts[0].id);
-        $("mm-fert-kg").value = activeFerts[0].std_kg;
-    }
-    sel.onchange = () => {
-        const opt = sel.options[sel.selectedIndex];
-        $("mm-fert-kg").value = opt?.getAttribute("data-kg") || "";
-    };
-
-    setMaintButtons("weed", tree.rec?.weed || "clean");
-    setMaintButtons("san", tree.rec?.sanitation || "good");
-    $("modal-maint").classList.remove("hidden");
-}
-
-function setMaintButtons(kind, val) {
-    if (kind === "weed") {
-        state.maintForm.weed = val;
-        document.querySelectorAll(".weed-btn").forEach((b) => {
-            const on = b.getAttribute("data-weed") === val;
-            b.className = `weed-btn py-2.5 px-2 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition ${
-                on ? "border-emerald-600 bg-emerald-50 text-emerald-900 shadow-sm" : "border-slate-200 bg-white text-slate-600"
-            }`;
-        });
-    } else {
-        state.maintForm.sanitation = val;
-        document.querySelectorAll(".san-btn").forEach((b) => {
-            const on = b.getAttribute("data-san") === val;
-            b.className = `san-btn py-2.5 px-2 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition ${
-                on ? "border-emerald-600 bg-emerald-50 text-emerald-900 shadow-sm" : "border-slate-200 bg-white text-slate-600"
-            }`;
-        });
-    }
-}
-
-async function submitMaintModal() {
-    const tree = state.modalTree;
-    if (!tree) return;
-    const btn = $("btn-submit-maint");
-    btn.disabled = true;
-    try {
-        const gps = await captureDeviceGps(tree);
-        const date = $("maint-date").value || todayStr();
-        const fertId = $("mm-fert-id").value ? Number($("mm-fert-id").value) : null;
-        const fertKg = fertId ? Number($("mm-fert-kg").value) : null;
-        const res = await api("/api/maintenance", "POST", {
-            tree_id: tree.id,
-            date,
-            fertilizer_id: fertId,
-            fertilizer_kg: fertKg,
-            weed: state.maintForm.weed,
-            sanitation: state.maintForm.sanitation,
-            lat: gps.lat,
-            lng: gps.lng,
-            acc: gps.acc,
-        });
-        $("modal-maint").classList.add("hidden");
-        const distMsg = res.distance_m !== null && res.distance_m !== undefined ? ` (${res.distance_m}m)` : "";
-        toast(`Saved Care for Palm #${tree.tree_no}${distMsg}`);
-        await loadMaintBlock();
-    } catch (err) {
-        toast(err.message, "err");
-    } finally {
-        btn.disabled = false;
-    }
 }
 
 // ----------------------------------------------------------------------------
@@ -1402,7 +1387,7 @@ function renderComplianceTable() {
                 </td>
                 <td class="py-2.5 px-3">
                     <div class="font-bold text-slate-800">${esc(r.full_name)}</div>
-                    <div class="text-[11px] font-mono-code text-slate-500">${esc(r.activity)}: ${esc(r.detail)}</div>
+                    <div class="text-[11px] font-mono-code text-slate-500">${esc(r.detail)}</div>
                 </td>
                 <td class="py-2.5 px-3 font-mono-code text-[11px] text-slate-600">
                     ${r.tree_lat !== null ? `${Number(r.tree_lat).toFixed(5)}, ${Number(r.tree_lng).toFixed(5)}` : "Unmapped"}
@@ -1418,13 +1403,12 @@ function renderComplianceTable() {
 }
 
 // ----------------------------------------------------------------------------
-// PAGE 6: ADMIN INFRASTRUCTURE SETTINGS (Users, 5-Tier CRUD, Fertilizers)
+// PAGE 6: ADMIN INFRASTRUCTURE SETTINGS (Users, 5-Tier CRUD, GPS Settings)
 // ----------------------------------------------------------------------------
 async function loadAdminPage() {
     const [uData, boot] = await Promise.all([api("/api/admin/users"), api("/api/bootstrap")]);
     state.adminUsers = uData;
     state.hierarchy = boot.hierarchy;
-    state.fertilizers = boot.fertilizers;
     state.settings = boot.settings;
 
     $("set-gps-thresh").value = state.settings.gps_threshold_m || 20;
@@ -1432,7 +1416,6 @@ async function loadAdminPage() {
 
     renderAdminUsers();
     renderAdminHierarchy();
-    renderAdminFertilizers();
     refreshIcons();
 }
 
@@ -1457,7 +1440,7 @@ function renderAdminUsers() {
                                 isPending ? "bg-amber-100 text-amber-800 font-bold" : "bg-slate-100 text-slate-700"
                             }">${esc(ROLE_LABELS[u.role] || u.role)}</span>
                         </div>
-                        <div class="text-[11px] font-mono-code text-slate-400">@${esc(u.username)} &bull; ${esc(u.phone)} &bull; ${esc(u.email)}</div>
+                        <div class="text-[11px] font-mono-code text-slate-400">${esc(u.email)} &bull; ${esc(u.phone)}</div>
                     </div>
                 </div>
                 <div class="flex items-center gap-1.5">
@@ -1466,7 +1449,7 @@ function renderAdminUsers() {
                             ? `<span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold">Master Admin</span>`
                             : `
                         <select data-user-role="${u.id}" class="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold">
-                            <option value="pending" ${u.role === "pending" ? "selected" : ""}>Normal User (Pending)</option>
+                            <option value="pending" ${u.role === "pending" ? "selected" : ""}>Pending Approval</option>
                             <option value="harvester" ${u.role === "harvester" ? "selected" : ""}>Harvester</option>
                             <option value="supervisor" ${u.role === "supervisor" ? "selected" : ""}>Supervisor</option>
                             <option value="admin" ${u.role === "admin" ? "selected" : ""}>Admin</option>
@@ -1487,7 +1470,7 @@ function renderAdminUsers() {
                     user_id: Number(sel.getAttribute("data-user-role")),
                     role: sel.value,
                 });
-                toast(`Updated user role to ${ROLE_LABELS[sel.value]}`);
+                toast(`Updated role to ${ROLE_LABELS[sel.value]}`);
                 await loadAdminPage();
             } catch (err) {
                 toast(err.message, "err");
@@ -1499,7 +1482,7 @@ function renderAdminUsers() {
         btn.onclick = async () => {
             try {
                 await api("/api/admin/users/delete", "POST", { user_id: Number(btn.getAttribute("data-del-user")) });
-                toast("User removed");
+                toast("Account removed");
                 await loadAdminPage();
             } catch (err) {
                 toast(err.message, "err");
@@ -1576,7 +1559,6 @@ function renderAdminHierarchy() {
         })
         .join("");
 
-    // Bind Edit & Delete handlers
     document.querySelectorAll("[data-del-entity]").forEach((btn) => {
         btn.onclick = async () => {
             const [ent, id] = btn.getAttribute("data-del-entity").split(":");
@@ -1605,37 +1587,6 @@ function renderAdminHierarchy() {
     });
     document.querySelectorAll("[data-batch-block]").forEach((b) => {
         b.onclick = () => openCrudModal("batch", blocks.find((x) => x.id === Number(b.getAttribute("data-batch-block"))));
-    });
-}
-
-function renderAdminFertilizers() {
-    $("crud-fertilizers").innerHTML = state.fertilizers
-        .map(
-            (f) => `
-        <div class="py-2.5 flex items-center justify-between text-xs">
-            <div>
-                <span class="font-mono-code font-extrabold text-emerald-700">${esc(f.code)}</span>
-                <span class="font-bold text-slate-800 ml-1">${esc(f.name)}</span>
-                <span class="ml-2 font-mono-code text-slate-500">${f.std_kg} kg/palm</span>
-            </div>
-            <div class="flex items-center gap-1">
-                <button type="button" data-edit-fert="${f.id}" class="p-1 text-slate-500 hover:text-emerald-600"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-                <button type="button" data-del-entity="fertilizer:${f.id}" class="p-1 text-slate-400 hover:text-red-600"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
-            </div>
-        </div>`
-        )
-        .join("");
-
-    document.querySelectorAll("[data-edit-fert]").forEach((b) => {
-        b.onclick = () => openCrudModal("fertilizer", state.fertilizers.find((x) => x.id === Number(b.getAttribute("data-edit-fert"))));
-    });
-    document.querySelectorAll("#crud-fertilizers [data-del-entity]").forEach((btn) => {
-        btn.onclick = async () => {
-            const [, id] = btn.getAttribute("data-del-entity").split(":");
-            await api("/api/admin/fertilizer/delete", "POST", { id: Number(id) });
-            toast("Fertilizer removed");
-            await loadAdminPage();
-        };
     });
 }
 
@@ -1700,22 +1651,6 @@ function openCrudModal(type, item = null) {
         $("ac-title").textContent = `Batch Generate Trees • ${item?.name}`;
         body.innerHTML = `<input id="ac-batch-count" type="number" min="1" max="3000" value="50" placeholder="Number of trees to add" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono-code font-bold" />`;
         state.crudCallback = () => api("/api/admin/trees/batch", "POST", { block_id: item.id, count: Number($("ac-batch-count").value) });
-    } else if (type === "fertilizer") {
-        $("ac-title").textContent = item ? "Edit Fertilizer Variety" : "New Fertilizer Variety";
-        body.innerHTML = `
-            <div class="grid grid-cols-2 gap-2">
-                <input id="ac-code" type="text" placeholder="Code (e.g. ERP)" value="${esc(item?.code || "")}" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono-code font-bold uppercase" />
-                <input id="ac-kg" type="number" step="0.1" placeholder="Std kg/palm" value="${item?.std_kg || 2.0}" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono-code font-bold" />
-            </div>
-            <input id="ac-name" type="text" placeholder="Full Name" value="${esc(item?.name || "")}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold" />`;
-        state.crudCallback = () =>
-            api("/api/admin/fertilizer/save", "POST", {
-                id: item?.id,
-                code: $("ac-code").value,
-                name: $("ac-name").value,
-                std_kg: Number($("ac-kg").value),
-                active: 1,
-            });
     }
 
     $("modal-admin-crud").classList.remove("hidden");
@@ -1728,10 +1663,13 @@ document.addEventListener("DOMContentLoaded", () => {
     setInterval(updateClockAndGreeting, 1000);
     updateClockAndGreeting();
 
-    // Set default dates
+    // Auto-detect today's date & current round for Harvest and Dispatch pages
     const today = todayStr();
+    const { round } = roundOfDate(today);
     if ($("harv-date")) $("harv-date").value = today;
-    if ($("maint-date")) $("maint-date").value = today;
+    if ($("harv-round")) $("harv-round").value = String(round);
+    if ($("disp-date")) $("disp-date").value = today;
+    if ($("disp-round")) $("disp-round").value = String(round);
 
     // Auth View Switchers
     $("btn-show-signup").onclick = () => showAuthView("signup");
@@ -1749,65 +1687,52 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     });
 
-    // Login Submit
+    // Login Submit (Email & Password ONLY)
     $("form-login").onsubmit = async (e) => {
         e.preventDefault();
-        await loginWithCredentials($("login-identifier").value, $("login-password").value);
+        await loginWithEmail($("login-email").value, $("login-password").value);
     };
 
-    // Quick Demo Role Pills on Login Screen
-    document.querySelectorAll("[data-quick-login]").forEach((btn) => {
-        btn.onclick = () => loginWithCredentials(btn.getAttribute("data-quick-login"), "Elaeis@2026");
-    });
-
-    // Sign-Up Submit (defaults to Normal User / pending)
+    // Sign-Up Submit -> Shows "Account created successfully. Pending admin approval."
     $("form-signup").onsubmit = async (e) => {
         e.preventDefault();
         try {
             const res = await api("/api/auth/register", "POST", {
                 full_name: $("reg-fullname").value,
-                username: $("reg-username").value,
                 email: $("reg-email").value,
                 phone: $("reg-phone").value,
                 password: $("reg-password").value,
             });
-            state.token = res.token;
-            state.user = res.user;
-            localStorage.setItem("el_token", res.token);
-            toast("Account created as Normal User (Pending Admin Approval)");
-            await enterApplication();
+            $("form-signup").reset();
+            const msg = res.message || "Account created successfully. Pending admin approval.";
+            showAuthView("login", msg);
+            toast(msg);
         } catch (err) {
             toast(err.message, "err");
         }
     };
 
-    // Forgot Password SMS / Email Channel Toggle
+    // Forgot Password Channel Toggle
     const setForgotChan = (ch) => {
         state.forgotChannel = ch;
-        $("chan-sms").className = `px-2.5 py-1 rounded-md flex items-center gap-1 ${
-            ch === "sms" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-        }`;
         $("chan-email").className = `px-2.5 py-1 rounded-md flex items-center gap-1 ${
             ch === "email" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
         }`;
+        $("chan-sms").className = `px-2.5 py-1 rounded-md flex items-center gap-1 ${
+            ch === "sms" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+        }`;
     };
-    $("chan-sms").onclick = () => setForgotChan("sms");
     $("chan-email").onclick = () => setForgotChan("email");
+    $("chan-sms").onclick = () => setForgotChan("sms");
 
     $("btn-send-code").onclick = async () => {
-        const idf = $("forgot-identifier").value.trim();
-        if (!idf) return toast("Enter your username, email, or mobile", "warn");
+        const email = $("forgot-email").value.trim();
+        if (!email) return toast("Enter your registered email address", "warn");
         try {
-            const res = await api("/api/auth/forgot", "POST", { identifier: idf, channel: state.forgotChannel });
+            await api("/api/auth/forgot", "POST", { email, channel: state.forgotChannel });
             $("forgot-step-1").classList.add("hidden");
             $("forgot-step-2").classList.remove("hidden");
-            if (res.demo_code) {
-                $("demo-otp-banner").classList.remove("hidden");
-                $("demo-otp-val").textContent = res.demo_code;
-                $("reset-code").value = res.demo_code;
-            }
-            toast(`Recovery code sent via ${state.forgotChannel.toUpperCase()}`);
-            refreshIcons();
+            toast("If the account exists, a recovery code has been sent.");
         } catch (err) {
             toast(err.message, "err");
         }
@@ -1816,7 +1741,7 @@ document.addEventListener("DOMContentLoaded", () => {
     $("btn-verify-reset").onclick = async () => {
         try {
             await api("/api/auth/reset", "POST", {
-                identifier: $("forgot-identifier").value.trim(),
+                email: $("forgot-email").value.trim(),
                 code: $("reset-code").value.trim(),
                 new_password: $("reset-new-password").value,
             });
@@ -1827,21 +1752,12 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
 
-    // Pending Screen Buttons
-    $("btn-refresh-pending").onclick = async () => {
-        state.user = null;
-        await enterApplication();
-    };
-    $("btn-pending-switch-admin").onclick = () => loginWithCredentials("admin", "Elaeis@2026");
-    $("btn-pending-logout").onclick = () => doLogout();
-
     // Header Controls
     $("btn-logout").onclick = () => doLogout();
     $("btn-gps-ping").onclick = async () => {
         const g = await captureDeviceGps();
         toast(`GPS: ${g.lat.toFixed(5)}, ${g.lng.toFixed(5)} (±${g.acc}m)`);
     };
-    $("role-switcher").onchange = (e) => loginWithCredentials(e.target.value, "Elaeis@2026");
 
     // Navigation Tabs (Desktop Header + Mobile Bottom Bar)
     document.querySelectorAll("[data-nav]").forEach((btn) => {
@@ -1859,7 +1775,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `elaeis_report_${todayStr()}.csv`;
+            a.download = `elaeis_yield_report_${todayStr()}.csv`;
             a.click();
             URL.revokeObjectURL(url);
         } catch (_) {
@@ -1867,7 +1783,8 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
 
-    // Harvest Controls
+    // Harvest Controls (1. Round -> 2. Date -> 3. Division -> Field -> Block -> Tree)
+    $("harv-round").onchange = () => loadHarvestBlock();
     $("harv-date").onchange = () => loadHarvestBlock();
     $("harv-search").oninput = (e) => {
         state.harvBlock.search = e.target.value;
@@ -1886,26 +1803,26 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     $("btn-submit-harvest").onclick = () => submitHarvestModal();
 
-    // Maintenance Controls
-    $("maint-date").onchange = () => loadMaintBlock();
-    $("maint-search").oninput = (e) => {
-        state.maintBlock.search = e.target.value;
-        renderMaintGrid();
+    // Dispatch Crop Weight Form Submit
+    $("form-dispatch").onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = $("btn-submit-dispatch");
+        btn.disabled = true;
+        try {
+            const round_no = Number($("disp-round").value);
+            const date = $("disp-date").value || todayStr();
+            const division_id = Number($("disp-division").value);
+            const weight_kg = Number($("disp-weight").value);
+            await api("/api/dispatch", "POST", { round_no, date, division_id, weight_kg });
+            $("disp-weight").value = "";
+            toast(`Saved Dispatch Weight: ${weight_kg.toLocaleString()} kg (Round ${round_no})`);
+            await loadDispatches();
+        } catch (err) {
+            toast(err.message, "err");
+        } finally {
+            btn.disabled = false;
+        }
     };
-    document.querySelectorAll(".maint-flt-btn").forEach((btn) => {
-        btn.onclick = () => {
-            state.maintBlock.filter = btn.getAttribute("data-maint-filter");
-            document.querySelectorAll(".maint-flt-btn").forEach((b) => {
-                b.className = `maint-flt-btn px-2.5 py-1 rounded-lg ${
-                    b === btn ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-                }`;
-            });
-            renderMaintGrid();
-        };
-    });
-    document.querySelectorAll(".weed-btn").forEach((b) => (b.onclick = () => setMaintButtons("weed", b.getAttribute("data-weed"))));
-    document.querySelectorAll(".san-btn").forEach((b) => (b.onclick = () => setMaintButtons("san", b.getAttribute("data-san"))));
-    $("btn-submit-maint").onclick = () => submitMaintModal();
 
     // Stepper buttons (+/-)
     document.querySelectorAll("[data-step]").forEach((btn) => {
@@ -1954,7 +1871,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             $("adm-panel-users").classList.toggle("hidden", tab !== "users");
             $("adm-panel-hierarchy").classList.toggle("hidden", tab !== "hierarchy");
-            $("adm-panel-agronomy").classList.toggle("hidden", tab !== "agronomy");
+            $("adm-panel-settings").classList.toggle("hidden", tab !== "settings");
         };
     });
 
@@ -1962,7 +1879,6 @@ document.addEventListener("DOMContentLoaded", () => {
     $("btn-add-division").onclick = () => openCrudModal("division");
     $("btn-add-field").onclick = () => openCrudModal("field");
     $("btn-add-block").onclick = () => openCrudModal("block");
-    $("btn-add-fert").onclick = () => openCrudModal("fertilizer");
 
     $("btn-ac-save").onclick = async () => {
         if (!state.crudCallback) return;

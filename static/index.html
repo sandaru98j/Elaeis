@@ -29,14 +29,13 @@
     <div id="toast-container" class="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
 
     <!-- ========================================================================
-         1. AUTH SCREEN (Login / Sign-Up / Forgot Password SMS & Email Code UI)
+         1. SECURE AUTH SCREEN (Email + Password Only)
          ======================================================================== -->
     <section id="auth-screen" class="min-h-screen flex flex-col justify-center items-center px-4 py-10 bg-gradient-to-br from-slate-50 via-emerald-50/40 to-slate-100">
         <div class="w-full max-w-md">
             <!-- Brand Header -->
             <div class="flex flex-col items-center text-center mb-6">
                 <div class="w-16 h-16 rounded-2xl bg-emerald-600 shadow-lg shadow-emerald-600/25 flex items-center justify-center mb-3">
-                    <!-- Custom Vector Oil Palm & Geo Emblem -->
                     <svg class="w-10 h-10 text-white" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M24 42V22" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
                         <path d="M24 22C18 14 9 14 6 20C12 19 18 21 24 25" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
@@ -51,27 +50,29 @@
                 <p class="text-sm font-medium text-slate-500 mt-1">Palm-based Crop Monitoring System</p>
             </div>
 
-            <!-- Clean Facebook-Style Card -->
+            <!-- Auth Card -->
             <div class="bg-white rounded-2xl shadow-xl shadow-slate-200/70 border border-slate-200/80 p-6 sm:p-7">
 
-                <!-- LOGIN FORM -->
+                <!-- Status Banner (Used for Sign-Up Success: "Account created successfully. Pending admin approval.") -->
+                <div id="auth-notice" class="hidden mb-4 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center gap-2">
+                    <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 shrink-0"></i>
+                    <span id="auth-notice-text">Account created successfully. Pending admin approval.</span>
+                </div>
+
+                <!-- LOGIN FORM (Email & Password ONLY) -->
                 <form id="form-login" class="space-y-4">
-                    <div>
-                        <div class="relative">
-                            <i data-lucide="user" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                            <input id="login-identifier" type="text" required placeholder="Username, email, or mobile number"
-                                class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 outline-none text-sm font-medium transition" />
-                        </div>
+                    <div class="relative">
+                        <i data-lucide="mail" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input id="login-email" type="email" required autocomplete="email" placeholder="Email address"
+                            class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 outline-none text-sm font-medium transition" />
                     </div>
-                    <div>
-                        <div class="relative">
-                            <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                            <input id="login-password" type="password" required placeholder="Password"
-                                class="w-full pl-10 pr-10 py-3 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 outline-none text-sm font-medium transition" />
-                            <button type="button" data-toggle-pass="login-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                                <i data-lucide="eye" class="w-4 h-4"></i>
-                            </button>
-                        </div>
+                    <div class="relative">
+                        <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input id="login-password" type="password" required autocomplete="current-password" placeholder="Password"
+                            class="w-full pl-10 pr-10 py-3 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 outline-none text-sm font-medium transition" />
+                        <button type="button" data-toggle-pass="login-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                            <i data-lucide="eye" class="w-4 h-4"></i>
+                        </button>
                     </div>
                     <button type="submit" class="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-sm shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition">
                         <i data-lucide="log-in" class="w-4 h-4"></i>
@@ -90,25 +91,15 @@
                     </div>
                 </form>
 
-                <!-- SIGN UP FORM (Defaults to Normal User / Pending) -->
+                <!-- SIGN UP FORM -->
                 <form id="form-signup" class="space-y-3.5 hidden">
-                    <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-                        <div class="flex items-center gap-2">
-                            <i data-lucide="user-plus" class="w-4 h-4 text-emerald-600"></i>
-                            <span class="font-bold text-sm text-slate-800">Create Account</span>
-                        </div>
-                        <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
-                            <i data-lucide="clock" class="w-3 h-3"></i> Normal User
-                        </span>
+                    <div class="flex items-center gap-2 pb-2 border-b border-slate-100">
+                        <i data-lucide="user-plus" class="w-4 h-4 text-emerald-600"></i>
+                        <span class="font-bold text-sm text-slate-800">Create Account</span>
                     </div>
                     <div class="relative">
-                        <i data-lucide="badge-check" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <i data-lucide="user" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
                         <input id="reg-fullname" type="text" required placeholder="Full name"
-                            class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
-                    </div>
-                    <div class="relative">
-                        <i data-lucide="at-sign" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                        <input id="reg-username" type="text" required placeholder="Username"
                             class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
                     </div>
                     <div class="relative">
@@ -118,12 +109,12 @@
                     </div>
                     <div class="relative">
                         <i data-lucide="smartphone" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                        <input id="reg-phone" type="tel" required placeholder="Mobile (+9477...)"
+                        <input id="reg-phone" type="tel" required placeholder="Mobile number"
                             class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm font-mono-code" />
                     </div>
                     <div class="relative">
                         <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                        <input id="reg-password" type="password" required minlength="8" placeholder="Password (8+ chars)"
+                        <input id="reg-password" type="password" required minlength="8" placeholder="Password (min. 8 characters)"
                             class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
                     </div>
                     <button type="submit" class="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition">
@@ -137,55 +128,49 @@
                     </div>
                 </form>
 
-                <!-- FORGOT PASSWORD FORM (SMS / Email Code UI) -->
+                <!-- FORGOT PASSWORD FORM -->
                 <div id="form-forgot" class="space-y-4 hidden">
                     <div class="flex items-center justify-between pb-2 border-b border-slate-100">
                         <div class="flex items-center gap-2">
                             <i data-lucide="key-round" class="w-4 h-4 text-emerald-600"></i>
-                            <span class="font-bold text-sm text-slate-800">Account Recovery</span>
+                            <span class="font-bold text-sm text-slate-800">Reset Password</span>
                         </div>
                         <div class="inline-flex rounded-lg bg-slate-100 p-0.5 text-xs font-semibold">
-                            <button type="button" id="chan-sms" class="px-2.5 py-1 rounded-md bg-white text-slate-900 shadow-sm flex items-center gap-1">
-                                <i data-lucide="smartphone" class="w-3 h-3"></i> SMS
-                            </button>
-                            <button type="button" id="chan-email" class="px-2.5 py-1 rounded-md text-slate-500 flex items-center gap-1">
+                            <button type="button" id="chan-email" class="px-2.5 py-1 rounded-md bg-white text-slate-900 shadow-sm flex items-center gap-1">
                                 <i data-lucide="mail" class="w-3 h-3"></i> Email
+                            </button>
+                            <button type="button" id="chan-sms" class="px-2.5 py-1 rounded-md text-slate-500 flex items-center gap-1">
+                                <i data-lucide="smartphone" class="w-3 h-3"></i> SMS
                             </button>
                         </div>
                     </div>
 
-                    <!-- Step 1: Send Code -->
                     <div id="forgot-step-1" class="space-y-3">
                         <div class="relative">
-                            <i data-lucide="user-check" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                            <input id="forgot-identifier" type="text" placeholder="Username, email, or mobile"
+                            <i data-lucide="mail" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                            <input id="forgot-email" type="email" placeholder="Registered email address"
                                 class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
                         </div>
                         <button type="button" id="btn-send-code" class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition">
                             <i data-lucide="send" class="w-4 h-4"></i>
-                            <span>Send 6-Digit Code</span>
+                            <span>Send Recovery Code</span>
                         </button>
                     </div>
 
-                    <!-- Step 2: Verify Code & New Password -->
                     <div id="forgot-step-2" class="space-y-3 hidden">
-                        <div id="demo-otp-banner" class="hidden p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between">
-                            <span class="flex items-center gap-1.5 font-medium"><i data-lucide="message-square-code" class="w-4 h-4 text-emerald-600"></i> Code:</span>
-                            <span id="demo-otp-val" class="font-mono-code font-bold text-sm tracking-widest bg-white px-2 py-0.5 rounded border border-emerald-200">------</span>
-                        </div>
                         <div class="relative">
                             <i data-lucide="hash" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                            <input id="reset-code" type="text" maxlength="6" placeholder="6-digit code"
+                            <input id="reset-code" type="text" maxlength="6" placeholder="6-digit recovery code"
                                 class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm font-mono-code tracking-widest" />
                         </div>
                         <div class="relative">
                             <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                            <input id="reset-new-password" type="password" placeholder="New password (8+ chars)"
+                            <input id="reset-new-password" type="password" placeholder="New password (min. 8 characters)"
                                 class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
                         </div>
                         <button type="button" id="btn-verify-reset" class="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 transition">
                             <i data-lucide="check" class="w-4 h-4"></i>
-                            <span>Reset Password</span>
+                            <span>Update Password</span>
                         </button>
                     </div>
 
@@ -196,78 +181,11 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Quick 1-Tap Role Demo Switcher on Login Screen -->
-            <div class="mt-5 bg-white/80 backdrop-blur rounded-2xl border border-slate-200/80 p-3.5">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                        <i data-lucide="zap" class="w-3.5 h-3.5 text-emerald-600"></i> Quick Role Access
-                    </span>
-                    <span class="text-[11px] font-mono-code text-slate-400">Pass: Elaeis@2026</span>
-                </div>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                    <button type="button" data-quick-login="admin" class="px-2.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-900 text-xs font-semibold flex items-center justify-center gap-1.5 transition">
-                        <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-600"></i> Admin
-                    </button>
-                    <button type="button" data-quick-login="supervisor" class="px-2.5 py-2 rounded-xl border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-900 text-xs font-semibold flex items-center justify-center gap-1.5 transition">
-                        <i data-lucide="user-check" class="w-3.5 h-3.5 text-blue-600"></i> Supervisor
-                    </button>
-                    <button type="button" data-quick-login="harvester" class="px-2.5 py-2 rounded-xl border border-amber-200 bg-amber-50/70 hover:bg-amber-100 text-amber-900 text-xs font-semibold flex items-center justify-center gap-1.5 transition">
-                        <i data-lucide="scissors" class="w-3.5 h-3.5 text-amber-600"></i> Harvester
-                    </button>
-                    <button type="button" data-quick-login="ruwan" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition">
-                        <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-500"></i> Normal
-                    </button>
-                </div>
-            </div>
         </div>
     </section>
 
     <!-- ========================================================================
-         2. NORMAL USER — WAITING FOR ADMIN APPROVAL SCREEN
-         ======================================================================== -->
-    <section id="pending-screen" class="hidden min-h-screen flex flex-col justify-center items-center px-4 py-10 bg-slate-50">
-        <div class="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 p-7 text-center">
-            <div class="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto mb-4">
-                <i data-lucide="shield-alert" class="w-8 h-8"></i>
-            </div>
-            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold mb-2">
-                <i data-lucide="clock" class="w-3.5 h-3.5"></i> Normal User &bull; Pending
-            </span>
-            <h2 class="text-xl font-extrabold text-slate-900">Waiting for Admin Approval</h2>
-            <p class="text-xs text-slate-500 mt-1">Master Admin must assign your role (Harvester, Supervisor, or Admin) to unlock estate access.</p>
-
-            <div class="mt-5 p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-left space-y-2 text-xs">
-                <div class="flex justify-between">
-                    <span class="text-slate-400">Name</span>
-                    <span id="pending-name" class="font-bold text-slate-800">—</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-slate-400">Username</span>
-                    <span id="pending-username" class="font-mono-code font-semibold text-slate-700">—</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-slate-400">Mobile</span>
-                    <span id="pending-phone" class="font-mono-code text-slate-700">—</span>
-                </div>
-            </div>
-
-            <div class="mt-6 flex flex-col sm:flex-row gap-2">
-                <button type="button" id="btn-refresh-pending" class="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition">
-                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> Check Approval
-                </button>
-                <button type="button" id="btn-pending-switch-admin" class="flex-1 py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition">
-                    <i data-lucide="shield-check" class="w-4 h-4"></i> Open as Admin
-                </button>
-                <button type="button" id="btn-pending-logout" class="py-2.5 px-3.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 font-bold text-xs flex items-center justify-center gap-1 transition">
-                    <i data-lucide="log-out" class="w-4 h-4"></i>
-                </button>
-            </div>
-        </div>
-    </section>
-
-    <!-- ========================================================================
-         3. MAIN APPLICATION SHELL (Desktop Header Bar + Mobile Bottom Tab Bar)
+         2. MAIN APPLICATION SHELL (Desktop Header Bar + Mobile Bottom Tab Bar)
          ======================================================================== -->
     <div id="app-shell" class="hidden min-h-screen flex flex-col pb-20 lg:pb-8">
 
@@ -311,9 +229,9 @@
                         <i data-lucide="scissors" class="w-4 h-4"></i>
                         <span>Harvest</span>
                     </button>
-                    <button type="button" data-nav="maintenance" data-min-role="supervisor" class="nav-btn px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
-                        <i data-lucide="sprout" class="w-4 h-4"></i>
-                        <span>Field Care</span>
+                    <button type="button" data-nav="dispatch" class="nav-btn px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
+                        <i data-lucide="truck" class="w-4 h-4"></i>
+                        <span>Dispatch Weight</span>
                     </button>
                     <button type="button" data-nav="mapper" data-min-role="admin" class="nav-btn px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
                         <i data-lucide="map-pin" class="w-4 h-4"></i>
@@ -329,24 +247,13 @@
                     </button>
                 </nav>
 
-                <!-- RIGHT CONTROLS: GPS Status + Role Switcher + Logout -->
+                <!-- RIGHT CONTROLS: GPS Status + Logout -->
                 <div class="flex items-center gap-2 shrink-0">
                     <button type="button" id="btn-gps-ping" title="Live Device GPS" class="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[11px] font-mono-code font-semibold text-slate-700 flex items-center gap-1.5 transition">
                         <span id="gps-dot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
                         <i data-lucide="locate-fixed" class="w-3.5 h-3.5 text-emerald-600"></i>
                         <span id="gps-label" class="hidden md:inline">GPS Ready</span>
                     </button>
-
-                    <!-- Role Switcher Dropdown for Instant RBAC Testing -->
-                    <div class="relative">
-                        <select id="role-switcher" title="Switch Account / Role" class="appearance-none pl-2.5 pr-7 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50/70 text-emerald-900 text-xs font-bold cursor-pointer focus:outline-none">
-                            <option value="admin">Admin</option>
-                            <option value="supervisor">Supervisor</option>
-                            <option value="harvester">Harvester</option>
-                            <option value="ruwan">Normal User</option>
-                        </select>
-                        <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-emerald-700 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
-                    </div>
 
                     <button type="button" id="btn-logout" title="Log Out" class="p-2 rounded-xl border border-slate-200 hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-slate-600 transition">
                         <i data-lucide="log-out" class="w-4 h-4"></i>
@@ -359,10 +266,10 @@
         <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 pt-4 pb-6 space-y-4">
 
             <!-- ================================================================
-                 PAGE 1: HOME / ANALYTICS DASHBOARD
+                 PAGE 1: ADVANCED YIELD ANALYTICS DASHBOARD
                  ================================================================ -->
             <section id="page-dashboard" class="page-view space-y-4">
-                <!-- Filter Bar (5-Tier Cascade + Time Filters + Export) -->
+                <!-- Filter Bar (5-Tier Cascade + Comparison Views + Export) -->
                 <div class="bg-white rounded-2xl border border-slate-200 p-3.5 sm:p-4 shadow-sm space-y-3 print-card">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-2 min-w-0">
@@ -370,7 +277,7 @@
                                 <i data-lucide="filter" class="w-4 h-4"></i>
                             </div>
                             <div id="dash-breadcrumb" class="text-xs font-bold text-slate-800 truncate">
-                                2026/27 Season | Uskvalley Estate
+                                Season-to-Date | Uskvalley Estate
                             </div>
                         </div>
                         <div class="flex items-center gap-1.5 no-print">
@@ -397,14 +304,14 @@
                         <select id="flt-tree" class="col-span-2 sm:col-span-1 px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold text-slate-800"></select>
                     </div>
 
-                    <!-- Time Mode Filter Row -->
+                    <!-- Time Mode Filter Row (Season-to-Date, Month-by-Month, Round-by-Round, Custom) -->
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-100 no-print">
                         <select id="flt-time-mode" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-emerald-800">
-                            <option value="season">Season (Apr-Mar)</option>
-                            <option value="std">Season-to-Date</option>
-                            <option value="month">Month</option>
+                            <option value="std">Season-to-Date (STD)</option>
+                            <option value="month">Month View</option>
                             <option value="round">Specific Round</option>
-                            <option value="custom">Custom Range</option>
+                            <option value="season">Full Season (Apr-Mar)</option>
+                            <option value="custom">Custom Date Range</option>
                         </select>
                         <div id="flt-time-slot-1">
                             <select id="flt-season-year" class="w-full px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold">
@@ -429,121 +336,184 @@
                     </div>
                 </div>
 
-                <!-- KPI Metric Cards -->
-                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <!-- 5 Core KPI Metric Cards: Bunches, Fronds, Dispatch Weight, ABW, YPH -->
+                <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                    <!-- Total Bunches -->
                     <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center gap-3 print-card">
-                        <div class="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
                             <i data-lucide="package-check" class="w-5 h-5"></i>
                         </div>
-                        <div>
-                            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Bunches Cut</div>
-                            <div id="kpi-bunches" class="text-2xl font-extrabold font-mono-code text-slate-900">0</div>
-                            <div id="kpi-harvest-trees" class="text-[11px] text-slate-500">0 palms</div>
+                        <div class="min-w-0">
+                            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Bunches</div>
+                            <div id="kpi-bunches" class="text-xl font-extrabold font-mono-code text-slate-900">0</div>
+                            <div id="kpi-harvest-trees" class="text-[11px] text-slate-500 truncate">0 palms cut</div>
                         </div>
                     </div>
 
+                    <!-- Total Fronds -->
                     <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center gap-3 print-card">
-                        <div class="w-11 h-11 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
+                        <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
                             <i data-lucide="scissors" class="w-5 h-5"></i>
                         </div>
-                        <div>
-                            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Fronds Cut</div>
-                            <div id="kpi-fronds" class="text-2xl font-extrabold font-mono-code text-slate-900">0</div>
-                            <div id="kpi-harvest-recs" class="text-[11px] text-slate-500">0 logs</div>
+                        <div class="min-w-0">
+                            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Fronds</div>
+                            <div id="kpi-fronds" class="text-xl font-extrabold font-mono-code text-slate-900">0</div>
+                            <div id="kpi-harvest-recs" class="text-[11px] text-slate-500 truncate">0 harvest logs</div>
                         </div>
                     </div>
 
+                    <!-- Total Dispatch Weight -->
                     <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center gap-3 print-card">
-                        <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                            <i data-lucide="flask-conical" class="w-5 h-5"></i>
+                        <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                            <i data-lucide="truck" class="w-5 h-5"></i>
                         </div>
-                        <div>
-                            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Fertilizer (kg)</div>
-                            <div id="kpi-fert-kg" class="text-2xl font-extrabold font-mono-code text-slate-900">0.0</div>
-                            <div id="kpi-fert-types" class="text-[11px] text-slate-500 truncate">ERP / AOP</div>
+                        <div class="min-w-0">
+                            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Dispatch Weight</div>
+                            <div id="kpi-dispatch-kg" class="text-xl font-extrabold font-mono-code text-slate-900">0 kg</div>
+                            <div id="kpi-dispatch-recs" class="text-[11px] text-slate-500 truncate">0 mill loads</div>
                         </div>
                     </div>
 
-                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center gap-3 print-card">
-                        <div class="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                            <i data-lucide="sparkles" class="w-5 h-5"></i>
+                    <!-- Average Bunch Weight (ABW) -->
+                    <div class="bg-white rounded-2xl border border-emerald-200 p-4 shadow-sm flex items-center gap-3 print-card">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                            <i data-lucide="scale" class="w-5 h-5"></i>
                         </div>
-                        <div>
-                            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Sanitation</div>
-                            <div id="kpi-sanitation" class="text-lg font-extrabold font-mono-code text-slate-900">—</div>
-                            <div id="kpi-weed" class="text-[11px] text-slate-500">Weed status</div>
+                        <div class="min-w-0">
+                            <div class="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Avg Bunch Wt (ABW)</div>
+                            <div id="kpi-abw" class="text-xl font-extrabold font-mono-code text-slate-900">0.00 kg</div>
+                            <div class="text-[10px] font-mono-code text-slate-400 truncate">Dispatch / Bunches</div>
+                        </div>
+                    </div>
+
+                    <!-- Yield Per Hectare (YPH) -->
+                    <div class="col-span-2 lg:col-span-1 bg-white rounded-2xl border border-emerald-200 p-4 shadow-sm flex items-center gap-3 print-card">
+                        <div class="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0">
+                            <i data-lucide="trending-up" class="w-5 h-5"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Yield / Ha (YPH)</div>
+                            <div id="kpi-yph" class="text-xl font-extrabold font-mono-code text-slate-900">0.00 kg/Ha</div>
+                            <div id="kpi-area-ha" class="text-[10px] font-mono-code text-emerald-700 font-semibold truncate">0.00 Ha</div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Charts Grid -->
+                <!-- Comparison Charts Grid: Round-by-Round & Month-by-Month -->
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <!-- Chart 1: Bunches & Fronds Cut -->
+                    <!-- Round-by-Round Comparison -->
                     <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm print-card">
                         <div class="flex items-center justify-between mb-3">
                             <div class="flex items-center gap-2">
-                                <i data-lucide="bar-chart-2" class="w-4 h-4 text-emerald-600"></i>
-                                <span class="text-xs font-bold text-slate-800">Harvest Output (Bunches &amp; Fronds)</span>
+                                <i data-lucide="layers" class="w-4 h-4 text-emerald-600"></i>
+                                <span class="text-xs font-extrabold text-slate-800">Round-by-Round Comparison (R1 vs R2 vs R3)</span>
                             </div>
-                            <div class="flex items-center gap-3 text-[11px] font-semibold">
+                            <span class="text-[11px] font-mono-code text-slate-400">Bunches &bull; ABW &bull; YPH</span>
+                        </div>
+                        <div id="chart-rounds" class="space-y-3"></div>
+                    </div>
+
+                    <!-- Month-by-Month Comparison -->
+                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm print-card">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="calendar" class="w-4 h-4 text-blue-600"></i>
+                                <span class="text-xs font-extrabold text-slate-800">Month-by-Month Comparison</span>
+                            </div>
+                            <div class="flex items-center gap-2 text-[11px] font-semibold">
                                 <span class="flex items-center gap-1 text-emerald-600"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-600"></span>Bunches</span>
                                 <span class="flex items-center gap-1 text-teal-400"><span class="w-2.5 h-2.5 rounded-sm bg-teal-400"></span>Fronds</span>
                             </div>
                         </div>
-                        <div id="chart-harvest" class="h-56 flex items-end gap-2 pt-6 pb-2 px-2 overflow-x-auto"></div>
+                        <div id="chart-months" class="space-y-3 max-h-64 overflow-y-auto pr-1"></div>
                     </div>
+                </div>
 
-                    <!-- Chart 2: Fertilizer & Hierarchy Breakdown -->
-                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm print-card">
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="flex items-center gap-2">
-                                <i data-lucide="layers" class="w-4 h-4 text-amber-600"></i>
-                                <span id="chart-breakdown-title" class="text-xs font-bold text-slate-800">Breakdown &amp; Fertilizer (kg)</span>
-                            </div>
-                            <div id="fert-pills" class="flex items-center gap-1.5 text-[11px] font-mono-code"></div>
+                <!-- Division Season-to-Date / Filtered Yield Table -->
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden print-card">
+                    <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="bar-chart-2" class="w-4 h-4 text-emerald-600"></i>
+                            <span class="text-xs font-extrabold text-slate-800">Division Yield &amp; Mill Dispatch Breakdown</span>
                         </div>
-                        <div id="chart-breakdown" class="space-y-2.5 max-h-56 overflow-y-auto pr-1"></div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase text-slate-400">
+                                    <th class="py-2.5 px-4">Division</th>
+                                    <th class="py-2.5 px-4">Extent (Ha)</th>
+                                    <th class="py-2.5 px-4">Total Bunches</th>
+                                    <th class="py-2.5 px-4">Total Fronds</th>
+                                    <th class="py-2.5 px-4">Dispatch Weight (kg)</th>
+                                    <th class="py-2.5 px-4">ABW (kg/bunch)</th>
+                                    <th class="py-2.5 px-4">YPH (kg/Ha)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dash-div-tbody" class="divide-y divide-slate-100"></tbody>
+                        </table>
                     </div>
                 </div>
             </section>
 
             <!-- ================================================================
-                 PAGE 2: HARVEST DATA ENTRY (Mobile-First 2D Palm Card Map)
+                 PAGE 2: UPDATED HARVEST DATA ENTRY FLOW
+                 Order: 1. Round -> 2. Date -> 3. Division -> Field -> Block -> Tree (2D Cards) -> 4. Bunches & Fronds
                  ================================================================ -->
             <section id="page-harvest" class="page-view hidden space-y-3">
-                <!-- Context Bar -->
-                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-sm space-y-2.5">
+                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 sm:p-4 shadow-sm space-y-3">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-2">
                             <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
                                 <i data-lucide="scissors" class="w-4 h-4"></i>
                             </div>
                             <div>
-                                <div class="text-xs font-extrabold text-slate-900">Harvest Entry &bull; 2D Palm Map</div>
-                                <div id="harv-auto-meta" class="text-[11px] font-mono-code text-emerald-700 font-semibold">Auto Date &bull; Round</div>
+                                <div class="text-xs font-extrabold text-slate-900">Harvest Data Entry</div>
+                                <div id="harv-auto-meta" class="text-[11px] font-mono-code text-emerald-700 font-semibold">Step 1: Round &rarr; Step 2: Date &rarr; Step 3: Division/Field/Block/Palm</div>
                             </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <input id="harv-date" type="date" class="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold" />
-                            <div id="harv-progress-pill" class="px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono-code font-bold">
-                                0 / 0
-                            </div>
+                        <div id="harv-progress-pill" class="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono-code font-bold">
+                            0 / 0 Cut
                         </div>
                     </div>
 
-                    <!-- Cascade Selectors -->
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        <select id="harv-estate" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
-                        <select id="harv-division" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
-                        <select id="harv-field" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
-                        <select id="harv-block" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                    <!-- STEP 1 & STEP 2: Select Round -> Select Date -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 border-t border-slate-100">
+                        <div>
+                            <label class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 flex items-center gap-1 mb-1">
+                                <span>1. Select Harvesting Round</span>
+                            </label>
+                            <select id="harv-round" class="w-full px-3 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50/50 text-xs font-mono-code font-bold text-slate-900">
+                                <option value="1">Round 1 (Days 1-10)</option>
+                                <option value="2">Round 2 (Days 11-20)</option>
+                                <option value="3">Round 3 (Days 21-End)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 flex items-center gap-1 mb-1">
+                                <span>2. Select Date (Auto-detected)</span>
+                            </label>
+                            <input id="harv-date" type="date" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-bold text-slate-900" />
+                        </div>
+                    </div>
+
+                    <!-- STEP 3: Select Division -> Field -> Block -->
+                    <div>
+                        <label class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-1">
+                            3. Select Division &rarr; Field &rarr; Block
+                        </label>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <select id="harv-division" class="px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                            <select id="harv-field" class="px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                            <select id="harv-block" class="px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                        </div>
                     </div>
 
                     <!-- Search & Status Filter -->
                     <div class="flex items-center justify-between gap-2 pt-1">
                         <div class="relative flex-1 max-w-xs">
                             <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
-                            <input id="harv-search" type="number" min="1" placeholder="Tree #"
+                            <input id="harv-search" type="number" min="1" placeholder="Jump to Palm #"
                                 class="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code" />
                         </div>
                         <div class="inline-flex rounded-xl bg-slate-100 p-0.5 text-xs font-bold">
@@ -561,53 +531,98 @@
             </section>
 
             <!-- ================================================================
-                 PAGE 3: FERTILIZER & FIELD MAINTENANCE (Supervisors & Admins)
+                 PAGE 3: DISPATCH CROP WEIGHT LOGGER (New Page)
+                 Order: Select Round -> Select Date -> Select Division -> Enter Dispatch Crop Load Weight (in kg)
                  ================================================================ -->
-            <section id="page-maintenance" class="page-view hidden space-y-3">
-                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-sm space-y-2.5">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                        <div class="flex items-center gap-2">
-                            <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
-                                <i data-lucide="sprout" class="w-4 h-4"></i>
+            <section id="page-dispatch" class="page-view hidden space-y-4">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <!-- Dispatch Entry Form Card -->
+                    <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+                        <div class="flex items-center gap-2.5 pb-2 border-b border-slate-100">
+                            <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center">
+                                <i data-lucide="truck" class="w-5 h-5"></i>
                             </div>
                             <div>
-                                <div class="text-xs font-extrabold text-slate-900">Fertilizer &amp; Field Care &bull; 2D Palm Map</div>
-                                <div class="text-[11px] text-slate-500">Tap any palm card for Fertilizer, Weed &amp; Sanitation</div>
+                                <div class="text-sm font-extrabold text-slate-900">Dispatch Crop Weight Logger</div>
+                                <div class="text-[11px] text-slate-500">Log mill-dispatched crop load weight (kg)</div>
                             </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <input id="maint-date" type="date" class="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-semibold" />
-                            <div id="maint-progress-pill" class="px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono-code font-bold">
-                                0 / 0
+
+                        <form id="form-dispatch" class="space-y-3.5">
+                            <!-- 1. Select Round -->
+                            <div>
+                                <label class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 block mb-1">
+                                    1. Select Round
+                                </label>
+                                <select id="disp-round" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-bold text-slate-900">
+                                    <option value="1">Round 1 (Days 1-10)</option>
+                                    <option value="2">Round 2 (Days 11-20)</option>
+                                    <option value="3">Round 3 (Days 21-End)</option>
+                                </select>
                             </div>
-                        </div>
+
+                            <!-- 2. Select Date -->
+                            <div>
+                                <label class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 block mb-1">
+                                    2. Select Date
+                                </label>
+                                <input id="disp-date" type="date" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-bold text-slate-900" />
+                            </div>
+
+                            <!-- 3. Select Division -->
+                            <div>
+                                <label class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 block mb-1">
+                                    3. Select Division
+                                </label>
+                                <select id="disp-division" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-900"></select>
+                            </div>
+
+                            <!-- 4. Enter Dispatch Crop Load Weight (in kg) -->
+                            <div>
+                                <label class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 block mb-1">
+                                    4. Dispatch Crop Load Weight (kg)
+                                </label>
+                                <div class="relative">
+                                    <input id="disp-weight" type="number" step="0.1" min="1" max="500000" required placeholder="e.g. 1450.0"
+                                        class="w-full pl-3.5 pr-12 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-emerald-600 outline-none text-base font-mono-code font-extrabold text-slate-900" />
+                                    <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-mono-code font-bold text-slate-400">kg</span>
+                                </div>
+                            </div>
+
+                            <button type="submit" id="btn-submit-dispatch" class="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition">
+                                <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                                <span>Save Dispatch Weight</span>
+                            </button>
+                        </form>
                     </div>
 
-                    <!-- Cascade Selectors -->
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        <select id="maint-estate" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
-                        <select id="maint-division" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
-                        <select id="maint-field" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
-                        <select id="maint-block" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
-                    </div>
-
-                    <div class="flex items-center justify-between gap-2 pt-1">
-                        <div class="relative flex-1 max-w-xs">
-                            <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
-                            <input id="maint-search" type="number" min="1" placeholder="Tree #"
-                                class="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code" />
+                    <!-- Recent Dispatch Weight Records & Cross-Reference Table -->
+                    <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                        <div class="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="clipboard-list" class="w-4 h-4 text-emerald-600"></i>
+                                <span class="text-xs font-extrabold text-slate-900">Logged Mill Dispatches</span>
+                            </div>
+                            <span id="disp-total-badge" class="px-2.5 py-1 rounded-full bg-blue-50 text-blue-800 border border-blue-200 font-mono-code text-xs font-bold">
+                                Total: 0 kg
+                            </span>
                         </div>
-                        <div class="inline-flex rounded-xl bg-slate-100 p-0.5 text-xs font-bold">
-                            <button type="button" data-maint-filter="all" class="maint-flt-btn px-2.5 py-1 rounded-lg bg-white text-slate-900 shadow-sm">All</button>
-                            <button type="button" data-maint-filter="pending" class="maint-flt-btn px-2.5 py-1 rounded-lg text-slate-500">Pending</button>
-                            <button type="button" data-maint-filter="done" class="maint-flt-btn px-2.5 py-1 rounded-lg text-slate-500">Logged</button>
+                        <div class="overflow-x-auto flex-1">
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase text-slate-400">
+                                        <th class="py-2.5 px-4">Date</th>
+                                        <th class="py-2.5 px-4">Round</th>
+                                        <th class="py-2.5 px-4">Division</th>
+                                        <th class="py-2.5 px-4">Dispatch Weight (kg)</th>
+                                        <th class="py-2.5 px-4">Logged By</th>
+                                        <th class="py-2.5 px-4 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="disp-tbody" class="divide-y divide-slate-100"></tbody>
+                            </table>
                         </div>
                     </div>
-                </div>
-
-                <!-- 2D Palm Card Map Grid -->
-                <div class="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-sm">
-                    <div id="maint-grid" class="palm-grid"></div>
                 </div>
             </section>
 
@@ -632,15 +647,13 @@
                         </button>
                     </div>
 
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        <select id="map-estate" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <select id="map-division" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
                         <select id="map-field" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
                         <select id="map-block" class="px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold"></select>
                     </div>
                 </div>
 
-                <!-- 2D Palm Card Map for GPS Tagging -->
                 <div class="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-sm">
                     <div id="map-grid" class="palm-grid"></div>
                 </div>
@@ -658,7 +671,7 @@
                             </div>
                             <div>
                                 <div class="text-xs font-extrabold text-slate-900">GPS Compliance Verification Log</div>
-                                <div class="text-[11px] text-slate-500">Flags submissions in <span class="text-red-600 font-bold">RED</span> when user &gt; <span id="comp-thresh-label" class="font-mono-code font-bold">20m</span> from palm</div>
+                                <div class="text-[11px] text-slate-500">Flags harvest entries in <span class="text-red-600 font-bold">RED</span> when user &gt; <span id="comp-thresh-label" class="font-mono-code font-bold">20m</span> from palm</div>
                             </div>
                         </div>
                         <div class="inline-flex rounded-xl bg-slate-100 p-0.5 text-xs font-bold">
@@ -668,7 +681,6 @@
                         </div>
                     </div>
 
-                    <!-- Summary KPI Strip -->
                     <div class="grid grid-cols-3 gap-2">
                         <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                             <span class="text-xs font-semibold text-slate-500">Total</span>
@@ -685,7 +697,6 @@
                     </div>
                 </div>
 
-                <!-- Compliance Table -->
                 <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="w-full text-left border-collapse text-xs">
@@ -693,10 +704,10 @@
                                 <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase text-slate-400">
                                     <th class="py-2.5 px-3">Status / Dist</th>
                                     <th class="py-2.5 px-3">Palm &amp; Block</th>
-                                    <th class="py-2.5 px-3">Staff &amp; Activity</th>
+                                    <th class="py-2.5 px-3">Staff &amp; Harvest Output</th>
                                     <th class="py-2.5 px-3">Tree GPS</th>
                                     <th class="py-2.5 px-3">User GPS</th>
-                                    <th class="py-2.5 px-3">Time</th>
+                                    <th class="py-2.5 px-3">Date</th>
                                 </tr>
                             </thead>
                             <tbody id="comp-tbody" class="divide-y divide-slate-100"></tbody>
@@ -709,20 +720,19 @@
                  PAGE 6: ADMIN INFRASTRUCTURE SETTINGS (Admins Only)
                  ================================================================ -->
             <section id="page-admin" class="page-view hidden space-y-3">
-                <!-- Sub-navigation tabs -->
                 <div class="bg-white rounded-2xl border border-slate-200 p-2 shadow-sm flex items-center gap-1.5 overflow-x-auto">
                     <button type="button" data-admin-tab="users" class="adm-tab-btn px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 text-white flex items-center gap-1.5 shrink-0">
                         <i data-lucide="users" class="w-4 h-4"></i>
-                        <span>Users &amp; Roles</span>
+                        <span>Access &amp; Role Management</span>
                         <span id="adm-pending-badge" class="px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 text-[10px] font-extrabold">0</span>
                     </button>
                     <button type="button" data-admin-tab="hierarchy" class="adm-tab-btn px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 flex items-center gap-1.5 shrink-0">
                         <i data-lucide="layers" class="w-4 h-4"></i>
                         <span>5-Tier Estate CRUD</span>
                     </button>
-                    <button type="button" data-admin-tab="agronomy" class="adm-tab-btn px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 flex items-center gap-1.5 shrink-0">
-                        <i data-lucide="flask-conical" class="w-4 h-4"></i>
-                        <span>Fertilizer Master Data</span>
+                    <button type="button" data-admin-tab="settings" class="adm-tab-btn px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 flex items-center gap-1.5 shrink-0">
+                        <i data-lucide="shield-check" class="w-4 h-4"></i>
+                        <span>GPS &amp; Season Thresholds</span>
                     </button>
                 </div>
 
@@ -731,7 +741,7 @@
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-2">
                             <i data-lucide="user-check" class="w-4 h-4 text-emerald-600"></i>
-                            <span class="text-xs font-extrabold text-slate-900">Approve Normal Users &amp; Assign RBAC Roles</span>
+                            <span class="text-xs font-extrabold text-slate-900">Account Approvals &amp; Role Assignment</span>
                         </div>
                     </div>
                     <div id="adm-users-list" class="divide-y divide-slate-100"></div>
@@ -740,7 +750,6 @@
                 <!-- TAB 2: 5-TIER ESTATE HIERARCHY CRUD -->
                 <div id="adm-panel-hierarchy" class="adm-panel hidden space-y-3">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <!-- Estates Card -->
                         <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-2.5">
                             <div class="flex items-center justify-between">
                                 <span class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5"><i data-lucide="building-2" class="w-4 h-4 text-emerald-600"></i> 1. Estates</span>
@@ -749,7 +758,6 @@
                             <div id="crud-estates" class="space-y-1.5 max-h-48 overflow-y-auto"></div>
                         </div>
 
-                        <!-- Divisions Card -->
                         <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-2.5">
                             <div class="flex items-center justify-between">
                                 <span class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5"><i data-lucide="map" class="w-4 h-4 text-emerald-600"></i> 2. Divisions</span>
@@ -758,7 +766,6 @@
                             <div id="crud-divisions" class="space-y-1.5 max-h-48 overflow-y-auto"></div>
                         </div>
 
-                        <!-- Fields Card (Year + Ha) -->
                         <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-2.5">
                             <div class="flex items-center justify-between">
                                 <span class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5"><i data-lucide="compass" class="w-4 h-4 text-emerald-600"></i> 3. Fields (Year &amp; Ha)</span>
@@ -767,7 +774,6 @@
                             <div id="crud-fields" class="space-y-1.5 max-h-56 overflow-y-auto"></div>
                         </div>
 
-                        <!-- Blocks & Batch Tree Generator Card -->
                         <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-2.5">
                             <div class="flex items-center justify-between">
                                 <span class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5"><i data-lucide="grid" class="w-4 h-4 text-emerald-600"></i> 4. Blocks &amp; 5. Batch Trees</span>
@@ -778,25 +784,13 @@
                     </div>
                 </div>
 
-                <!-- TAB 3: AGRONOMY MASTER DATA (ERP, AOP, kg/palm) -->
-                <div id="adm-panel-agronomy" class="adm-panel hidden grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                                <i data-lucide="flask-conical" class="w-4 h-4 text-emerald-600"></i> Fertilizer Varieties (kg / palm)
-                            </span>
-                            <button type="button" id="btn-add-fert" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center gap-1">
-                                <i data-lucide="plus" class="w-3.5 h-3.5"></i> New Variety
-                            </button>
-                        </div>
-                        <div id="crud-fertilizers" class="divide-y divide-slate-100"></div>
-                    </div>
-
-                    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+                <!-- TAB 3: GPS & SEASON THRESHOLDS -->
+                <div id="adm-panel-settings" class="adm-panel hidden">
+                    <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm max-w-md space-y-3">
                         <span class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                            <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600"></i> GPS &amp; Season Thresholds
+                            <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600"></i> GPS &amp; Season Configuration
                         </span>
-                        <div class="space-y-2.5">
+                        <div class="space-y-3">
                             <div>
                                 <label class="text-[11px] font-bold text-slate-500">Max Allowed GPS Distance (Meters)</label>
                                 <input id="set-gps-thresh" type="number" min="1" max="500" value="20"
@@ -808,7 +802,7 @@
                                     class="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono-code text-xs font-bold" />
                             </div>
                             <button type="button" id="btn-save-settings" class="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5">
-                                <i data-lucide="save" class="w-4 h-4"></i> Save Settings
+                                <i data-lucide="save" class="w-4 h-4"></i> Save Configuration
                             </button>
                         </div>
                     </div>
@@ -827,9 +821,9 @@
                     <i data-lucide="scissors" class="w-5 h-5"></i>
                     <span>Harvest</span>
                 </button>
-                <button type="button" data-nav="maintenance" data-min-role="supervisor" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition">
-                    <i data-lucide="sprout" class="w-5 h-5"></i>
-                    <span>Care</span>
+                <button type="button" data-nav="dispatch" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition">
+                    <i data-lucide="truck" class="w-5 h-5"></i>
+                    <span>Dispatch</span>
                 </button>
                 <button type="button" data-nav="mapper" data-min-role="admin" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition">
                     <i data-lucide="map-pin" class="w-5 h-5"></i>
@@ -848,10 +842,10 @@
     </div>
 
     <!-- ========================================================================
-         4. MODALS (Harvest Entry, Field Care Entry, GPS Mapper, Admin CRUD)
+         3. MODALS (Harvest Entry, GPS Mapper, Admin CRUD)
          ======================================================================== -->
 
-    <!-- HARVEST MODAL -->
+    <!-- STEP 4 HARVEST MODAL: Number of Bunches & Number of Fronds -->
     <div id="modal-harvest" class="hidden fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4">
         <div class="modal-sheet bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl border border-slate-200 p-5 shadow-2xl space-y-4">
             <div class="flex items-center justify-between">
@@ -867,13 +861,13 @@
                 </button>
             </div>
 
-            <!-- Bunches Stepper -->
+            <!-- Number of Bunches Stepper -->
             <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
                 <div class="flex items-center gap-2">
                     <i data-lucide="package-check" class="w-5 h-5 text-emerald-600"></i>
                     <div>
-                        <div class="text-xs font-extrabold text-slate-800">Bunches</div>
-                        <div class="text-[10px] text-slate-400">Fresh Fruit Bunches</div>
+                        <div class="text-xs font-extrabold text-slate-800">Number of Bunches</div>
+                        <div class="text-[10px] text-slate-400">Fresh Fruit Bunches Cut</div>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -883,13 +877,13 @@
                 </div>
             </div>
 
-            <!-- Fronds Stepper -->
+            <!-- Number of Fronds Stepper -->
             <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
                 <div class="flex items-center gap-2">
                     <i data-lucide="scissors" class="w-5 h-5 text-teal-600"></i>
                     <div>
-                        <div class="text-xs font-extrabold text-slate-800">Fronds</div>
-                        <div class="text-[10px] text-slate-400">Pruned Fronds</div>
+                        <div class="text-xs font-extrabold text-slate-800">Number of Fronds</div>
+                        <div class="text-[10px] text-slate-400">Pruned Fronds Cut</div>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -901,81 +895,7 @@
 
             <button type="button" id="btn-submit-harvest" class="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
                 <i data-lucide="check-circle-2" class="w-4 h-4"></i>
-                <span>Submit (Verify GPS)</span>
-            </button>
-        </div>
-    </div>
-
-    <!-- MAINTENANCE MODAL -->
-    <div id="modal-maint" class="hidden fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <div class="modal-sheet bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl border border-slate-200 p-5 shadow-2xl space-y-4">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-mono-code font-extrabold text-sm" id="mm-tree-badge">#1</div>
-                    <div>
-                        <div class="text-sm font-extrabold text-slate-900" id="mm-title">Field Care &bull; Palm #1</div>
-                        <div class="text-[11px] font-mono-code text-slate-400" id="mm-sub">Fertilizer, Weed &amp; Sanitation</div>
-                    </div>
-                </div>
-                <button type="button" data-close-modal="modal-maint" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
-
-            <!-- Fertilizer Variety Selector -->
-            <div class="space-y-1.5">
-                <label class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                    <i data-lucide="flask-conical" class="w-3.5 h-3.5 text-amber-600"></i> Fertilizer Variety
-                </label>
-                <div class="grid grid-cols-3 gap-2">
-                    <select id="mm-fert-id" class="col-span-2 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold"></select>
-                    <div class="relative">
-                        <input id="mm-fert-kg" type="number" step="0.1" min="0" max="50" placeholder="kg"
-                            class="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono-code font-bold" />
-                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono-code">kg</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Weed Condition Icon Toggle -->
-            <div class="space-y-1.5">
-                <label class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                    <i data-lucide="leaf" class="w-3.5 h-3.5 text-emerald-600"></i> Weed Circle Condition
-                </label>
-                <div class="grid grid-cols-3 gap-2" id="mm-weed-group">
-                    <button type="button" data-weed="clean" class="weed-btn py-2.5 px-2 rounded-xl border border-slate-200 text-xs font-bold flex flex-col items-center gap-1">
-                        <i data-lucide="sparkles" class="w-4 h-4 text-emerald-600"></i> Clean
-                    </button>
-                    <button type="button" data-weed="moderate" class="weed-btn py-2.5 px-2 rounded-xl border border-slate-200 text-xs font-bold flex flex-col items-center gap-1">
-                        <i data-lucide="alert-circle" class="w-4 h-4 text-amber-500"></i> Moderate
-                    </button>
-                    <button type="button" data-weed="heavy" class="weed-btn py-2.5 px-2 rounded-xl border border-slate-200 text-xs font-bold flex flex-col items-center gap-1">
-                        <i data-lucide="flame" class="w-4 h-4 text-red-500"></i> Heavy
-                    </button>
-                </div>
-            </div>
-
-            <!-- Sanitation Condition Icon Toggle (Good / Medium / Bad) -->
-            <div class="space-y-1.5">
-                <label class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                    <i data-lucide="shield-check" class="w-3.5 h-3.5 text-blue-600"></i> Sanitation Condition
-                </label>
-                <div class="grid grid-cols-3 gap-2" id="mm-san-group">
-                    <button type="button" data-san="good" class="san-btn py-2.5 px-2 rounded-xl border border-slate-200 text-xs font-bold flex flex-col items-center gap-1">
-                        <i data-lucide="smile" class="w-4 h-4 text-emerald-600"></i> Good
-                    </button>
-                    <button type="button" data-san="medium" class="san-btn py-2.5 px-2 rounded-xl border border-slate-200 text-xs font-bold flex flex-col items-center gap-1">
-                        <i data-lucide="meh" class="w-4 h-4 text-amber-500"></i> Medium
-                    </button>
-                    <button type="button" data-san="bad" class="san-btn py-2.5 px-2 rounded-xl border border-slate-200 text-xs font-bold flex flex-col items-center gap-1">
-                        <i data-lucide="frown" class="w-4 h-4 text-red-500"></i> Bad
-                    </button>
-                </div>
-            </div>
-
-            <button type="button" id="btn-submit-maint" class="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
-                <i data-lucide="check-circle-2" class="w-4 h-4"></i>
-                <span>Submit Care (Verify GPS)</span>
+                <span>Submit Harvest</span>
             </button>
         </div>
     </div>
@@ -1028,7 +948,7 @@
         </div>
     </div>
 
-    <!-- ADMIN GENERIC CRUD MODAL (Estate / Division / Field / Block / Batch Trees / Fertilizer) -->
+    <!-- ADMIN GENERIC CRUD MODAL (Estate / Division / Field / Block / Batch Trees) -->
     <div id="modal-admin-crud" class="hidden fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4">
         <div class="modal-sheet bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl border border-slate-200 p-5 shadow-2xl space-y-4">
             <div class="flex items-center justify-between">
@@ -1038,7 +958,7 @@
                     </div>
                     <div>
                         <div class="text-sm font-extrabold text-slate-900" id="ac-title">Edit Item</div>
-                        <div class="text-[11px] text-slate-400" id="ac-sub">Master Configuration</div>
+                        <div class="text-[11px] text-slate-400" id="ac-sub">Estate Configuration</div>
                     </div>
                 </div>
                 <button type="button" data-close-modal="modal-admin-crud" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
