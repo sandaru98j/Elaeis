@@ -59,11 +59,11 @@
                     <span id="auth-notice-text">Account created successfully. Pending admin approval.</span>
                 </div>
 
-                <!-- LOGIN FORM (Email & Password ONLY) -->
+                <!-- LOGIN FORM (Username OR Email + Password) -->
                 <form id="form-login" class="space-y-4">
                     <div class="relative">
-                        <i data-lucide="mail" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                        <input id="login-email" type="email" required autocomplete="email" placeholder="Email address"
+                        <i data-lucide="user-check" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input id="login-identifier" type="text" required autocomplete="username" placeholder="Username or Email"
                             class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 outline-none text-sm font-medium transition" />
                     </div>
                     <div class="relative">
@@ -91,31 +91,50 @@
                     </div>
                 </form>
 
-                <!-- SIGN UP FORM -->
-                <form id="form-signup" class="space-y-3.5 hidden">
+                <!-- SIGN UP FORM (Full Name, Username, Email, Mobile No., Password, Confirm Password) -->
+                <form id="form-signup" class="space-y-3 hidden">
                     <div class="flex items-center gap-2 pb-2 border-b border-slate-100">
                         <i data-lucide="user-plus" class="w-4 h-4 text-emerald-600"></i>
                         <span class="font-bold text-sm text-slate-800">Create Account</span>
                     </div>
                     <div class="relative">
                         <i data-lucide="user" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                        <input id="reg-fullname" type="text" required placeholder="Full name"
+                        <input id="reg-fullname" type="text" required placeholder="Full Name"
                             class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
                     </div>
                     <div class="relative">
+                        <i data-lucide="at-sign" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input id="reg-username" type="text" required placeholder="Username"
+                            class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm font-mono-code" />
+                    </div>
+                    <div class="relative">
                         <i data-lucide="mail" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                        <input id="reg-email" type="email" required placeholder="Email address"
+                        <input id="reg-email" type="email" required placeholder="Email"
                             class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
                     </div>
                     <div class="relative">
                         <i data-lucide="smartphone" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                        <input id="reg-phone" type="tel" required placeholder="Mobile number"
+                        <input id="reg-phone" type="tel" required placeholder="Mobile No."
                             class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm font-mono-code" />
                     </div>
                     <div class="relative">
                         <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                        <input id="reg-password" type="password" required minlength="8" placeholder="Password (min. 8 characters)"
-                            class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
+                        <input id="reg-password" type="password" required minlength="8" placeholder="Password"
+                            class="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
+                        <button type="button" data-toggle-pass="reg-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                            <i data-lucide="eye" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                    <div class="relative">
+                        <i data-lucide="shield-check" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input id="reg-confirm-password" type="password" required minlength="8" placeholder="Confirm Password"
+                            class="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
+                        <button type="button" data-toggle-pass="reg-confirm-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                            <i data-lucide="eye" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                    <div class="text-[11px] text-slate-500 px-1">
+                        Min. 8 chars with at least 1 uppercase, 1 number &amp; 1 special character.
                     </div>
                     <button type="submit" class="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition">
                         <i data-lucide="check-circle-2" class="w-4 h-4"></i>
@@ -128,49 +147,64 @@
                     </div>
                 </form>
 
-                <!-- FORGOT PASSWORD FORM -->
+                <!-- FORGOT PASSWORD FORM (6-Digit OTP Verification) -->
                 <div id="form-forgot" class="space-y-4 hidden">
                     <div class="flex items-center justify-between pb-2 border-b border-slate-100">
                         <div class="flex items-center gap-2">
                             <i data-lucide="key-round" class="w-4 h-4 text-emerald-600"></i>
-                            <span class="font-bold text-sm text-slate-800">Reset Password</span>
+                            <span class="font-bold text-sm text-slate-800">Forgot Password</span>
                         </div>
                         <div class="inline-flex rounded-lg bg-slate-100 p-0.5 text-xs font-semibold">
                             <button type="button" id="chan-email" class="px-2.5 py-1 rounded-md bg-white text-slate-900 shadow-sm flex items-center gap-1">
                                 <i data-lucide="mail" class="w-3 h-3"></i> Email
                             </button>
                             <button type="button" id="chan-sms" class="px-2.5 py-1 rounded-md text-slate-500 flex items-center gap-1">
-                                <i data-lucide="smartphone" class="w-3 h-3"></i> SMS
+                                <i data-lucide="smartphone" class="w-3 h-3"></i> Mobile
                             </button>
                         </div>
                     </div>
 
                     <div id="forgot-step-1" class="space-y-3">
                         <div class="relative">
-                            <i data-lucide="mail" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                            <input id="forgot-email" type="email" placeholder="Registered email address"
+                            <i data-lucide="user-search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                            <input id="forgot-identifier" type="text" placeholder="Email or Mobile No."
                                 class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
                         </div>
                         <button type="button" id="btn-send-code" class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition">
                             <i data-lucide="send" class="w-4 h-4"></i>
-                            <span>Send Recovery Code</span>
+                            <span>Send 6-Digit Verification Code</span>
                         </button>
                     </div>
 
                     <div id="forgot-step-2" class="space-y-3 hidden">
+                        <div id="otp-demo-banner" class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between gap-2">
+                            <span class="font-semibold">6-Digit OTP Verification Code:</span>
+                            <span id="otp-demo-code" class="font-mono-code font-extrabold text-sm tracking-widest px-2 py-0.5 rounded bg-white border border-emerald-300 text-emerald-800">------</span>
+                        </div>
                         <div class="relative">
                             <i data-lucide="hash" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                            <input id="reset-code" type="text" maxlength="6" placeholder="6-digit recovery code"
-                                class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm font-mono-code tracking-widest" />
+                            <input id="reset-code" type="text" inputmode="numeric" maxlength="6" placeholder="Enter 6-digit verification code"
+                                class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm font-mono-code tracking-widest font-bold" />
                         </div>
                         <div class="relative">
                             <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                            <input id="reset-new-password" type="password" placeholder="New password (min. 8 characters)"
-                                class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
+                            <input id="reset-new-password" type="password" placeholder="New Password"
+                                class="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
+                            <button type="button" data-toggle-pass="reset-new-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                <i data-lucide="eye" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                        <div class="relative">
+                            <i data-lucide="shield-check" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                            <input id="reset-confirm-password" type="password" placeholder="Confirm New Password"
+                                class="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:border-emerald-600 outline-none text-sm" />
+                            <button type="button" data-toggle-pass="reset-confirm-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                <i data-lucide="eye" class="w-4 h-4"></i>
+                            </button>
                         </div>
                         <button type="button" id="btn-verify-reset" class="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 transition">
                             <i data-lucide="check" class="w-4 h-4"></i>
-                            <span>Update Password</span>
+                            <span>Verify &amp; Set New Password</span>
                         </button>
                     </div>
 
@@ -192,21 +226,23 @@
         <!-- TOP HEADER MENU BAR -->
         <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 no-print">
             <div class="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
-                <!-- Brand + Greeting -->
+                <!-- Brand + Greeting (Clickable Logo -> Home & Refresh) -->
                 <div class="flex items-center gap-3 min-w-0">
-                    <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-                        <svg class="w-6 h-6" viewBox="0 0 48 48" fill="none">
-                            <path d="M24 42V22" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/>
-                            <path d="M24 22C18 14 9 14 6 20C12 19 18 21 24 25" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                            <path d="M24 22C30 14 39 14 42 20C36 19 30 21 24 25" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                            <path d="M24 19C19 9 11 7 7 12C13 12 19 15 24 20" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                            <path d="M24 19C29 9 37 7 41 12C35 12 29 15 24 20" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                            <circle cx="24" cy="9" r="3" fill="#A7F3D0"/>
-                        </svg>
-                    </div>
-                    <div class="min-w-0">
+                    <button type="button" id="btn-brand-home" title="Go to Home &amp; Refresh" class="flex items-center gap-2.5 text-left group focus:outline-none">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-600 group-hover:bg-emerald-700 group-active:scale-95 text-white flex items-center justify-center shrink-0 shadow-sm transition">
+                            <svg class="w-6 h-6" viewBox="0 0 48 48" fill="none">
+                                <path d="M24 42V22" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/>
+                                <path d="M24 22C18 14 9 14 6 20C12 19 18 21 24 25" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M24 22C30 14 39 14 42 20C36 19 30 21 24 25" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M24 19C19 9 11 7 7 12C13 12 19 15 24 20" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M24 19C29 9 37 7 41 12C35 12 29 15 24 20" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                                <circle cx="24" cy="9" r="3" fill="#A7F3D0"/>
+                            </svg>
+                        </div>
+                        <span class="font-extrabold text-base tracking-tight text-slate-900 group-hover:text-emerald-700 transition">Elaeis</span>
+                    </button>
+                    <div class="min-w-0 border-l border-slate-200 pl-2.5">
                         <div class="flex items-center gap-2">
-                            <span class="font-extrabold text-base tracking-tight text-slate-900">Elaeis</span>
                             <span id="hdr-round-pill" class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono-code font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                 R2
                             </span>
@@ -222,8 +258,8 @@
                 <!-- DESKTOP TOP NAVIGATION MENU -->
                 <nav id="desktop-nav" class="hidden lg:flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60">
                     <button type="button" data-nav="dashboard" class="nav-btn px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
-                        <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
-                        <span>Dashboard</span>
+                        <i data-lucide="home" class="w-4 h-4"></i>
+                        <span>Home</span>
                     </button>
                     <button type="button" data-nav="harvest" class="nav-btn px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
                         <i data-lucide="scissors" class="w-4 h-4"></i>
@@ -821,7 +857,7 @@
         <nav id="mobile-nav" class="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 mobile-bottom-nav no-print">
             <div class="grid grid-flow-col auto-cols-fr h-16 px-1">
                 <button type="button" data-nav="dashboard" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition">
-                    <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+                    <i data-lucide="home" class="w-5 h-5"></i>
                     <span>Home</span>
                 </button>
                 <button type="button" data-nav="harvest" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition">
@@ -879,7 +915,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <button type="button" data-step="mh-bunches:-1" class="w-10 h-10 rounded-xl bg-white border border-slate-200 font-bold text-lg flex items-center justify-center active:scale-95">-</button>
-                    <input id="mh-bunches" type="number" min="0" max="60" value="2" class="w-14 text-center font-mono-code font-extrabold text-lg bg-transparent outline-none" />
+                    <input id="mh-bunches" type="number" min="0" max="60" value="0" class="w-14 text-center font-mono-code font-extrabold text-lg bg-transparent outline-none" />
                     <button type="button" data-step="mh-bunches:1" class="w-10 h-10 rounded-xl bg-emerald-600 text-white font-bold text-lg flex items-center justify-center active:scale-95">+</button>
                 </div>
             </div>
@@ -895,7 +931,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <button type="button" data-step="mh-fronds:-1" class="w-10 h-10 rounded-xl bg-white border border-slate-200 font-bold text-lg flex items-center justify-center active:scale-95">-</button>
-                    <input id="mh-fronds" type="number" min="0" max="60" value="2" class="w-14 text-center font-mono-code font-extrabold text-lg bg-transparent outline-none" />
+                    <input id="mh-fronds" type="number" min="0" max="60" value="0" class="w-14 text-center font-mono-code font-extrabold text-lg bg-transparent outline-none" />
                     <button type="button" data-step="mh-fronds:1" class="w-10 h-10 rounded-xl bg-teal-600 text-white font-bold text-lg flex items-center justify-center active:scale-95">+</button>
                 </div>
             </div>

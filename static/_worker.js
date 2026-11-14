@@ -234,12 +234,22 @@ function distanceM(lat1, lng1, lat2, lng2) {
 function publicUser(u) {
     return {
         id: u.id,
+        username: u.username,
         email: u.email,
         phone: u.phone,
         full_name: u.full_name,
         role: u.role,
         is_master: Boolean(u.is_master),
     };
+}
+
+function validateStrongPassword(pw) {
+    const s = String(pw || "");
+    if (s.length < 8) return "Password must be at least 8 characters.";
+    if (!/[A-Z]/.test(s)) return "Password must include at least 1 uppercase letter.";
+    if (!/[0-9]/.test(s)) return "Password must include at least 1 number.";
+    if (!/[^A-Za-z0-9]/.test(s)) return "Password must include at least 1 special character.";
+    return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -464,23 +474,29 @@ async function createSession(db, userId) {
 
 async function handleRegister(db, body) {
     const full_name = str(body.full_name, 80);
+    const username = str(body.username, 40).toLowerCase();
     const email = str(body.email, 120).toLowerCase();
-    const phone = normPhone(body.phone || `+94${Math.floor(700000000 + Math.random() * 99999999)}`);
+    const phone = normPhone(body.phone);
     const password = String(body.password || "");
-    const baseUser = email.split("@")[0]?.replace(/[^a-zA-Z0-9._-]/g, "") || "user";
-    const username = str(body.username || `${baseUser}_${Math.floor(100 + Math.random() * 900)}`, 32);
+    const confirm_password = body.confirm_password !== undefined ? String(body.confirm_password) : password;
 
     if (full_name.length < 2) fail(400, "Enter your full name.");
+    if (!/^[a-zA-Z0-9._-]{3,32}$/.test(username)) {
+        fail(400, "Username must be 3-32 characters (letters, numbers, ., _, -).");
+    }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail(400, "Enter a valid email address.");
     if (!/^\+?\d{9,15}$/.test(phone)) fail(400, "Enter a valid mobile number.");
-    if (password.length < 8) fail(400, "Password must be at least 8 characters.");
+    const pwErr = validateStrongPassword(password);
+    if (pwErr) fail(400, pwErr);
+    if (password !== confirm_password) fail(400, "Passwords do not match.");
 
     const clash = await db
-        .prepare("SELECT email, phone FROM el_users WHERE LOWER(email) = ? OR phone = ?")
-        .bind(email, phone)
+        .prepare("SELECT email, username, phone FROM el_users WHERE LOWER(email) = ? OR LOWER(username) = ? OR phone = ?")
+        .bind(email, username, phone)
         .first();
     if (clash) {
         if (clash.email.toLowerCase() === email) fail(409, "Email is already registered.");
+        if (clash.username.toLowerCase() === username) fail(409, "Username is already taken.");
         fail(409, "Mobile number is already registered.");
     }
 
@@ -500,14 +516,14 @@ async function handleRegister(db, body) {
 }
 
 async function handleLogin(db, body) {
-    const email = str(body.email || body.identifier, 120).toLowerCase();
-    if (!email) fail(400, "Enter your email address.");
+    const identifier = str(body.identifier || body.email || body.username, 120).toLowerCase();
+    if (!identifier) fail(400, "Enter your Username or Email.");
     const user = await db
-        .prepare("SELECT * FROM el_users WHERE LOWER(email) = ? LIMIT 1")
-        .bind(email)
+        .prepare("SELECT * FROM el_users WHERE LOWER(email) = ? OR LOWER(username) = ? LIMIT 1")
+        .bind(identifier, identifier)
         .first();
     const ok = user && (await verifyPassword(String(body.password || ""), user.pass_hash));
-    if (!ok) fail(401, "Invalid email or password.");
+    if (!ok) fail(401, "Invalid username/email or password.");
     if (user.role === "pending") {
         fail(403, "Account created successfully. Pending admin approval.");
     }
@@ -517,29 +533,35 @@ async function handleLogin(db, body) {
 }
 
 async function handleForgot(db, body) {
-    const channel = body.channel === "email" ? "email" : "sms";
-    const user = await findUserByEmailOrId(db, body.email || body.identifier);
-    if (user) {
-        await db
-            .prepare("UPDATE el_resets SET used = 1 WHERE user_id = ? AND used = 0")
-            .bind(user.id)
-            .run();
-        await db
-            .prepare(
-                `INSERT INTO el_resets (user_id, code, channel, created_at, expires_at)
-                 VALUES (?, ?, ?, ?, ?)`
-            )
-            .bind(user.id, randomCode(), channel, nowIso(), addMinutes(RESET_MINUTES))
-            .run();
-    }
-    return { ok: true };
+    const channel = body.channel === "sms" ? "sms" : "email";
+    const idf = str(body.identifier || body.email || body.phone, 120);
+    if (!idf) fail(400, "Enter your registered Email or Mobile No.");
+    const user = await findUserByEmailOrId(db, idf);
+    if (!user) fail(404, "No account found with that Email or Mobile No.");
+    const code = randomCode();
+    await db
+        .prepare("UPDATE el_resets SET used = 1 WHERE user_id = ? AND used = 0")
+        .bind(user.id)
+        .run();
+    await db
+        .prepare(
+            `INSERT INTO el_resets (user_id, code, channel, created_at, expires_at)
+             VALUES (?, ?, ?, ?, ?)`
+        )
+        .bind(user.id, code, channel, nowIso(), addMinutes(RESET_MINUTES))
+        .run();
+    return { ok: true, otp_code: code };
 }
 
 async function handleReset(db, body) {
-    const user = await findUserByEmailOrId(db, body.email || body.identifier);
+    const user = await findUserByEmailOrId(db, body.identifier || body.email);
     const code = str(body.code, 6);
     const next = String(body.new_password || "");
-    if (next.length < 8) fail(400, "Password must be at least 8 characters.");
+    const confirm = body.confirm_password !== undefined ? String(body.confirm_password) : next;
+    if (!/^\d{6}$/.test(code)) fail(400, "Enter a valid 6-digit verification code.");
+    const pwErr = validateStrongPassword(next);
+    if (pwErr) fail(400, pwErr);
+    if (next !== confirm) fail(400, "Passwords do not match.");
     if (!user) fail(400, "Invalid or expired recovery code.");
 
     const reset = await db

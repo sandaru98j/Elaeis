@@ -154,10 +154,48 @@ function updateGpsHeader() {
 }
 
 // ----------------------------------------------------------------------------
+// Password Strength Validation & Local Encryption (Hash + Base64)
+// ----------------------------------------------------------------------------
+function validateStrongPassword(pw) {
+    const s = String(pw || "");
+    if (s.length < 8) return "Password must be at least 8 characters.";
+    if (!/[A-Z]/.test(s)) return "Password must include at least 1 uppercase letter.";
+    if (!/[0-9]/.test(s)) return "Password must include at least 1 number.";
+    if (!/[^A-Za-z0-9]/.test(s)) return "Password must include at least 1 special character.";
+    return null;
+}
+
+function encryptPassword(plain) {
+    const salt = "elaeis_uskvalley_salt_2026";
+    const input = `${salt}:${String(plain || "")}:${salt}`;
+    let h1 = 0x811c9dc5;
+    let h2 = 0x01000193;
+    for (let round = 0; round < 256; round++) {
+        for (let i = 0; i < input.length; i++) {
+            const c = input.charCodeAt(i) ^ (round & 0xff);
+            h1 ^= c;
+            h1 = Math.imul(h1, 0x01000193) >>> 0;
+            h2 ^= (c + i) & 0xff;
+            h2 = Math.imul(h2, 0x85ebca6b) >>> 0;
+        }
+    }
+    const hexDigest = h1.toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0");
+    const b64Payload = btoa(unescape(encodeURIComponent(`${hexDigest}:${input.length}`)));
+    return `enc$v1$${b64Payload}$${hexDigest}`;
+}
+
+function verifyEncryptedPassword(plain, storedHash) {
+    if (!storedHash) return false;
+    return encryptPassword(plain) === storedHash;
+}
+
+const normPhoneStr = (s) => String(s || "").replace(/[\s\-()]/g, "");
+
+// ----------------------------------------------------------------------------
 // Offline / Local Fallback Store (mirrors Cloudflare Worker D1 when offline)
 // ----------------------------------------------------------------------------
 const LocalDB = {
-    key: "elaeis_local_db_v3",
+    key: "elaeis_local_db_v4",
     load() {
         try {
             const raw = localStorage.getItem(this.key);
@@ -176,10 +214,12 @@ const LocalDB = {
         const now = new Date().toISOString();
         const today = todayStr();
         const { yearMonth, round } = roundOfDate(today);
+        const defaultHash = encryptPassword("Elaeis@2026");
+        // Email is the primary unique identifier that binds to Username
         const users = [
-            { id: 1, username: "admin", email: "sandaru98j@gmail.com", phone: "+94770000000", full_name: "Sandaruwan Gunathilaka", role: "admin", is_master: true, pass: "Elaeis@2026", created_at: now, approved_at: now },
-            { id: 2, username: "supervisor", email: "supervisor@uskvalley.lk", phone: "+94771111111", full_name: "Kasun Perera", role: "supervisor", is_master: false, pass: "Elaeis@2026", created_at: now, approved_at: now },
-            { id: 3, username: "harvester", email: "harvester@uskvalley.lk", phone: "+94772222222", full_name: "Nimal Silva", role: "harvester", is_master: false, pass: "Elaeis@2026", created_at: now, approved_at: now },
+            { id: 1, email: "sandaru98j@gmail.com", username: "admin", phone: "+94770000000", full_name: "Sandaruwan Gunathilaka", role: "admin", is_master: true, pass_hash: defaultHash, created_at: now, approved_at: now },
+            { id: 2, email: "supervisor@uskvalley.lk", username: "supervisor", phone: "+94771111111", full_name: "Kasun Perera", role: "supervisor", is_master: false, pass_hash: defaultHash, created_at: now, approved_at: now },
+            { id: 3, email: "harvester@uskvalley.lk", username: "harvester", phone: "+94772222222", full_name: "Nimal Silva", role: "harvester", is_master: false, pass_hash: defaultHash, created_at: now, approved_at: now },
         ];
         const estates = [{ id: 1, name: "Uskvalley Estate" }];
         const divisions = [
@@ -290,27 +330,54 @@ function localApiFallback(path, method, body) {
     const curUser = db.users.find((u) => `local-token-${u.id}` === state.token) || db.users[0];
 
     if (pathname === "/api/auth/login") {
-        const email = String(body.email || body.identifier || "").trim().toLowerCase();
-        const u = db.users.find((x) => x.email.toLowerCase() === email);
-        if (!u || u.pass !== body.password) throw new Error("Invalid email or password.");
+        const idf = String(body.identifier || body.email || body.username || "").trim().toLowerCase();
+        if (!idf) throw new Error("Enter your Username or Email.");
+        const u = db.users.find((x) => x.email.toLowerCase() === idf || x.username.toLowerCase() === idf);
+        if (!u || !verifyEncryptedPassword(body.password, u.pass_hash)) {
+            throw new Error("Invalid username/email or password.");
+        }
         if (u.role === "pending") throw new Error("Account created successfully. Pending admin approval.");
         return { token: `local-token-${u.id}`, user: u };
     }
     if (pathname === "/api/auth/register") {
+        const full_name = String(body.full_name || "").trim();
+        const username = String(body.username || "").trim().toLowerCase();
         const email = String(body.email || "").trim().toLowerCase();
+        const phone = normPhoneStr(body.phone);
+        const password = String(body.password || "");
+        const confirm_password = body.confirm_password !== undefined ? String(body.confirm_password) : password;
+
+        if (full_name.length < 2) throw new Error("Enter your full name.");
+        if (!/^[a-zA-Z0-9._-]{3,32}$/.test(username)) {
+            throw new Error("Username must be 3-32 characters (letters, numbers, ., _, -).");
+        }
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Enter a valid email address.");
+        if (!/^\+?\d{9,15}$/.test(phone)) throw new Error("Enter a valid mobile number.");
+        const pwErr = validateStrongPassword(password);
+        if (pwErr) throw new Error(pwErr);
+        if (password !== confirm_password) throw new Error("Passwords do not match.");
+
         if (db.users.some((u) => u.email.toLowerCase() === email)) {
             throw new Error("Email is already registered.");
         }
+        if (db.users.some((u) => u.username.toLowerCase() === username)) {
+            throw new Error("Username is already taken.");
+        }
+        if (db.users.some((u) => normPhoneStr(u.phone) === phone)) {
+            throw new Error("Mobile number is already registered.");
+        }
+
         const id = db.users.reduce((m, x) => Math.max(m, x.id), 0) + 1;
+        // Email is the primary key/unique identifier bound to Username
         const nu = {
             id,
-            username: email.split("@")[0] + "_" + id,
             email,
-            phone: body.phone.trim(),
-            full_name: body.full_name.trim(),
+            username,
+            phone,
+            full_name,
             role: "pending",
             is_master: false,
-            pass: body.password,
+            pass_hash: encryptPassword(password),
             created_at: new Date().toISOString(),
         };
         db.users.push(nu);
@@ -318,13 +385,44 @@ function localApiFallback(path, method, body) {
         return { ok: true, message: "Account created successfully. Pending admin approval." };
     }
     if (pathname === "/api/auth/forgot") {
-        return { ok: true };
+        const idf = String(body.identifier || body.email || body.phone || "").trim().toLowerCase();
+        const normP = normPhoneStr(idf);
+        const u = db.users.find(
+            (x) => x.email.toLowerCase() === idf || normPhoneStr(x.phone) === normP || x.username.toLowerCase() === idf
+        );
+        if (!u) throw new Error("No account found with that Email or Mobile No.");
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        db.resets = (db.resets || []).filter((r) => r.email !== u.email);
+        db.resets.push({
+            email: u.email,
+            user_id: u.id,
+            code,
+            created_at: new Date().toISOString(),
+        });
+        LocalDB.save(db);
+        return { ok: true, otp_code: code };
     }
     if (pathname === "/api/auth/reset") {
-        const email = String(body.email || body.identifier || "").trim().toLowerCase();
-        const u = db.users.find((x) => x.email.toLowerCase() === email);
+        const idf = String(body.identifier || body.email || "").trim().toLowerCase();
+        const normP = normPhoneStr(idf);
+        const code = String(body.code || "").trim();
+        const nextPw = String(body.new_password || "");
+        const confirmPw = body.confirm_password !== undefined ? String(body.confirm_password) : nextPw;
+
+        if (!/^\d{6}$/.test(code)) throw new Error("Enter a valid 6-digit verification code.");
+        const pwErr = validateStrongPassword(nextPw);
+        if (pwErr) throw new Error(pwErr);
+        if (nextPw !== confirmPw) throw new Error("Passwords do not match.");
+
+        const u = db.users.find(
+            (x) => x.email.toLowerCase() === idf || normPhoneStr(x.phone) === normP || x.username.toLowerCase() === idf
+        );
         if (!u) throw new Error("Invalid or expired recovery code.");
-        u.pass = body.new_password;
+        const resetRec = (db.resets || []).find((r) => r.user_id === u.id && r.code === code);
+        if (!resetRec) throw new Error("Invalid or expired 6-digit verification code.");
+
+        u.pass_hash = encryptPassword(nextPw);
+        db.resets = (db.resets || []).filter((r) => r.user_id !== u.id);
         LocalDB.save(db);
         return { ok: true };
     }
@@ -633,15 +731,15 @@ function showAuthView(mode = "login", noticeMessage = "") {
     refreshIcons();
 }
 
-async function loginWithEmail(email, password) {
+async function loginWithIdentifier(identifier, password) {
     try {
-        const res = await api("/api/auth/login", "POST", { email, password });
+        const res = await api("/api/auth/login", "POST", { identifier, password });
         state.token = res.token;
         state.user = res.user;
         localStorage.setItem("el_token", res.token);
         await enterApplication();
     } catch (err) {
-        toast(err.message || "Invalid email or password.", "err");
+        toast(err.message || "Invalid username/email or password.", "err");
     }
 }
 
@@ -998,8 +1096,8 @@ function openHarvestModal(treeId) {
     $("mh-tree-badge").textContent = `#${tree.tree_no}`;
     $("mh-title").textContent = `Palm #${tree.tree_no}`;
     $("mh-sub").textContent = `Round ${roundNo} (${rangeLabel}) • ${date}`;
-    $("mh-bunches").value = tree.rec ? tree.rec.bunches : 2;
-    $("mh-fronds").value = tree.rec ? tree.rec.fronds : 2;
+    $("mh-bunches").value = tree.rec ? tree.rec.bunches : 0;
+    $("mh-fronds").value = tree.rec ? tree.rec.fronds : 0;
     $("modal-harvest").classList.remove("hidden");
 }
 
@@ -1295,7 +1393,7 @@ function renderAdminUsers() {
                                 isPending ? "bg-amber-100 text-amber-800 font-bold" : "bg-slate-100 text-slate-700"
                             }">${esc(ROLE_LABELS[u.role] || u.role)}</span>
                         </div>
-                        <div class="text-[11px] font-mono-code text-slate-400">${esc(u.email)} &bull; ${esc(u.phone)}</div>
+                        <div class="text-[11px] font-mono-code text-slate-400">@${esc(u.username || "")} &bull; ${esc(u.email)} &bull; ${esc(u.phone)}</div>
                     </div>
                 </div>
                 <div class="flex items-center gap-1.5">
@@ -1542,21 +1640,34 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     });
 
-    // Login Submit (Email & Password ONLY)
+    // Flexible Login Submit (Username OR Email + Password)
     $("form-login").onsubmit = async (e) => {
         e.preventDefault();
-        await loginWithEmail($("login-email").value, $("login-password").value);
+        await loginWithIdentifier($("login-identifier").value.trim(), $("login-password").value);
     };
 
-    // Sign-Up Submit -> Shows "Account created successfully. Pending admin approval."
+    // Sign-Up Submit (Full Name, Username, Email, Mobile No., Password, Confirm Password)
     $("form-signup").onsubmit = async (e) => {
         e.preventDefault();
+        const full_name = $("reg-fullname").value.trim();
+        const username = $("reg-username").value.trim();
+        const email = $("reg-email").value.trim();
+        const phone = $("reg-phone").value.trim();
+        const password = $("reg-password").value;
+        const confirm_password = $("reg-confirm-password").value;
+
+        const pwErr = validateStrongPassword(password);
+        if (pwErr) return toast(pwErr, "err");
+        if (password !== confirm_password) return toast("Passwords do not match.", "err");
+
         try {
             const res = await api("/api/auth/register", "POST", {
-                full_name: $("reg-fullname").value,
-                email: $("reg-email").value,
-                phone: $("reg-phone").value,
-                password: $("reg-password").value,
+                full_name,
+                username,
+                email,
+                phone,
+                password,
+                confirm_password,
             });
             $("form-signup").reset();
             const msg = res.message || "Account created successfully. Pending admin approval.";
@@ -1567,7 +1678,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
 
-    // Forgot Password Channel Toggle
+    // Forgot Password Channel Toggle & 6-Digit OTP Flow
     const setForgotChan = (ch) => {
         state.forgotChannel = ch;
         $("chan-email").className = `px-2.5 py-1 rounded-md flex items-center gap-1 ${
@@ -1581,31 +1692,60 @@ document.addEventListener("DOMContentLoaded", () => {
     $("chan-sms").onclick = () => setForgotChan("sms");
 
     $("btn-send-code").onclick = async () => {
-        const email = $("forgot-email").value.trim();
-        if (!email) return toast("Enter your registered email address", "warn");
+        const identifier = $("forgot-identifier").value.trim();
+        if (!identifier) return toast("Enter your registered Email or Mobile No.", "warn");
         try {
-            await api("/api/auth/forgot", "POST", { email, channel: state.forgotChannel });
+            const res = await api("/api/auth/forgot", "POST", { identifier, channel: state.forgotChannel });
             $("forgot-step-1").classList.add("hidden");
             $("forgot-step-2").classList.remove("hidden");
-            toast("If the account exists, a recovery code has been sent.");
+            if (res && res.otp_code) {
+                $("otp-demo-code").textContent = res.otp_code;
+                $("otp-demo-banner").classList.remove("hidden");
+            }
+            toast("6-digit verification code sent.");
         } catch (err) {
             toast(err.message, "err");
         }
     };
 
     $("btn-verify-reset").onclick = async () => {
+        const identifier = $("forgot-identifier").value.trim();
+        const code = $("reset-code").value.trim();
+        const new_password = $("reset-new-password").value;
+        const confirm_password = $("reset-confirm-password").value;
+
+        if (!/^\d{6}$/.test(code)) return toast("Enter the 6-digit verification code.", "warn");
+        const pwErr = validateStrongPassword(new_password);
+        if (pwErr) return toast(pwErr, "err");
+        if (new_password !== confirm_password) return toast("Passwords do not match.", "err");
+
         try {
             await api("/api/auth/reset", "POST", {
-                email: $("forgot-email").value.trim(),
-                code: $("reset-code").value.trim(),
-                new_password: $("reset-new-password").value,
+                identifier,
+                code,
+                new_password,
+                confirm_password,
             });
-            toast("Password updated. Please log in.");
+            $("forgot-identifier").value = "";
+            $("reset-code").value = "";
+            $("reset-new-password").value = "";
+            $("reset-confirm-password").value = "";
+            toast("Password updated successfully. Please log in.");
             showAuthView("login");
         } catch (err) {
             toast(err.message, "err");
         }
     };
+
+    // Brand Logo Click -> Navigate to "Home" & Refresh State
+    if ($("btn-brand-home")) {
+        $("btn-brand-home").onclick = async () => {
+            switchPage("dashboard");
+            await loadBootstrap();
+            await refreshDashboard();
+            toast("Home refreshed");
+        };
+    }
 
     // Header Controls
     $("btn-logout").onclick = () => doLogout();
