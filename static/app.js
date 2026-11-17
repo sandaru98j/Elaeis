@@ -1,21 +1,42 @@
 ﻿// ============================================================================
-// ELAEIS — Palm-based Crop Monitoring System
-// Frontend SPA Controller (Bunches, Fronds, Dispatch Weight, ABW & YPH Engine)
+// ELAEIS — Corporate ERP (Palm-based Crop Monitoring System)
+// Twitter / X 3-Column Frontend Controller
 // ============================================================================
 
-const ROLE_RANK = { pending: 0, harvester: 1, supervisor: 2, admin: 3 };
-const ROLE_LABELS = {
-    pending: "Pending Approval",
-    harvester: "Harvester",
-    supervisor: "Supervisor",
-    admin: "Admin",
+const ROLE_RANK = {
+    Harvester: 1,
+    Supervisor: 2,
+    Admin: 3,
+    "Master Admin": 4,
+    harvester: 1,
+    supervisor: 2,
+    admin: 3,
+    master_admin: 4,
 };
+
+const PAGE_TITLES = {
+    overview: "Overview",
+    harvests: "Harvests",
+    estates: "Estates",
+    directory: "Directory",
+    profile: "Profile",
+    info: "Info",
+};
+
+function normalizeRole(r) {
+    const s = String(r || "").trim().toLowerCase();
+    if (s === "master admin" || s === "master_admin" || s === "master") return "Master Admin";
+    if (s === "admin") return "Admin";
+    if (s === "supervisor") return "Supervisor";
+    return "Harvester";
+}
 
 const state = {
     token: localStorage.getItem("el_token") || "",
     user: null,
-    activePage: "dashboard",
-    forgotChannel: "email",
+    activePage: "overview",
+    harvestView: "trees",
+    estatesTab: "hierarchy",
     gps: { lat: 6.14224, lng: 80.36518, acc: 4.2, live: false },
     hierarchy: { estates: [], divisions: [], fields: [], blocks: [] },
     settings: { gps_threshold_m: 20, season_start_month: 4 },
@@ -24,9 +45,9 @@ const state = {
     dispatches: [],
     mapBlock: { block_id: null, trees: [] },
     compliance: { threshold_m: 20, rows: [], filter: "all" },
-    adminUsers: { users: [], resets: [] },
-    adminTab: "users",
+    adminUsers: { users: [] },
     modalTree: null,
+    forcePwTarget: null,
     crudCallback: null,
 };
 
@@ -85,17 +106,44 @@ function toast(msg, type = "ok") {
     const el = document.createElement("div");
     const colors =
         type === "err"
-            ? "bg-red-600 text-white border-red-700"
+            ? "bg-[#f4212e] text-white border-[#f4212e]"
             : type === "warn"
-            ? "bg-amber-500 text-slate-950 border-amber-600"
-            : "bg-slate-900 text-white border-slate-800";
-    el.className = `pointer-events-auto px-4 py-3 rounded-xl border shadow-lg text-xs font-bold flex items-center justify-between gap-3 transition ${colors}`;
+            ? "bg-amber-500 text-[#0f1419] border-amber-600"
+            : "bg-[#0f1419] text-white border-[#0f1419]";
+    el.className = `pointer-events-auto px-4 py-3 rounded-full border shadow-md text-xs font-bold flex items-center justify-between gap-3 transition ${colors}`;
     el.innerHTML = `<span>${esc(msg)}</span>`;
     box.appendChild(el);
     setTimeout(() => {
         el.style.opacity = "0";
         setTimeout(() => el.remove(), 200);
     }, 3200);
+}
+
+// ----------------------------------------------------------------------------
+// Password Hashing & Verification for Local Fallback Store
+// ----------------------------------------------------------------------------
+function encryptPassword(plain) {
+    const salt = "elaeis_uskvalley_erp_2026";
+    const input = `${salt}:${String(plain || "")}:${salt}`;
+    let h1 = 0x811c9dc5;
+    let h2 = 0x01000193;
+    for (let round = 0; round < 256; round++) {
+        for (let i = 0; i < input.length; i++) {
+            const c = input.charCodeAt(i) ^ (round & 0xff);
+            h1 ^= c;
+            h1 = Math.imul(h1, 0x01000193) >>> 0;
+            h2 ^= (c + i) & 0xff;
+            h2 = Math.imul(h2, 0x85ebca6b) >>> 0;
+        }
+    }
+    const hexDigest = h1.toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0");
+    const b64Payload = btoa(unescape(encodeURIComponent(`${hexDigest}:${input.length}`)));
+    return `enc$v1$${b64Payload}$${hexDigest}`;
+}
+
+function verifyEncryptedPassword(plain, storedHash) {
+    if (!storedHash) return false;
+    return encryptPassword(plain) === storedHash;
 }
 
 // ----------------------------------------------------------------------------
@@ -149,53 +197,15 @@ function updateGpsHeader() {
     const dot = $("gps-dot");
     const lbl = $("gps-label");
     if (!dot || !lbl) return;
-    dot.className = `w-2 h-2 rounded-full ${state.gps.live ? "bg-emerald-500 animate-pulse" : "bg-emerald-500"}`;
+    dot.className = `w-2 h-2 rounded-full ${state.gps.live ? "bg-[#00ba7c] animate-pulse" : "bg-[#00ba7c]"}`;
     lbl.textContent = `${state.gps.lat.toFixed(4)}, ${state.gps.lng.toFixed(4)}`;
 }
 
 // ----------------------------------------------------------------------------
-// Password Strength Validation & Local Encryption (Hash + Base64)
-// ----------------------------------------------------------------------------
-function validateStrongPassword(pw) {
-    const s = String(pw || "");
-    if (s.length < 8) return "Password must be at least 8 characters.";
-    if (!/[A-Z]/.test(s)) return "Password must include at least 1 uppercase letter.";
-    if (!/[0-9]/.test(s)) return "Password must include at least 1 number.";
-    if (!/[^A-Za-z0-9]/.test(s)) return "Password must include at least 1 special character.";
-    return null;
-}
-
-function encryptPassword(plain) {
-    const salt = "elaeis_uskvalley_salt_2026";
-    const input = `${salt}:${String(plain || "")}:${salt}`;
-    let h1 = 0x811c9dc5;
-    let h2 = 0x01000193;
-    for (let round = 0; round < 256; round++) {
-        for (let i = 0; i < input.length; i++) {
-            const c = input.charCodeAt(i) ^ (round & 0xff);
-            h1 ^= c;
-            h1 = Math.imul(h1, 0x01000193) >>> 0;
-            h2 ^= (c + i) & 0xff;
-            h2 = Math.imul(h2, 0x85ebca6b) >>> 0;
-        }
-    }
-    const hexDigest = h1.toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0");
-    const b64Payload = btoa(unescape(encodeURIComponent(`${hexDigest}:${input.length}`)));
-    return `enc$v1$${b64Payload}$${hexDigest}`;
-}
-
-function verifyEncryptedPassword(plain, storedHash) {
-    if (!storedHash) return false;
-    return encryptPassword(plain) === storedHash;
-}
-
-const normPhoneStr = (s) => String(s || "").replace(/[\s\-()]/g, "");
-
-// ----------------------------------------------------------------------------
-// Offline / Local Fallback Store (mirrors Cloudflare Worker D1 when offline)
+// Offline / Local Fallback Store (Mirrors Python SQLite & Cloudflare D1)
 // ----------------------------------------------------------------------------
 const LocalDB = {
-    key: "elaeis_local_db_v4",
+    key: "elaeis_erp_db_v5",
     load() {
         try {
             const raw = localStorage.getItem(this.key);
@@ -214,13 +224,20 @@ const LocalDB = {
         const now = new Date().toISOString();
         const today = todayStr();
         const { yearMonth, round } = roundOfDate(today);
-        const defaultHash = encryptPassword("Elaeis@2026");
-        // Email is the primary unique identifier that binds to Username
+        const defaultHash = encryptPassword("Uskvalley2026!");
+
         const users = [
-            { id: 1, email: "sandaru98j@gmail.com", username: "admin", phone: "+94770000000", full_name: "Sandaruwan Gunathilaka", role: "admin", is_master: true, pass_hash: defaultHash, created_at: now, approved_at: now },
-            { id: 2, email: "supervisor@uskvalley.lk", username: "supervisor", phone: "+94771111111", full_name: "Kasun Perera", role: "supervisor", is_master: false, pass_hash: defaultHash, created_at: now, approved_at: now },
-            { id: 3, email: "harvester@uskvalley.lk", username: "harvester", phone: "+94772222222", full_name: "Nimal Silva", role: "harvester", is_master: false, pass_hash: defaultHash, created_at: now, approved_at: now },
+            { id: 1, username: "sandaru98j", email: "", phone: "", full_name: "Sandaruwan Gunathilaka", role: "Master Admin", is_master: true, pass_hash: defaultHash, created_at: now },
+            { id: 2, username: "sandun", email: "", phone: "", full_name: "Sandun (Estate Manager)", role: "Admin", is_master: false, pass_hash: defaultHash, created_at: now },
+            { id: 3, username: "raveendra", email: "", phone: "", full_name: "Raveendra", role: "Supervisor", is_master: false, pass_hash: defaultHash, created_at: now },
+            { id: 4, username: "pasindu", email: "", phone: "", full_name: "Pasindu", role: "Supervisor", is_master: false, pass_hash: defaultHash, created_at: now },
+            { id: 5, username: "kavindu", email: "", phone: "", full_name: "Kavindu", role: "Supervisor", is_master: false, pass_hash: defaultHash, created_at: now },
+            { id: 6, username: "muditha", email: "", phone: "", full_name: "Muditha", role: "Supervisor", is_master: false, pass_hash: defaultHash, created_at: now },
+            { id: 7, username: "rajasekaran", email: "", phone: "", full_name: "Rajasekaran", role: "Supervisor", is_master: false, pass_hash: defaultHash, created_at: now },
+            { id: 8, username: "ajith", email: "", phone: "", full_name: "Ajith", role: "Harvester", is_master: false, pass_hash: defaultHash, created_at: now },
+            { id: 9, username: "baba", email: "", phone: "", full_name: "Baba", role: "Harvester", is_master: false, pass_hash: defaultHash, created_at: now },
         ];
+
         const estates = [{ id: 1, name: "Uskvalley Estate" }];
         const divisions = [
             { id: 1, estate_id: 1, name: "Uskvalley Division" },
@@ -266,22 +283,21 @@ const LocalDB = {
             }
         }
         const harvest = [
-            { id: 1, tree_id: 1, harvest_date: `${yearMonth}-04`, year_month: yearMonth, round_no: 1, bunches: 12, fronds: 8, user_id: 3, user_lat: 6.14202, user_lng: 80.36501, user_acc: 4.1, recorded_at: now },
-            { id: 2, tree_id: 2, harvest_date: `${yearMonth}-04`, year_month: yearMonth, round_no: 1, bunches: 10, fronds: 7, user_id: 3, user_lat: 6.14203, user_lng: 80.36506, user_acc: 3.9, recorded_at: now },
-            { id: 3, tree_id: 3, harvest_date: `${yearMonth}-05`, year_month: yearMonth, round_no: 1, bunches: 14, fronds: 9, user_id: 3, user_lat: 6.14242, user_lng: 80.36551, user_acc: 6.2, recorded_at: now },
-            { id: 4, tree_id: 4, harvest_date: `${yearMonth}-05`, year_month: yearMonth, round_no: 1, bunches: 11, fronds: 8, user_id: 2, user_lat: 6.14201, user_lng: 80.36526, user_acc: 3.5, recorded_at: now },
-            { id: 5, tree_id: 5, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 15, fronds: 10, user_id: 3, user_lat: 6.14202, user_lng: 80.36534, user_acc: 4.0, recorded_at: now },
-            { id: 6, tree_id: 6, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 9, fronds: 6, user_id: 3, user_lat: 6.14275, user_lng: 80.36492, user_acc: 8.0, recorded_at: now },
-            { id: 7, tree_id: 121, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 16, fronds: 10, user_id: 2, user_lat: 6.14297, user_lng: 80.36501, user_acc: 3.2, recorded_at: now },
+            { id: 1, tree_id: 1, harvest_date: `${yearMonth}-04`, year_month: yearMonth, round_no: 1, bunches: 12, fronds: 8, user_id: 8, user_lat: 6.14202, user_lng: 80.36501, user_acc: 4.1, recorded_at: now },
+            { id: 2, tree_id: 2, harvest_date: `${yearMonth}-04`, year_month: yearMonth, round_no: 1, bunches: 10, fronds: 7, user_id: 8, user_lat: 6.14203, user_lng: 80.36506, user_acc: 3.9, recorded_at: now },
+            { id: 3, tree_id: 3, harvest_date: `${yearMonth}-05`, year_month: yearMonth, round_no: 1, bunches: 14, fronds: 9, user_id: 9, user_lat: 6.14242, user_lng: 80.36551, user_acc: 6.2, recorded_at: now },
+            { id: 4, tree_id: 4, harvest_date: `${yearMonth}-05`, year_month: yearMonth, round_no: 1, bunches: 11, fronds: 8, user_id: 3, user_lat: 6.14201, user_lng: 80.36526, user_acc: 3.5, recorded_at: now },
+            { id: 5, tree_id: 5, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 15, fronds: 10, user_id: 8, user_lat: 6.14202, user_lng: 80.36534, user_acc: 4.0, recorded_at: now },
+            { id: 6, tree_id: 6, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 9, fronds: 6, user_id: 9, user_lat: 6.14275, user_lng: 80.36492, user_acc: 8.0, recorded_at: now },
+            { id: 7, tree_id: 121, harvest_date: today, year_month: yearMonth, round_no: round, bunches: 16, fronds: 10, user_id: 3, user_lat: 6.14297, user_lng: 80.36501, user_acc: 3.2, recorded_at: now },
         ];
         const dispatch = [
-            { id: 1, division_id: 1, dispatch_date: `${yearMonth}-05`, year_month: yearMonth, round_no: 1, weight_kg: 895.0, user_id: 2, recorded_at: now },
-            { id: 2, division_id: 1, dispatch_date: today, year_month: yearMonth, round_no: round, weight_kg: 1480.0, user_id: 2, recorded_at: now },
-            { id: 3, division_id: 2, dispatch_date: today, year_month: yearMonth, round_no: round, weight_kg: 640.0, user_id: 2, recorded_at: now },
+            { id: 1, division_id: 1, dispatch_date: `${yearMonth}-05`, year_month: yearMonth, round_no: 1, weight_kg: 895.0, user_id: 3, recorded_at: now },
+            { id: 2, division_id: 1, dispatch_date: today, year_month: yearMonth, round_no: round, weight_kg: 1480.0, user_id: 3, recorded_at: now },
+            { id: 3, division_id: 2, dispatch_date: today, year_month: yearMonth, round_no: round, weight_kg: 640.0, user_id: 4, recorded_at: now },
         ];
         return {
             users,
-            resets: [],
             estates,
             divisions,
             fields,
@@ -295,7 +311,7 @@ const LocalDB = {
 };
 
 // ----------------------------------------------------------------------------
-// Unified API Client (Cloudflare Worker D1 + Local Fallback)
+// Unified API Client
 // ----------------------------------------------------------------------------
 async function api(path, method = "GET", body = null) {
     const headers = { "Content-Type": "application/json" };
@@ -315,7 +331,12 @@ async function api(path, method = "GET", body = null) {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.text();
     } catch (err) {
-        if (err.message && !err.message.includes("Failed to fetch") && !err.message.includes("HTTP 404") && !err.message.includes("NetworkError")) {
+        if (
+            err.message &&
+            !err.message.includes("Failed to fetch") &&
+            !err.message.includes("HTTP 404") &&
+            !err.message.includes("NetworkError")
+        ) {
             throw err;
         }
         return localApiFallback(path, method, body);
@@ -330,107 +351,30 @@ function localApiFallback(path, method, body) {
     const curUser = db.users.find((u) => `local-token-${u.id}` === state.token) || db.users[0];
 
     if (pathname === "/api/auth/login") {
-        const idf = String(body.identifier || body.email || body.username || "").trim().toLowerCase();
-        if (!idf) throw new Error("Enter your Username or Email.");
-        const u = db.users.find((x) => x.email.toLowerCase() === idf || x.username.toLowerCase() === idf);
+        const username = String(body.username || body.identifier || "").trim().toLowerCase();
+        if (!username) throw new Error("Enter your Username.");
+        const u = db.users.find((x) => x.username.toLowerCase() === username);
         if (!u || !verifyEncryptedPassword(body.password, u.pass_hash)) {
-            throw new Error("Invalid username/email or password.");
+            throw new Error("Invalid username or password.");
         }
-        if (u.role === "pending") throw new Error("Account created successfully. Pending admin approval.");
         return { token: `local-token-${u.id}`, user: u };
-    }
-    if (pathname === "/api/auth/register") {
-        const full_name = String(body.full_name || "").trim();
-        const username = String(body.username || "").trim().toLowerCase();
-        const email = String(body.email || "").trim().toLowerCase();
-        const phone = normPhoneStr(body.phone);
-        const password = String(body.password || "");
-        const confirm_password = body.confirm_password !== undefined ? String(body.confirm_password) : password;
-
-        if (full_name.length < 2) throw new Error("Enter your full name.");
-        if (!/^[a-zA-Z0-9._-]{3,32}$/.test(username)) {
-            throw new Error("Username must be 3-32 characters (letters, numbers, ., _, -).");
-        }
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Enter a valid email address.");
-        if (!/^\+?\d{9,15}$/.test(phone)) throw new Error("Enter a valid mobile number.");
-        const pwErr = validateStrongPassword(password);
-        if (pwErr) throw new Error(pwErr);
-        if (password !== confirm_password) throw new Error("Passwords do not match.");
-
-        if (db.users.some((u) => u.email.toLowerCase() === email)) {
-            throw new Error("Email is already registered.");
-        }
-        if (db.users.some((u) => u.username.toLowerCase() === username)) {
-            throw new Error("Username is already taken.");
-        }
-        if (db.users.some((u) => normPhoneStr(u.phone) === phone)) {
-            throw new Error("Mobile number is already registered.");
-        }
-
-        const id = db.users.reduce((m, x) => Math.max(m, x.id), 0) + 1;
-        // Email is the primary key/unique identifier bound to Username
-        const nu = {
-            id,
-            email,
-            username,
-            phone,
-            full_name,
-            role: "pending",
-            is_master: false,
-            pass_hash: encryptPassword(password),
-            created_at: new Date().toISOString(),
-        };
-        db.users.push(nu);
-        LocalDB.save(db);
-        return { ok: true, message: "Account created successfully. Pending admin approval." };
-    }
-    if (pathname === "/api/auth/forgot") {
-        const idf = String(body.identifier || body.email || body.phone || "").trim().toLowerCase();
-        const normP = normPhoneStr(idf);
-        const u = db.users.find(
-            (x) => x.email.toLowerCase() === idf || normPhoneStr(x.phone) === normP || x.username.toLowerCase() === idf
-        );
-        if (!u) throw new Error("No account found with that Email or Mobile No.");
-        const code = String(Math.floor(100000 + Math.random() * 900000));
-        db.resets = (db.resets || []).filter((r) => r.email !== u.email);
-        db.resets.push({
-            email: u.email,
-            user_id: u.id,
-            code,
-            created_at: new Date().toISOString(),
-        });
-        LocalDB.save(db);
-        return { ok: true, otp_code: code };
-    }
-    if (pathname === "/api/auth/reset") {
-        const idf = String(body.identifier || body.email || "").trim().toLowerCase();
-        const normP = normPhoneStr(idf);
-        const code = String(body.code || "").trim();
-        const nextPw = String(body.new_password || "");
-        const confirmPw = body.confirm_password !== undefined ? String(body.confirm_password) : nextPw;
-
-        if (!/^\d{6}$/.test(code)) throw new Error("Enter a valid 6-digit verification code.");
-        const pwErr = validateStrongPassword(nextPw);
-        if (pwErr) throw new Error(pwErr);
-        if (nextPw !== confirmPw) throw new Error("Passwords do not match.");
-
-        const u = db.users.find(
-            (x) => x.email.toLowerCase() === idf || normPhoneStr(x.phone) === normP || x.username.toLowerCase() === idf
-        );
-        if (!u) throw new Error("Invalid or expired recovery code.");
-        const resetRec = (db.resets || []).find((r) => r.user_id === u.id && r.code === code);
-        if (!resetRec) throw new Error("Invalid or expired 6-digit verification code.");
-
-        u.pass_hash = encryptPassword(nextPw);
-        db.resets = (db.resets || []).filter((r) => r.user_id !== u.id);
-        LocalDB.save(db);
-        return { ok: true };
     }
     if (pathname === "/api/auth/me") {
         return { user: curUser };
     }
     if (pathname === "/api/auth/logout") {
         return { ok: true };
+    }
+    if (pathname === "/api/auth/change-password") {
+        if (!verifyEncryptedPassword(body.current_password, curUser.pass_hash)) {
+            throw new Error("Current password is incorrect.");
+        }
+        if (String(body.new_password || "").length < 6) {
+            throw new Error("New password must be at least 6 characters.");
+        }
+        curUser.pass_hash = encryptPassword(body.new_password);
+        LocalDB.save(db);
+        return { ok: true, message: "Password updated successfully." };
     }
     if (pathname === "/api/bootstrap") {
         const blocks = db.blocks.map((b) => {
@@ -525,7 +469,6 @@ function localApiFallback(path, method, body) {
         const from = params.from || "1900-01-01";
         const to = params.to || "2999-12-31";
         const rFlt = params.round_no ? Number(params.round_no) : null;
-
         let targetDivId = params.division_id ? Number(params.division_id) : null;
         let totalHa = 0;
 
@@ -581,6 +524,29 @@ function localApiFallback(path, method, body) {
         const abw = bunches > 0 ? Number((dispatch_kg / bunches).toFixed(2)) : 0;
         const yph = totalHa > 0 ? Number((dispatch_kg / totalHa).toFixed(2)) : 0;
 
+        const recent_logs = hRows
+            .slice(-12)
+            .reverse()
+            .map((h) => {
+                const t = db.trees.find((x) => x.id === h.tree_id) || {};
+                const b = db.blocks.find((x) => x.id === t.block_id) || {};
+                const f = db.fields.find((x) => x.id === b.field_id) || {};
+                const d = db.divisions.find((x) => x.id === f.division_id) || {};
+                const u = db.users.find((x) => x.id === h.user_id) || {};
+                return {
+                    id: h.id,
+                    harvest_date: h.harvest_date,
+                    round_no: h.round_no,
+                    bunches: h.bunches,
+                    fronds: h.fronds,
+                    tree_no: t.tree_no,
+                    block_name: b.name,
+                    field_name: f.name,
+                    division_name: d.name,
+                    recorded_by: u.full_name || "Harvester",
+                };
+            });
+
         return {
             from,
             to,
@@ -595,6 +561,7 @@ function localApiFallback(path, method, body) {
                 abw,
                 yph,
             },
+            recent_logs,
         };
     }
     if (pathname === "/api/admin/compliance") {
@@ -604,7 +571,7 @@ function localApiFallback(path, method, body) {
             const b = db.blocks.find((x) => x.id === t.block_id) || {};
             const f = db.fields.find((x) => x.id === b.field_id) || {};
             const d = db.divisions.find((x) => x.id === f.division_id) || {};
-            const u = db.users.find((x) => x.id === r.user_id) || { full_name: "Staff", role: "harvester" };
+            const u = db.users.find((x) => x.id === r.user_id) || { full_name: "Staff", role: "Harvester" };
             let distance_m = null;
             let status = "ok";
             if (r.user_lat === null) status = "no_gps";
@@ -614,15 +581,12 @@ function localApiFallback(path, method, body) {
                 status = distance_m > db.settings.gps_threshold_m ? "far" : "ok";
             }
             rows.push({
-                activity: "harvest",
                 id: r.id,
-                recorded_at: r.recorded_at,
                 work_date: r.harvest_date,
                 user_lat: r.user_lat,
                 user_lng: r.user_lng,
                 user_acc: r.user_acc,
                 full_name: u.full_name,
-                role: u.role,
                 tree_no: t.tree_no,
                 tree_lat: t.lat,
                 tree_lng: t.lng,
@@ -637,16 +601,53 @@ function localApiFallback(path, method, body) {
         return { threshold_m: db.settings.gps_threshold_m, rows: rows.reverse() };
     }
     if (pathname === "/api/admin/users") {
-        return { users: db.users, resets: db.resets };
+        return { users: db.users };
+    }
+    if (pathname === "/api/admin/users/create") {
+        const username = String(body.username || "").trim().toLowerCase();
+        const full_name = String(body.full_name || "").trim();
+        const role = normalizeRole(body.role || "Harvester");
+        const password = String(body.password || "Uskvalley2026!");
+        if (!username || !full_name) throw new Error("Username and Full Name are required.");
+        if (db.users.some((u) => u.username.toLowerCase() === username)) {
+            throw new Error(`Username '@${username}' already exists.`);
+        }
+        const id = db.users.reduce((m, x) => Math.max(m, x.id), 0) + 1;
+        db.users.push({
+            id,
+            username,
+            email: "",
+            phone: "",
+            full_name,
+            role,
+            is_master: false,
+            pass_hash: encryptPassword(password),
+            created_at: new Date().toISOString(),
+        });
+        LocalDB.save(db);
+        return { ok: true, message: `Created ERP user @${username} (${role}).` };
     }
     if (pathname === "/api/admin/users/role") {
         const u = db.users.find((x) => x.id === Number(body.user_id));
-        if (u && !u.is_master) u.role = body.role;
+        if (u && !u.is_master && u.username.toLowerCase() !== "sandaru98j") {
+            u.role = normalizeRole(body.role);
+        }
         LocalDB.save(db);
         return { ok: true };
     }
+    if (pathname === "/api/admin/users/force-password") {
+        const isMaster = Boolean(curUser.is_master) || curUser.username.toLowerCase() === "sandaru98j";
+        if (!isMaster) throw new Error("Only Master Admin (sandaru98j) can force-reset user passwords.");
+        const u = db.users.find((x) => x.id === Number(body.user_id));
+        if (!u) throw new Error("User not found.");
+        const nextPw = String(body.new_password || "");
+        if (nextPw.length < 6) throw new Error("New password must be at least 6 characters.");
+        u.pass_hash = encryptPassword(nextPw);
+        LocalDB.save(db);
+        return { ok: true, message: `Password force-updated for @${u.username}.` };
+    }
     if (pathname === "/api/admin/users/delete") {
-        db.users = db.users.filter((x) => x.id !== Number(body.user_id) || x.is_master);
+        db.users = db.users.filter((x) => x.id !== Number(body.user_id) || x.is_master || x.username.toLowerCase() === "sandaru98j");
         LocalDB.save(db);
         return { ok: true };
     }
@@ -702,44 +703,33 @@ function updateClockAndGreeting() {
     const gEl = $("hdr-greeting");
     const cEl = $("hdr-clock");
     const rEl = $("hdr-round-pill");
+    const rRight = $("right-active-round");
     if (gEl) gEl.textContent = name ? `${period}, ${name}` : period;
     if (cEl) cEl.textContent = `${todayStr()} ${String(hrs).padStart(2, "0")}:${mins}:${secs}`;
-    if (rEl) {
-        const { round, rangeLabel } = roundOfDate(todayStr());
-        rEl.textContent = `R${round} (${rangeLabel})`;
-    }
+    const { round, rangeLabel } = roundOfDate(todayStr());
+    if (rEl) rEl.textContent = `R${round} (${rangeLabel})`;
+    if (rRight) rRight.textContent = `Round ${round} (${rangeLabel})`;
 }
 
 // ----------------------------------------------------------------------------
-// Auth & Session Flow
+// Auth & Session Flow (Closed Corporate ERP: Username + Password ONLY)
 // ----------------------------------------------------------------------------
-function showAuthView(mode = "login", noticeMessage = "") {
+function showAuthScreen() {
     $("auth-screen").classList.remove("hidden");
     $("app-shell").classList.add("hidden");
-    $("form-login").classList.toggle("hidden", mode !== "login");
-    $("form-signup").classList.toggle("hidden", mode !== "signup");
-    $("form-forgot").classList.toggle("hidden", mode !== "forgot");
-
-    const banner = $("auth-notice");
-    const bannerTxt = $("auth-notice-text");
-    if (noticeMessage) {
-        bannerTxt.textContent = noticeMessage;
-        banner.classList.remove("hidden");
-    } else {
-        banner.classList.add("hidden");
-    }
     refreshIcons();
 }
 
-async function loginWithIdentifier(identifier, password) {
+async function loginWithUsername(username, password) {
     try {
-        const res = await api("/api/auth/login", "POST", { identifier, password });
+        const res = await api("/api/auth/login", "POST", { username, password });
         state.token = res.token;
         state.user = res.user;
         localStorage.setItem("el_token", res.token);
+        toast(`Welcome back, @${res.user.username}`);
         await enterApplication();
     } catch (err) {
-        toast(err.message || "Invalid username/email or password.", "err");
+        toast(err.message || "Invalid username or password.", "err");
     }
 }
 
@@ -751,20 +741,18 @@ async function enterApplication() {
         } catch (_) {
             state.token = "";
             localStorage.removeItem("el_token");
-            showAuthView("login");
+            showAuthScreen();
             return;
         }
     }
 
-    if (state.user.role === "pending") {
-        state.token = "";
-        state.user = null;
-        localStorage.removeItem("el_token");
-        showAuthView("login", "Account created successfully. Pending admin approval.");
-        return;
-    }
+    // Normalize user role & master flag
+    const isMaster = Boolean(state.user.is_master) || String(state.user.username || "").toLowerCase() === "sandaru98j";
+    state.user.is_master = isMaster;
+    state.user.role = isMaster ? "Master Admin" : normalizeRole(state.user.role);
 
     updateClockAndGreeting();
+    syncUserIdentityUI();
     $("auth-screen").classList.add("hidden");
     $("app-shell").classList.remove("hidden");
 
@@ -774,23 +762,44 @@ async function enterApplication() {
     switchPage(state.activePage);
 }
 
+function syncUserIdentityUI() {
+    if (!state.user) return;
+    const u = state.user;
+    const initials = u.full_name
+        .split(" ")
+        .map((w) => w[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase();
+
+    if ($("rail-user-avatar")) $("rail-user-avatar").textContent = initials;
+    if ($("rail-user-name")) $("rail-user-name").textContent = u.full_name;
+    if ($("rail-user-handle")) $("rail-user-handle").textContent = `@${u.username}`;
+    if ($("rail-user-role")) $("rail-user-role").textContent = u.role;
+
+    if ($("prof-avatar-inner")) $("prof-avatar-inner").textContent = initials;
+    if ($("prof-fullname")) $("prof-fullname").textContent = u.full_name;
+    if ($("prof-username")) $("prof-username").textContent = `@${u.username}`;
+    if ($("prof-role-badge")) $("prof-role-badge").textContent = u.role;
+}
+
 function applyRbacNavigation() {
-    const userRank = ROLE_RANK[state.user?.role] || 0;
+    const userRank = ROLE_RANK[state.user?.role] || 1;
     document.querySelectorAll("[data-nav]").forEach((btn) => {
-        const minRole = btn.getAttribute("data-min-role") || "harvester";
+        const minRole = btn.getAttribute("data-min-role") || "Harvester";
         const allowed = userRank >= (ROLE_RANK[minRole] || 1);
         btn.classList.toggle("hidden", !allowed);
     });
     const currentMin = {
-        dashboard: "harvester",
-        harvest: "harvester",
-        dispatch: "harvester",
-        mapper: "admin",
-        compliance: "admin",
-        admin: "admin",
+        overview: "Harvester",
+        harvests: "Harvester",
+        estates: "Admin",
+        directory: "Admin",
+        profile: "Harvester",
+        info: "Harvester",
     }[state.activePage];
     if (userRank < (ROLE_RANK[currentMin] || 1)) {
-        state.activePage = "dashboard";
+        state.activePage = "overview";
     }
 }
 
@@ -807,28 +816,33 @@ async function loadBootstrap() {
 
 function switchPage(page) {
     state.activePage = page;
+    if ($("hdr-page-title")) {
+        $("hdr-page-title").textContent = PAGE_TITLES[page] || "Overview";
+    }
+
     document.querySelectorAll(".page-view").forEach((sec) => {
         sec.classList.toggle("hidden", sec.id !== `page-${page}`);
     });
+
     document.querySelectorAll("[data-nav]").forEach((btn) => {
         const active = btn.getAttribute("data-nav") === page;
         if (btn.closest("#desktop-nav")) {
-            btn.className = `nav-btn px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
-                active ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 hover:bg-white/70"
-            }`;
+            btn.classList.toggle("active", active);
         } else {
             btn.className = `nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition ${
-                active ? "text-emerald-600" : "text-slate-400 hover:text-slate-700"
+                active ? "text-[#0f1419]" : "text-[#536471]"
             }`;
         }
     });
 
-    if (page === "dashboard") refreshDashboard();
-    if (page === "harvest") loadHarvestBlock();
-    if (page === "dispatch") loadDispatches();
-    if (page === "mapper") loadMapperBlock();
-    if (page === "compliance") loadCompliance();
-    if (page === "admin") loadAdminPage();
+    if (page === "overview") refreshDashboard();
+    if (page === "harvests") {
+        if (state.harvestView === "trees") loadHarvestBlock();
+        else loadDispatches();
+    }
+    if (page === "estates") loadEstatesPage();
+    if (page === "directory") loadDirectoryPage();
+    if (page === "profile") syncUserIdentityUI();
     refreshIcons();
 }
 
@@ -869,7 +883,7 @@ function initDivisionCascade(prefix, onChange) {
 }
 
 // ----------------------------------------------------------------------------
-// PAGE 1: ANALYTICS DASHBOARD (Unified Filters + 5 Core KPIs Only)
+// VIEW 1: OVERVIEW (Unified Filters + 5 Core KPIs + Recent Feed)
 // ----------------------------------------------------------------------------
 function initDashboardFilters() {
     const estFixed = $("flt-estate-fixed");
@@ -1016,27 +1030,75 @@ async function refreshDashboard() {
     const rep = await api(`/api/report?${qs}`);
     const tot = rep.totals || {};
 
-    $("kpi-bunches").textContent = Number(tot.bunches || 0).toLocaleString();
+    const bunchesTxt = Number(tot.bunches || 0).toLocaleString();
+    const frondsTxt = Number(tot.fronds || 0).toLocaleString();
+    const dispTxt = `${Number(tot.dispatch_kg || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`;
+    const abwTxt = `${Number(tot.abw || 0).toFixed(2)} kg`;
+    const yphTxt = `${Number(tot.yph || 0).toFixed(2)} kg/Ha`;
+    const haTxt = `${Number(tot.area_ha || 0).toFixed(2)} Ha`;
+
+    $("kpi-bunches").textContent = bunchesTxt;
     $("kpi-harvest-trees").textContent = `${tot.trees || 0} palms harvested`;
-    $("kpi-fronds").textContent = Number(tot.fronds || 0).toLocaleString();
+    $("kpi-fronds").textContent = frondsTxt;
     $("kpi-harvest-recs").textContent = `${tot.records || 0} harvest logs`;
-    $("kpi-dispatch-kg").textContent = `${Number(tot.dispatch_kg || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`;
+    $("kpi-dispatch-kg").textContent = dispTxt;
     $("kpi-dispatch-recs").textContent = `${tot.dispatch_records || 0} mill dispatches`;
-    $("kpi-abw").textContent = `${Number(tot.abw || 0).toFixed(2)} kg`;
-    $("kpi-yph").textContent = `${Number(tot.yph || 0).toFixed(2)} kg/Ha`;
-    $("kpi-area-ha").textContent = `Extent: ${Number(tot.area_ha || 0).toFixed(2)} Ha`;
+    $("kpi-abw").textContent = abwTxt;
+    $("kpi-yph").textContent = yphTxt;
+    $("kpi-area-ha").textContent = `Extent: ${haTxt}`;
+
+    // Update Right Supplementary Panel
+    if ($("right-kpi-bunches")) $("right-kpi-bunches").textContent = bunchesTxt;
+    if ($("right-kpi-fronds")) $("right-kpi-fronds").textContent = frondsTxt;
+    if ($("right-kpi-dispatch")) $("right-kpi-dispatch").textContent = dispTxt;
+    if ($("right-kpi-abw")) $("right-kpi-abw").textContent = abwTxt;
+    if ($("right-kpi-yph")) $("right-kpi-yph").textContent = yphTxt;
+    if ($("right-extent-ha")) $("right-extent-ha").textContent = haTxt;
+
+    // Render Recent Feed
+    const feedEl = $("overview-feed-list");
+    if (feedEl) {
+        const logs = rep.recent_logs || [];
+        if (!logs.length) {
+            feedEl.innerHTML = `<div class="p-6 text-center text-xs text-[#536471]">No harvest logs recorded in this filter window.</div>`;
+        } else {
+            feedEl.innerHTML = logs
+                .map(
+                    (l) => `
+                <div class="p-3.5 hover:bg-[#f7f9f9] flex items-center justify-between gap-3 text-xs transition">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-full bg-[#0f1419] text-white font-mono-code font-bold flex items-center justify-center shrink-0">
+                            #${l.tree_no || "-"}
+                        </div>
+                        <div class="min-w-0">
+                            <div class="font-extrabold text-[#0f1419] truncate">
+                                Palm #${l.tree_no || "-"} &bull; ${esc(l.block_name || "Block")} (${esc(l.field_name || "Field")})
+                            </div>
+                            <div class="text-[11px] text-[#536471] truncate">
+                                ${esc(l.division_name || "Uskvalley")} &bull; Logged by ${esc(l.recorded_by || "Harvester")}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="font-mono-code font-extrabold text-[#0f1419]">${l.bunches}B / ${l.fronds}F</div>
+                        <div class="text-[10px] font-mono-code text-[#536471]">R${l.round_no} &bull; ${esc(l.harvest_date)}</div>
+                    </div>
+                </div>`
+                )
+                .join("");
+        }
+    }
 }
 
 // ----------------------------------------------------------------------------
-// PAGE 2: UPDATED HARVEST DATA ENTRY FLOW
-// Order: 1. Round -> 2. Date -> 3. Division -> Field -> Block -> Tree (2D Cards) -> 4. Bunches & Fronds
+// VIEW 2: HARVESTS (Palm Harvest Logger + Mill Dispatch Weight)
 // ----------------------------------------------------------------------------
 async function loadHarvestBlock() {
     const bid = Number($("harv-block")?.value);
     if (!bid) return;
     const date = $("harv-date").value || todayStr();
     const roundNo = Number($("harv-round").value) || roundOfDate(date).round;
-    const { rangeLabel, yearMonth } = roundOfDate(date, roundNo);
+    const { rangeLabel } = roundOfDate(date, roundNo);
     $("harv-auto-meta").textContent = `Round ${roundNo} (${rangeLabel}) • ${date}`;
 
     const data = await api(`/api/block?block_id=${bid}&mode=harvest&date=${date}&round_no=${roundNo}`);
@@ -1063,17 +1125,20 @@ function renderHarvestGrid() {
     grid.innerHTML = filtered
         .map((t) => {
             const done = Boolean(t.rec);
-            const gpsBadge = t.lat !== null ? `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500" title="GPS Mapped"></span>` : "";
+            const gpsBadge =
+                t.lat !== null
+                    ? `<span class="w-1.5 h-1.5 rounded-full ${done ? "bg-[#00ba7c]" : "bg-[#0f1419]"}" title="GPS Mapped"></span>`
+                    : "";
             return `
             <div data-harv-tree="${t.id}" class="palm-card ${done ? "done-harvest" : ""}">
-                <div class="w-full flex items-center justify-between text-[10px] font-mono-code text-slate-400">
+                <div class="w-full flex items-center justify-between text-[10px] font-mono-code ${done ? "text-white/75" : "text-[#536471]"}">
                     <span>#${t.tree_no}</span>
                     ${gpsBadge}
                 </div>
-                <div class="my-1 text-emerald-700">
+                <div class="my-1 ${done ? "text-white" : "text-[#0f1419]"}">
                     <i data-lucide="${done ? "check-circle-2" : "palmtree"}" class="w-5 h-5"></i>
                 </div>
-                <div class="text-[11px] font-mono-code font-extrabold ${done ? "text-emerald-900" : "text-slate-400"}">
+                <div class="text-[11px] font-mono-code font-extrabold ${done ? "text-white" : "text-[#536471]"}">
                     ${done ? `${t.rec.bunches}B / ${t.rec.fronds}F` : "Tap"}
                 </div>
             </div>`;
@@ -1123,8 +1188,8 @@ async function submitHarvestModal() {
             acc: gps.acc,
         });
         $("modal-harvest").classList.add("hidden");
-        const distMsg = res.distance_m !== null && res.distance_m !== undefined ? ` (${res.distance_m}m)` : "";
-        toast(`Saved Palm #${tree.tree_no} (R${round_no}): ${bunches}B / ${fronds}F${distMsg}`);
+        const distMsg = res.distance_m !== null && res.distance_m !== undefined ? ` • ${res.distance_m}m` : "";
+        toast(`Harvest logged successfully (Palm #${tree.tree_no}: ${bunches}B / ${fronds}F${distMsg})`);
         await loadHarvestBlock();
     } catch (err) {
         toast(err.message, "err");
@@ -1133,10 +1198,6 @@ async function submitHarvestModal() {
     }
 }
 
-// ----------------------------------------------------------------------------
-// PAGE 3: DISPATCH CROP WEIGHT LOGGER
-// Order: Select Round -> Select Date -> Select Division -> Enter Dispatch Crop Load Weight (in kg)
-// ----------------------------------------------------------------------------
 function initDispatchForm() {
     const divEl = $("disp-division");
     if (!divEl) return;
@@ -1152,28 +1213,28 @@ async function loadDispatches() {
 
     const tbody = $("disp-tbody");
     if (!state.dispatches.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400">No mill dispatch crop weights logged yet</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-[#536471]">No mill dispatch crop weights logged yet</td></tr>`;
         return;
     }
 
-    const canDelete = (ROLE_RANK[state.user?.role] || 0) >= ROLE_RANK.supervisor;
+    const canDelete = (ROLE_RANK[state.user?.role] || 0) >= ROLE_RANK.Supervisor;
     tbody.innerHTML = state.dispatches
         .map(
             (d) => `
-        <tr class="hover:bg-slate-50">
-            <td class="py-2.5 px-4 font-mono-code text-slate-700">${esc(d.dispatch_date)}</td>
-            <td class="py-2.5 px-4">
-                <span class="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono-code font-bold text-[11px]">
-                    Round ${d.round_no}
+        <tr class="hover:bg-[#f7f9f9]">
+            <td class="py-3 px-4 font-mono-code text-[#0f1419]">${esc(d.dispatch_date)}</td>
+            <td class="py-3 px-4">
+                <span class="px-2.5 py-0.5 rounded-full bg-[#0f1419] text-white font-mono-code font-bold text-[11px]">
+                    R${d.round_no}
                 </span>
             </td>
-            <td class="py-2.5 px-4 font-bold text-slate-900">${esc(d.division_name)}</td>
-            <td class="py-2.5 px-4 font-mono-code font-extrabold text-blue-700">${Number(d.weight_kg).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg</td>
-            <td class="py-2.5 px-4 text-slate-500">${esc(d.recorded_by || "Staff")}</td>
-            <td class="py-2.5 px-4 text-right">
+            <td class="py-3 px-4 font-bold text-[#0f1419]">${esc(d.division_name)}</td>
+            <td class="py-3 px-4 font-mono-code font-extrabold text-[#0f1419]">${Number(d.weight_kg).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg</td>
+            <td class="py-3 px-4 text-[#536471]">${esc(d.recorded_by || "Staff")}</td>
+            <td class="py-3 px-4 text-right">
                 ${
                     canDelete
-                        ? `<button type="button" data-del-dispatch="${d.id}" class="p-1.5 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600">
+                        ? `<button type="button" data-del-dispatch="${d.id}" class="p-1.5 rounded-full text-[#536471] hover:bg-red-50 hover:text-[#f4212e]">
                                <i data-lucide="trash-2" class="w-4 h-4"></i>
                            </button>`
                         : ""
@@ -1187,7 +1248,7 @@ async function loadDispatches() {
         btn.onclick = async () => {
             try {
                 await api("/api/dispatch/delete", "POST", { id: Number(btn.getAttribute("data-del-dispatch")) });
-                toast("Dispatch entry removed");
+                toast("Dispatch weight removed");
                 await loadDispatches();
             } catch (err) {
                 toast(err.message, "err");
@@ -1198,8 +1259,22 @@ async function loadDispatches() {
 }
 
 // ----------------------------------------------------------------------------
-// PAGE 4: GPS TREE MAPPER (Admins Only)
+// VIEW 3: ESTATES (5-Tier Plantation Hierarchy + GPS Mapper + GPS Compliance)
 // ----------------------------------------------------------------------------
+async function loadEstatesPage() {
+    const boot = await api("/api/bootstrap");
+    state.hierarchy = boot.hierarchy;
+    state.settings = boot.settings;
+
+    $("set-gps-thresh").value = state.settings.gps_threshold_m || 20;
+    $("set-season-month").value = state.settings.season_start_month || 4;
+
+    renderAdminHierarchy();
+    if (state.estatesTab === "mapper") await loadMapperBlock();
+    if (state.estatesTab === "compliance") await loadCompliance();
+    refreshIcons();
+}
+
 async function loadMapperBlock() {
     const bid = Number($("map-block")?.value);
     if (!bid) return;
@@ -1215,11 +1290,11 @@ async function loadMapperBlock() {
             const hasGps = t.lat !== null && t.lng !== null;
             return `
             <div data-map-tree="${t.id}" class="palm-card ${hasGps ? "mapped-gps" : ""}">
-                <div class="w-full flex items-center justify-between text-[10px] font-mono-code text-slate-500">
+                <div class="w-full flex items-center justify-between text-[10px] font-mono-code text-[#536471]">
                     <span>#${t.tree_no}</span>
-                    <i data-lucide="map-pin" class="w-3.5 h-3.5 ${hasGps ? "text-blue-600" : "text-slate-300"}"></i>
+                    <i data-lucide="map-pin" class="w-3.5 h-3.5 ${hasGps ? "text-[#0f1419]" : "text-[#cfd9de]"}"></i>
                 </div>
-                <div class="text-[10px] font-mono-code font-bold ${hasGps ? "text-blue-900" : "text-slate-400"} text-center leading-tight mt-1">
+                <div class="text-[10px] font-mono-code font-bold ${hasGps ? "text-[#0f1419]" : "text-[#536471]"} text-center leading-tight mt-1">
                     ${hasGps ? `${Number(t.lat).toFixed(4)}<br/>${Number(t.lng).toFixed(4)}` : "Unmapped"}
                 </div>
             </div>`;
@@ -1238,7 +1313,7 @@ async function openMapperModal(treeId = null) {
     state.modalTree = existing;
 
     const nextNo = trees.reduce((m, t) => Math.max(m, t.tree_no), 0) + 1;
-    $("mp-title").textContent = existing ? `Edit Palm #${existing.tree_no} GPS` : "Add New Tree (Live GPS)";
+    $("mp-title").textContent = existing ? `Edit Palm #${existing.tree_no} GPS` : "Map New Palm (Live GPS)";
     $("mp-tree-no").value = existing ? existing.tree_no : nextNo;
     $("btn-mp-delete").classList.toggle("hidden", !existing);
 
@@ -1267,7 +1342,7 @@ async function saveMapperModal() {
             status: "active",
         });
         $("modal-mapper").classList.add("hidden");
-        toast("Tree GPS saved");
+        toast("Palm GPS coordinates saved");
         await loadMapperBlock();
     } catch (err) {
         toast(err.message, "err");
@@ -1286,9 +1361,6 @@ async function deleteMapperTree() {
     }
 }
 
-// ----------------------------------------------------------------------------
-// PAGE 5: GPS VERIFICATION / COMPLIANCE LOG (Admins Only)
-// ----------------------------------------------------------------------------
 async function loadCompliance() {
     const data = await api("/api/admin/compliance");
     state.compliance.threshold_m = data.threshold_m || 20;
@@ -1314,7 +1386,7 @@ function renderComplianceTable() {
 
     const tbody = $("comp-tbody");
     if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400">No GPS compliance logs match filter</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-[#536471]">No GPS compliance logs match filter</td></tr>`;
         return;
     }
 
@@ -1322,126 +1394,37 @@ function renderComplianceTable() {
         .map((r) => {
             const isFar = r.status === "far";
             const badge = isFar
-                ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600 text-white font-mono-code font-bold text-[11px]">
+                ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#f4212e] text-white font-mono-code font-bold text-[11px]">
                        <i data-lucide="alert-triangle" class="w-3 h-3"></i> ${r.distance_m}m
                    </span>`
                 : r.status === "ok"
-                ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-mono-code font-bold text-[11px]">
+                ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#0f1419] text-white font-mono-code font-bold text-[11px]">
                        <i data-lucide="check" class="w-3 h-3"></i> ${r.distance_m}m
                    </span>`
-                : `<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-mono-code text-[11px]">${esc(r.status)}</span>`;
+                : `<span class="px-2 py-0.5 rounded-full bg-[#f7f9f9] text-[#536471] font-mono-code text-[11px]">${esc(r.status)}</span>`;
 
             return `
-            <tr class="${isFar ? "row-flagged" : "hover:bg-slate-50"}">
-                <td class="py-2.5 px-3">${badge}</td>
-                <td class="py-2.5 px-3">
-                    <div class="font-bold text-slate-900">Palm #${r.tree_no} &bull; ${esc(r.block)}</div>
-                    <div class="text-[11px] text-slate-500">${esc(r.division)} &rarr; ${esc(r.field)}</div>
+            <tr class="${isFar ? "row-flagged" : "hover:bg-[#f7f9f9]"}">
+                <td class="py-3 px-3">${badge}</td>
+                <td class="py-3 px-3">
+                    <div class="font-bold text-[#0f1419]">Palm #${r.tree_no} &bull; ${esc(r.block)}</div>
+                    <div class="text-[11px] text-[#536471]">${esc(r.division)} &rarr; ${esc(r.field)}</div>
                 </td>
-                <td class="py-2.5 px-3">
-                    <div class="font-bold text-slate-800">${esc(r.full_name)}</div>
-                    <div class="text-[11px] font-mono-code text-slate-500">${esc(r.detail)}</div>
+                <td class="py-3 px-3">
+                    <div class="font-bold text-[#0f1419]">${esc(r.full_name)}</div>
+                    <div class="text-[11px] font-mono-code text-[#536471]">${esc(r.detail)}</div>
                 </td>
-                <td class="py-2.5 px-3 font-mono-code text-[11px] text-slate-600">
+                <td class="py-3 px-3 font-mono-code text-[11px] text-[#536471]">
                     ${r.tree_lat !== null ? `${Number(r.tree_lat).toFixed(5)}, ${Number(r.tree_lng).toFixed(5)}` : "Unmapped"}
                 </td>
-                <td class="py-2.5 px-3 font-mono-code text-[11px] ${isFar ? "text-red-700 font-bold" : "text-slate-600"}">
+                <td class="py-3 px-3 font-mono-code text-[11px] ${isFar ? "text-[#f4212e] font-bold" : "text-[#536471]"}">
                     ${r.user_lat !== null ? `${Number(r.user_lat).toFixed(5)}, ${Number(r.user_lng).toFixed(5)}` : "No GPS"}
                 </td>
-                <td class="py-2.5 px-3 font-mono-code text-[11px] text-slate-500">${esc(r.work_date)}</td>
+                <td class="py-3 px-3 font-mono-code text-[11px] text-[#536471]">${esc(r.work_date)}</td>
             </tr>`;
         })
         .join("");
     refreshIcons();
-}
-
-// ----------------------------------------------------------------------------
-// PAGE 6: ADMIN INFRASTRUCTURE SETTINGS (Users, 5-Tier CRUD, GPS Settings)
-// ----------------------------------------------------------------------------
-async function loadAdminPage() {
-    const [uData, boot] = await Promise.all([api("/api/admin/users"), api("/api/bootstrap")]);
-    state.adminUsers = uData;
-    state.hierarchy = boot.hierarchy;
-    state.settings = boot.settings;
-
-    $("set-gps-thresh").value = state.settings.gps_threshold_m || 20;
-    $("set-season-month").value = state.settings.season_start_month || 4;
-
-    renderAdminUsers();
-    renderAdminHierarchy();
-    refreshIcons();
-}
-
-function renderAdminUsers() {
-    const users = state.adminUsers.users || [];
-    const pendingCount = users.filter((u) => u.role === "pending").length;
-    $("adm-pending-badge").textContent = pendingCount;
-
-    $("adm-users-list").innerHTML = users
-        .map((u) => {
-            const isPending = u.role === "pending";
-            return `
-            <div class="py-3 flex flex-wrap items-center justify-between gap-3">
-                <div class="flex items-center gap-2.5">
-                    <div class="w-9 h-9 rounded-xl ${isPending ? "bg-amber-100 text-amber-700" : "bg-emerald-50 text-emerald-700"} flex items-center justify-center font-bold text-xs">
-                        ${esc(u.full_name.slice(0, 2).toUpperCase())}
-                    </div>
-                    <div>
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-xs font-extrabold text-slate-900">${esc(u.full_name)}</span>
-                            <span class="text-[10px] font-mono-code px-2 py-0.5 rounded-full ${
-                                isPending ? "bg-amber-100 text-amber-800 font-bold" : "bg-slate-100 text-slate-700"
-                            }">${esc(ROLE_LABELS[u.role] || u.role)}</span>
-                        </div>
-                        <div class="text-[11px] font-mono-code text-slate-400">@${esc(u.username || "")} &bull; ${esc(u.email)} &bull; ${esc(u.phone)}</div>
-                    </div>
-                </div>
-                <div class="flex items-center gap-1.5">
-                    ${
-                        u.is_master
-                            ? `<span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold">Master Admin</span>`
-                            : `
-                        <select data-user-role="${u.id}" class="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold">
-                            <option value="pending" ${u.role === "pending" ? "selected" : ""}>Pending Approval</option>
-                            <option value="harvester" ${u.role === "harvester" ? "selected" : ""}>Harvester</option>
-                            <option value="supervisor" ${u.role === "supervisor" ? "selected" : ""}>Supervisor</option>
-                            <option value="admin" ${u.role === "admin" ? "selected" : ""}>Admin</option>
-                        </select>
-                        <button type="button" data-del-user="${u.id}" class="p-1.5 rounded-lg border border-slate-200 hover:bg-red-50 hover:text-red-600 text-slate-400">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>`
-                    }
-                </div>
-            </div>`;
-        })
-        .join("");
-
-    document.querySelectorAll("[data-user-role]").forEach((sel) => {
-        sel.onchange = async () => {
-            try {
-                await api("/api/admin/users/role", "POST", {
-                    user_id: Number(sel.getAttribute("data-user-role")),
-                    role: sel.value,
-                });
-                toast(`Updated role to ${ROLE_LABELS[sel.value]}`);
-                await loadAdminPage();
-            } catch (err) {
-                toast(err.message, "err");
-            }
-        };
-    });
-
-    document.querySelectorAll("[data-del-user]").forEach((btn) => {
-        btn.onclick = async () => {
-            try {
-                await api("/api/admin/users/delete", "POST", { user_id: Number(btn.getAttribute("data-del-user")) });
-                toast("Account removed");
-                await loadAdminPage();
-            } catch (err) {
-                toast(err.message, "err");
-            }
-        };
-    });
 }
 
 function renderAdminHierarchy() {
@@ -1450,11 +1433,11 @@ function renderAdminHierarchy() {
     $("crud-estates").innerHTML = estates
         .map(
             (e) => `
-        <div class="p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs">
-            <span class="font-bold text-slate-800">${esc(e.name)}</span>
+        <div class="p-2.5 rounded-xl bg-[#f7f9f9] border border-[#eff3f4] flex items-center justify-between text-xs">
+            <span class="font-bold text-[#0f1419]">${esc(e.name)}</span>
             <div class="flex items-center gap-1">
-                <button type="button" data-edit-estate="${e.id}" class="p-1 text-slate-500 hover:text-emerald-600"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-                <button type="button" data-del-entity="estate:${e.id}" class="p-1 text-slate-400 hover:text-red-600"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                <button type="button" data-edit-estate="${e.id}" class="p-1 text-[#536471] hover:text-[#0f1419]"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                <button type="button" data-del-entity="estate:${e.id}" class="p-1 text-[#536471] hover:text-[#f4212e]"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
             </div>
         </div>`
         )
@@ -1464,14 +1447,14 @@ function renderAdminHierarchy() {
         .map((d) => {
             const est = estates.find((e) => e.id === d.estate_id);
             return `
-            <div class="p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs">
+            <div class="p-2.5 rounded-xl bg-[#f7f9f9] border border-[#eff3f4] flex items-center justify-between text-xs">
                 <div>
-                    <div class="font-bold text-slate-800">${esc(d.name)}</div>
-                    <div class="text-[10px] text-slate-400">${esc(est?.name || "")}</div>
+                    <div class="font-bold text-[#0f1419]">${esc(d.name)}</div>
+                    <div class="text-[10px] text-[#536471]">${esc(est?.name || "")}</div>
                 </div>
                 <div class="flex items-center gap-1">
-                    <button type="button" data-edit-division="${d.id}" class="p-1 text-slate-500 hover:text-emerald-600"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-                    <button type="button" data-del-entity="division:${d.id}" class="p-1 text-slate-400 hover:text-red-600"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                    <button type="button" data-edit-division="${d.id}" class="p-1 text-[#536471] hover:text-[#0f1419]"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                    <button type="button" data-del-entity="division:${d.id}" class="p-1 text-[#536471] hover:text-[#f4212e]"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
                 </div>
             </div>`;
         })
@@ -1481,14 +1464,14 @@ function renderAdminHierarchy() {
         .map((f) => {
             const div = divisions.find((d) => d.id === f.division_id);
             return `
-            <div class="p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs">
+            <div class="p-2.5 rounded-xl bg-[#f7f9f9] border border-[#eff3f4] flex items-center justify-between text-xs">
                 <div>
-                    <div class="font-bold text-slate-800">${esc(f.name)} &bull; <span class="font-mono-code text-emerald-700">${f.planting_year} - ${Number(f.area_ha).toFixed(2)} Ha</span></div>
-                    <div class="text-[10px] text-slate-400">${esc(div?.name || "")}</div>
+                    <div class="font-bold text-[#0f1419]">${esc(f.name)} &bull; <span class="font-mono-code">${f.planting_year} - ${Number(f.area_ha).toFixed(2)} Ha</span></div>
+                    <div class="text-[10px] text-[#536471]">${esc(div?.name || "")}</div>
                 </div>
                 <div class="flex items-center gap-1">
-                    <button type="button" data-edit-field="${f.id}" class="p-1 text-slate-500 hover:text-emerald-600"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-                    <button type="button" data-del-entity="field:${f.id}" class="p-1 text-slate-400 hover:text-red-600"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                    <button type="button" data-edit-field="${f.id}" class="p-1 text-[#536471] hover:text-[#0f1419]"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                    <button type="button" data-del-entity="field:${f.id}" class="p-1 text-[#536471] hover:text-[#f4212e]"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
                 </div>
             </div>`;
         })
@@ -1498,15 +1481,15 @@ function renderAdminHierarchy() {
         .map((b) => {
             const fld = fields.find((f) => f.id === b.field_id);
             return `
-            <div class="p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs">
+            <div class="p-2.5 rounded-xl bg-[#f7f9f9] border border-[#eff3f4] flex items-center justify-between text-xs">
                 <div>
-                    <div class="font-bold text-slate-800">${esc(b.name)} <span class="font-mono-code text-[11px] text-emerald-700">(${b.tree_total} palms)</span></div>
-                    <div class="text-[10px] text-slate-400">${esc(fld ? `${fld.name} (${fld.planting_year})` : "")}</div>
+                    <div class="font-bold text-[#0f1419]">${esc(b.name)} <span class="font-mono-code text-[11px] text-[#536471]">(${b.tree_total} palms)</span></div>
+                    <div class="text-[10px] text-[#536471]">${esc(fld ? `${fld.name} (${fld.planting_year})` : "")}</div>
                 </div>
                 <div class="flex items-center gap-1">
-                    <button type="button" data-batch-block="${b.id}" title="Batch Add Trees" class="px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono-code text-[10px] font-bold">+Trees</button>
-                    <button type="button" data-edit-block="${b.id}" class="p-1 text-slate-500 hover:text-emerald-600"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-                    <button type="button" data-del-entity="block:${b.id}" class="p-1 text-slate-400 hover:text-red-600"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                    <button type="button" data-batch-block="${b.id}" class="px-2.5 py-1 rounded-full bg-white border border-[#cfd9de] text-[#0f1419] font-mono-code text-[10px] font-bold">+Palms</button>
+                    <button type="button" data-edit-block="${b.id}" class="p-1 text-[#536471] hover:text-[#0f1419]"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                    <button type="button" data-del-entity="block:${b.id}" class="p-1 text-[#536471] hover:text-[#f4212e]"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
                 </div>
             </div>`;
         })
@@ -1518,7 +1501,7 @@ function renderAdminHierarchy() {
             try {
                 await api(`/api/admin/${ent}/delete`, "POST", { id: Number(id) });
                 toast(`Removed ${ent}`);
-                await loadAdminPage();
+                await loadEstatesPage();
                 await loadBootstrap();
             } catch (err) {
                 toast(err.message, "err");
@@ -1549,27 +1532,27 @@ function openCrudModal(type, item = null) {
 
     if (type === "estate") {
         $("ac-title").textContent = item ? "Edit Estate" : "Add Estate";
-        body.innerHTML = `<input id="ac-name" type="text" placeholder="Estate Name" value="${esc(item?.name || "")}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold" />`;
+        body.innerHTML = `<input id="ac-name" type="text" placeholder="Estate Name" value="${esc(item?.name || "")}" class="x-input" />`;
         state.crudCallback = () => api("/api/admin/estate/save", "POST", { id: item?.id, name: $("ac-name").value });
     } else if (type === "division") {
         $("ac-title").textContent = item ? "Edit Division" : "Add Division";
         body.innerHTML = `
-            <select id="ac-parent" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold ${item ? "hidden" : ""}">
+            <select id="ac-parent" class="x-input ${item ? "hidden" : ""}">
                 ${estates.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join("")}
             </select>
-            <input id="ac-name" type="text" placeholder="Division Name" value="${esc(item?.name || "")}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold" />`;
+            <input id="ac-name" type="text" placeholder="Division Name" value="${esc(item?.name || "")}" class="x-input" />`;
         state.crudCallback = () =>
             api("/api/admin/division/save", "POST", { id: item?.id, estate_id: Number($("ac-parent").value), name: $("ac-name").value });
     } else if (type === "field") {
         $("ac-title").textContent = item ? "Edit Field" : "Add Field (Year & Ha)";
         body.innerHTML = `
-            <select id="ac-parent" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold ${item ? "hidden" : ""}">
+            <select id="ac-parent" class="x-input ${item ? "hidden" : ""}">
                 ${divisions.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("")}
             </select>
-            <input id="ac-name" type="text" placeholder="Field Name (e.g. Field 7)" value="${esc(item?.name || "")}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold" />
+            <input id="ac-name" type="text" placeholder="Field Name (e.g. Field 7)" value="${esc(item?.name || "")}" class="x-input" />
             <div class="grid grid-cols-2 gap-2">
-                <input id="ac-year" type="number" placeholder="Planting Year (e.g. 2014)" value="${item?.planting_year || 2014}" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono-code font-bold" />
-                <input id="ac-ha" type="number" step="0.01" placeholder="Area Ha (e.g. 12.50)" value="${item?.area_ha || 10.0}" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono-code font-bold" />
+                <input id="ac-year" type="number" placeholder="Planting Year" value="${item?.planting_year || 2014}" class="x-input font-mono-code" />
+                <input id="ac-ha" type="number" step="0.01" placeholder="Area Ha" value="${item?.area_ha || 10.0}" class="x-input font-mono-code" />
             </div>`;
         state.crudCallback = () =>
             api("/api/admin/field/save", "POST", {
@@ -1582,15 +1565,15 @@ function openCrudModal(type, item = null) {
     } else if (type === "block") {
         $("ac-title").textContent = item ? "Edit Block" : "Add Block";
         body.innerHTML = `
-            <select id="ac-parent" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold ${item ? "hidden" : ""}">
+            <select id="ac-parent" class="x-input ${item ? "hidden" : ""}">
                 ${fields.map((f) => `<option value="${f.id}">${esc(f.name)} (${f.planting_year} - ${f.area_ha}Ha)</option>`).join("")}
             </select>
-            <input id="ac-name" type="text" placeholder="Block Name (e.g. Block C)" value="${esc(item?.name || "")}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold" />
-            <input id="ac-note" type="text" placeholder="Geographical boundary note" value="${esc(item?.boundary_note || "")}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs" />
+            <input id="ac-name" type="text" placeholder="Block Name (e.g. Block C)" value="${esc(item?.name || "")}" class="x-input" />
+            <input id="ac-note" type="text" placeholder="Boundary note" value="${esc(item?.boundary_note || "")}" class="x-input" />
             ${
                 item
                     ? ""
-                    : `<input id="ac-count" type="number" min="0" max="3000" value="280" placeholder="Initial Palm Count (~300)" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono-code font-bold" />`
+                    : `<input id="ac-count" type="number" min="0" max="3000" value="280" placeholder="Initial Palm Count (~300)" class="x-input font-mono-code" />`
             }`;
         state.crudCallback = () =>
             api("/api/admin/block/save", "POST", {
@@ -1601,12 +1584,125 @@ function openCrudModal(type, item = null) {
                 tree_count: item ? undefined : Number($("ac-count").value),
             });
     } else if (type === "batch") {
-        $("ac-title").textContent = `Batch Generate Trees • ${item?.name}`;
-        body.innerHTML = `<input id="ac-batch-count" type="number" min="1" max="3000" value="50" placeholder="Number of trees to add" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono-code font-bold" />`;
+        $("ac-title").textContent = `Batch Generate Palms • ${item?.name}`;
+        body.innerHTML = `<input id="ac-batch-count" type="number" min="1" max="3000" value="50" placeholder="Number of palms to add" class="x-input font-mono-code" />`;
         state.crudCallback = () => api("/api/admin/trees/batch", "POST", { block_id: item.id, count: Number($("ac-batch-count").value) });
     }
 
     $("modal-admin-crud").classList.remove("hidden");
+}
+
+// ----------------------------------------------------------------------------
+// VIEW 4: DIRECTORY (Corporate User Management & Master Admin Force Password Reset)
+// ----------------------------------------------------------------------------
+async function loadDirectoryPage() {
+    const uData = await api("/api/admin/users");
+    state.adminUsers = uData;
+    renderDirectoryUsers();
+    refreshIcons();
+}
+
+function renderDirectoryUsers() {
+    const users = state.adminUsers.users || [];
+    const isMasterViewer = Boolean(state.user?.is_master) || String(state.user?.username || "").toLowerCase() === "sandaru98j";
+
+    if ($("adm-total-users-badge")) $("adm-total-users-badge").textContent = users.length;
+    if ($("master-admin-banner")) $("master-admin-banner").classList.toggle("hidden", !isMasterViewer);
+
+    $("adm-users-list").innerHTML = users
+        .map((u) => {
+            const uMaster = Boolean(u.is_master) || String(u.username || "").toLowerCase() === "sandaru98j";
+            const uRole = uMaster ? "Master Admin" : normalizeRole(u.role);
+            const initials = u.full_name
+                .split(" ")
+                .map((w) => w[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase();
+
+            return `
+            <div class="p-4 sm:px-5 hover:bg-[#f7f9f9] flex flex-wrap items-center justify-between gap-3 transition">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-10 h-10 rounded-full ${uMaster ? "bg-[#0f1419] text-white" : "bg-[#eff3f4] text-[#0f1419]"} flex items-center justify-center font-extrabold text-xs shrink-0">
+                        ${esc(initials)}
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm font-extrabold text-[#0f1419] truncate">${esc(u.full_name)}</span>
+                            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                uMaster ? "bg-[#0f1419] text-white" : "bg-[#eff3f4] text-[#0f1419]"
+                            }">${esc(uRole)}</span>
+                        </div>
+                        <div class="text-xs font-mono-code text-[#536471]">@${esc(u.username)}</div>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    ${
+                        isMasterViewer
+                            ? `<button type="button" data-force-pw-user="${u.id}" class="x-btn-outline !py-1.5 !px-3 !text-xs">
+                                   <i data-lucide="key-round" class="w-3.5 h-3.5"></i>
+                                   <span>Reset Password</span>
+                               </button>`
+                            : ""
+                    }
+                    ${
+                        uMaster
+                            ? `<span class="px-3 py-1.5 rounded-full bg-[#f7f9f9] border border-[#cfd9de] text-xs font-bold text-[#0f1419]">Master Admin</span>`
+                            : `
+                        <select data-user-role="${u.id}" class="x-input !w-auto !py-1.5 !px-3 !rounded-full text-xs font-bold">
+                            <option value="Harvester" ${uRole === "Harvester" ? "selected" : ""}>Harvester</option>
+                            <option value="Supervisor" ${uRole === "Supervisor" ? "selected" : ""}>Supervisor</option>
+                            <option value="Admin" ${uRole === "Admin" ? "selected" : ""}>Admin</option>
+                        </select>
+                        <button type="button" data-del-user="${u.id}" title="Remove User" class="p-2 rounded-full border border-[#cfd9de] hover:bg-red-50 hover:text-[#f4212e] text-[#536471]">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>`
+                    }
+                </div>
+            </div>`;
+        })
+        .join("");
+
+    document.querySelectorAll("[data-user-role]").forEach((sel) => {
+        sel.onchange = async () => {
+            try {
+                await api("/api/admin/users/role", "POST", {
+                    user_id: Number(sel.getAttribute("data-user-role")),
+                    role: sel.value,
+                });
+                toast(`Updated role to ${sel.value}`);
+                await loadDirectoryPage();
+            } catch (err) {
+                toast(err.message, "err");
+            }
+        };
+    });
+
+    document.querySelectorAll("[data-force-pw-user]").forEach((btn) => {
+        btn.onclick = () => {
+            const uid = Number(btn.getAttribute("data-force-pw-user"));
+            const target = users.find((x) => x.id === uid);
+            if (!target) return;
+            state.forcePwTarget = target;
+            $("fp-title").textContent = `Force Reset Password • ${target.full_name}`;
+            $("fp-subtitle").textContent = `@${target.username}`;
+            $("fp-new-password").value = "Uskvalley2026!";
+            $("modal-force-password").classList.remove("hidden");
+        };
+    });
+
+    document.querySelectorAll("[data-del-user]").forEach((btn) => {
+        btn.onclick = async () => {
+            try {
+                await api("/api/admin/users/delete", "POST", { user_id: Number(btn.getAttribute("data-del-user")) });
+                toast("User removed from Directory");
+                await loadDirectoryPage();
+            } catch (err) {
+                toast(err.message, "err");
+            }
+        };
+    });
 }
 
 // ----------------------------------------------------------------------------
@@ -1616,22 +1712,12 @@ document.addEventListener("DOMContentLoaded", () => {
     setInterval(updateClockAndGreeting, 1000);
     updateClockAndGreeting();
 
-    // Auto-detect today's date & current round for Harvest and Dispatch pages
     const today = todayStr();
     const { round } = roundOfDate(today);
     if ($("harv-date")) $("harv-date").value = today;
     if ($("harv-round")) $("harv-round").value = String(round);
     if ($("disp-date")) $("disp-date").value = today;
     if ($("disp-round")) $("disp-round").value = String(round);
-
-    // Auth View Switchers
-    $("btn-show-signup").onclick = () => showAuthView("signup");
-    $("btn-show-forgot").onclick = () => {
-        $("forgot-step-1").classList.remove("hidden");
-        $("forgot-step-2").classList.add("hidden");
-        showAuthView("forgot");
-    };
-    document.querySelectorAll("[data-back-login]").forEach((b) => (b.onclick = () => showAuthView("login")));
 
     document.querySelectorAll("[data-toggle-pass]").forEach((btn) => {
         btn.onclick = () => {
@@ -1640,126 +1726,43 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     });
 
-    // Flexible Login Submit (Username OR Email + Password)
+    // ERP Login Submit (Username + Password ONLY)
     $("form-login").onsubmit = async (e) => {
         e.preventDefault();
-        await loginWithIdentifier($("login-identifier").value.trim(), $("login-password").value);
+        await loginWithUsername($("login-username").value.trim(), $("login-password").value);
     };
 
-    // Sign-Up Submit (Full Name, Username, Email, Mobile No., Password, Confirm Password)
-    $("form-signup").onsubmit = async (e) => {
-        e.preventDefault();
-        const full_name = $("reg-fullname").value.trim();
-        const username = $("reg-username").value.trim();
-        const email = $("reg-email").value.trim();
-        const phone = $("reg-phone").value.trim();
-        const password = $("reg-password").value;
-        const confirm_password = $("reg-confirm-password").value;
-
-        const pwErr = validateStrongPassword(password);
-        if (pwErr) return toast(pwErr, "err");
-        if (password !== confirm_password) return toast("Passwords do not match.", "err");
-
-        try {
-            const res = await api("/api/auth/register", "POST", {
-                full_name,
-                username,
-                email,
-                phone,
-                password,
-                confirm_password,
-            });
-            $("form-signup").reset();
-            const msg = res.message || "Account created successfully. Pending admin approval.";
-            showAuthView("login", msg);
-            toast(msg);
-        } catch (err) {
-            toast(err.message, "err");
-        }
+    // Brand Logo Click -> Overview & Refresh
+    const goHomeAndRefresh = async () => {
+        switchPage("overview");
+        await loadBootstrap();
+        await refreshDashboard();
+        toast("Overview refreshed");
     };
+    if ($("btn-brand-home")) $("btn-brand-home").onclick = goHomeAndRefresh;
+    if ($("btn-brand-home-mobile")) $("btn-brand-home-mobile").onclick = goHomeAndRefresh;
 
-    // Forgot Password Channel Toggle & 6-Digit OTP Flow
-    const setForgotChan = (ch) => {
-        state.forgotChannel = ch;
-        $("chan-email").className = `px-2.5 py-1 rounded-md flex items-center gap-1 ${
-            ch === "email" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-        }`;
-        $("chan-sms").className = `px-2.5 py-1 rounded-md flex items-center gap-1 ${
-            ch === "sms" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-        }`;
-    };
-    $("chan-email").onclick = () => setForgotChan("email");
-    $("chan-sms").onclick = () => setForgotChan("sms");
+    // Quick Harvest CTA & Profile Rail CTA
+    if ($("btn-quick-harvest")) $("btn-quick-harvest").onclick = () => switchPage("harvests");
+    if ($("btn-feed-go-harvests")) $("btn-feed-go-harvests").onclick = () => switchPage("harvests");
+    if ($("btn-rail-profile")) $("btn-rail-profile").onclick = () => switchPage("profile");
 
-    $("btn-send-code").onclick = async () => {
-        const identifier = $("forgot-identifier").value.trim();
-        if (!identifier) return toast("Enter your registered Email or Mobile No.", "warn");
-        try {
-            const res = await api("/api/auth/forgot", "POST", { identifier, channel: state.forgotChannel });
-            $("forgot-step-1").classList.add("hidden");
-            $("forgot-step-2").classList.remove("hidden");
-            if (res && res.otp_code) {
-                $("otp-demo-code").textContent = res.otp_code;
-                $("otp-demo-banner").classList.remove("hidden");
-            }
-            toast("6-digit verification code sent.");
-        } catch (err) {
-            toast(err.message, "err");
-        }
-    };
+    // Logout
+    if ($("btn-logout")) $("btn-logout").onclick = () => doLogout();
+    if ($("btn-logout-mobile")) $("btn-logout-mobile").onclick = () => doLogout();
 
-    $("btn-verify-reset").onclick = async () => {
-        const identifier = $("forgot-identifier").value.trim();
-        const code = $("reset-code").value.trim();
-        const new_password = $("reset-new-password").value;
-        const confirm_password = $("reset-confirm-password").value;
-
-        if (!/^\d{6}$/.test(code)) return toast("Enter the 6-digit verification code.", "warn");
-        const pwErr = validateStrongPassword(new_password);
-        if (pwErr) return toast(pwErr, "err");
-        if (new_password !== confirm_password) return toast("Passwords do not match.", "err");
-
-        try {
-            await api("/api/auth/reset", "POST", {
-                identifier,
-                code,
-                new_password,
-                confirm_password,
-            });
-            $("forgot-identifier").value = "";
-            $("reset-code").value = "";
-            $("reset-new-password").value = "";
-            $("reset-confirm-password").value = "";
-            toast("Password updated successfully. Please log in.");
-            showAuthView("login");
-        } catch (err) {
-            toast(err.message, "err");
-        }
-    };
-
-    // Brand Logo Click -> Navigate to "Home" & Refresh State
-    if ($("btn-brand-home")) {
-        $("btn-brand-home").onclick = async () => {
-            switchPage("dashboard");
-            await loadBootstrap();
-            await refreshDashboard();
-            toast("Home refreshed");
-        };
-    }
-
-    // Header Controls
-    $("btn-logout").onclick = () => doLogout();
+    // Live GPS Ping
     $("btn-gps-ping").onclick = async () => {
         const g = await captureDeviceGps();
         toast(`GPS: ${g.lat.toFixed(5)}, ${g.lng.toFixed(5)} (±${g.acc}m)`);
     };
 
-    // Navigation Tabs (Desktop Header + Mobile Bottom Bar)
+    // Primary Navigation Rail & Mobile Tab Bar
     document.querySelectorAll("[data-nav]").forEach((btn) => {
         btn.onclick = () => switchPage(btn.getAttribute("data-nav"));
     });
 
-    // Dashboard Export & Reset
+    // Overview Export & Reset
     $("btn-dash-reset").onclick = () => initDashboardFilters();
     $("btn-export-pdf").onclick = () => window.print();
     $("btn-export-csv").onclick = async () => {
@@ -1770,15 +1773,34 @@ document.addEventListener("DOMContentLoaded", () => {
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `elaeis_yield_report_${todayStr()}.csv`;
+            a.download = `elaeis_erp_report_${todayStr()}.csv`;
             a.click();
             URL.revokeObjectURL(url);
+            toast("CSV report exported");
         } catch (_) {
             toast("CSV exported");
         }
     };
 
-    // Harvest Controls (1. Round -> 2. Date -> 3. Division -> Field -> Block -> Tree)
+    // Harvests Sub-Tabs (Palm Harvest Logger vs Mill Dispatch Weight)
+    document.querySelectorAll("[data-harv-view]").forEach((btn) => {
+        btn.onclick = () => {
+            const v = btn.getAttribute("data-harv-view");
+            state.harvestView = v;
+            document.querySelectorAll("[data-harv-view]").forEach((b) => {
+                const on = b === btn;
+                b.className = `harv-view-tab py-3.5 text-xs ${
+                    on ? "font-extrabold border-b-2 border-[#0f1419] text-[#0f1419]" : "font-semibold border-b-2 border-transparent text-[#536471]"
+                } hover:bg-[#f7f9f9] transition`;
+            });
+            $("harv-panel-trees").classList.toggle("hidden", v !== "trees");
+            $("harv-panel-dispatch").classList.toggle("hidden", v !== "dispatch");
+            if (v === "trees") loadHarvestBlock();
+            else loadDispatches();
+        };
+    });
+
+    // Harvest Controls
     $("harv-round").onchange = () => loadHarvestBlock();
     $("harv-date").onchange = () => loadHarvestBlock();
     $("harv-search").oninput = (e) => {
@@ -1789,8 +1811,8 @@ document.addEventListener("DOMContentLoaded", () => {
         btn.onclick = () => {
             state.harvBlock.filter = btn.getAttribute("data-harv-filter");
             document.querySelectorAll(".harv-flt-btn").forEach((b) => {
-                b.className = `harv-flt-btn px-2.5 py-1 rounded-lg ${
-                    b === btn ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                b.className = `harv-flt-btn px-3 py-1 rounded-full ${
+                    b === btn ? "bg-[#0f1419] text-white" : "text-[#536471]"
                 }`;
             });
             renderHarvestGrid();
@@ -1810,7 +1832,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const weight_kg = Number($("disp-weight").value);
             await api("/api/dispatch", "POST", { round_no, date, division_id, weight_kg });
             $("disp-weight").value = "";
-            toast(`Saved Dispatch Weight: ${weight_kg.toLocaleString()} kg (Round ${round_no})`);
+            toast(`Dispatch weight logged (${weight_kg.toLocaleString()} kg • R${round_no})`);
             await loadDispatches();
         } catch (err) {
             toast(err.message, "err");
@@ -1826,6 +1848,25 @@ document.addEventListener("DOMContentLoaded", () => {
             const inp = $(id);
             if (!inp) return;
             inp.value = Math.max(0, Math.min(60, (Number(inp.value) || 0) + Number(delta)));
+        };
+    });
+
+    // Estates Sub-Tabs (5-Tier Hierarchy, GPS Tree Mapper, GPS Compliance)
+    document.querySelectorAll("[data-est-tab]").forEach((btn) => {
+        btn.onclick = () => {
+            const tab = btn.getAttribute("data-est-tab");
+            state.estatesTab = tab;
+            document.querySelectorAll("[data-est-tab]").forEach((b) => {
+                const on = b === btn;
+                b.className = `est-tab-btn py-3.5 text-xs ${
+                    on ? "font-extrabold border-b-2 border-[#0f1419] text-[#0f1419]" : "font-semibold border-b-2 border-transparent text-[#536471]"
+                } hover:bg-[#f7f9f9] transition`;
+            });
+            $("est-panel-hierarchy").classList.toggle("hidden", tab !== "hierarchy");
+            $("est-panel-mapper").classList.toggle("hidden", tab !== "mapper");
+            $("est-panel-compliance").classList.toggle("hidden", tab !== "compliance");
+            if (tab === "mapper") loadMapperBlock();
+            if (tab === "compliance") loadCompliance();
         };
     });
 
@@ -1845,31 +1886,15 @@ document.addEventListener("DOMContentLoaded", () => {
         btn.onclick = () => {
             state.compliance.filter = btn.getAttribute("data-comp-filter");
             document.querySelectorAll(".comp-flt-btn").forEach((b) => {
-                b.className = `comp-flt-btn px-2.5 py-1 rounded-lg ${
-                    b === btn ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                b.className = `comp-flt-btn px-3 py-1 rounded-full ${
+                    b === btn ? "bg-[#0f1419] text-white" : "text-[#536471]"
                 }`;
             });
             renderComplianceTable();
         };
     });
 
-    // Admin Sub-Tabs & Buttons
-    document.querySelectorAll("[data-admin-tab]").forEach((btn) => {
-        btn.onclick = () => {
-            const tab = btn.getAttribute("data-admin-tab");
-            state.adminTab = tab;
-            document.querySelectorAll("[data-admin-tab]").forEach((b) => {
-                const on = b === btn;
-                b.className = `adm-tab-btn px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 ${
-                    on ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"
-                }`;
-            });
-            $("adm-panel-users").classList.toggle("hidden", tab !== "users");
-            $("adm-panel-hierarchy").classList.toggle("hidden", tab !== "hierarchy");
-            $("adm-panel-settings").classList.toggle("hidden", tab !== "settings");
-        };
-    });
-
+    // Estates Hierarchy CRUD
     $("btn-add-estate").onclick = () => openCrudModal("estate");
     $("btn-add-division").onclick = () => openCrudModal("division");
     $("btn-add-field").onclick = () => openCrudModal("field");
@@ -1880,8 +1905,8 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             await state.crudCallback();
             $("modal-admin-crud").classList.add("hidden");
-            toast("Saved configuration");
-            await loadAdminPage();
+            toast("Estate hierarchy updated");
+            await loadEstatesPage();
             await loadBootstrap();
         } catch (err) {
             toast(err.message, "err");
@@ -1894,8 +1919,64 @@ document.addEventListener("DOMContentLoaded", () => {
                 gps_threshold_m: Number($("set-gps-thresh").value),
                 season_start_month: Number($("set-season-month").value),
             });
-            toast("Saved GPS & Season settings");
-            await loadAdminPage();
+            toast("Estate settings saved");
+            await loadEstatesPage();
+        } catch (err) {
+            toast(err.message, "err");
+        }
+    };
+
+    // Directory: Create User & Master Admin Force-Reset Password
+    $("btn-open-create-user").onclick = () => $("modal-create-user").classList.remove("hidden");
+    $("form-create-user").onsubmit = async (e) => {
+        e.preventDefault();
+        try {
+            const res = await api("/api/admin/users/create", "POST", {
+                username: $("cu-username").value.trim(),
+                full_name: $("cu-fullname").value.trim(),
+                role: $("cu-role").value,
+                password: $("cu-password").value,
+            });
+            $("form-create-user").reset();
+            $("cu-password").value = "Uskvalley2026!";
+            $("modal-create-user").classList.add("hidden");
+            toast(res.message || "ERP user created");
+            await loadDirectoryPage();
+        } catch (err) {
+            toast(err.message, "err");
+        }
+    };
+
+    $("btn-confirm-force-password").onclick = async () => {
+        if (!state.forcePwTarget) return;
+        const new_password = $("fp-new-password").value;
+        if (new_password.length < 6) return toast("Password must be at least 6 characters.", "err");
+        try {
+            const res = await api("/api/admin/users/force-password", "POST", {
+                user_id: state.forcePwTarget.id,
+                new_password,
+            });
+            $("modal-force-password").classList.add("hidden");
+            toast(res.message || `Password updated for @${state.forcePwTarget.username}`);
+        } catch (err) {
+            toast(err.message, "err");
+        }
+    };
+
+    // Profile: Self Password Change
+    $("form-profile-password").onsubmit = async (e) => {
+        e.preventDefault();
+        const current_password = $("prof-cur-password").value;
+        const new_password = $("prof-new-password").value;
+        const confirm_password = $("prof-confirm-password").value;
+        if (new_password !== confirm_password) return toast("New passwords do not match.", "err");
+        try {
+            const res = await api("/api/auth/change-password", "POST", {
+                current_password,
+                new_password,
+            });
+            $("form-profile-password").reset();
+            toast(res.message || "Password updated successfully");
         } catch (err) {
             toast(err.message, "err");
         }
@@ -1910,7 +1991,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (state.token) {
         enterApplication();
     } else {
-        showAuthView("login");
+        showAuthScreen();
     }
 });
 
@@ -1921,5 +2002,5 @@ async function doLogout() {
     state.token = "";
     state.user = null;
     localStorage.removeItem("el_token");
-    showAuthView("login");
+    showAuthScreen();
 }

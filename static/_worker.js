@@ -10,16 +10,33 @@
 const PBKDF2_ITER = 20000;
 const SESSION_DAYS = 30;
 const RESET_MINUTES = 30;
-const ROLE_RANK = { pending: 0, harvester: 1, supervisor: 2, admin: 3 };
+const ROLE_RANK = {
+    Harvester: 1,
+    Supervisor: 2,
+    Admin: 3,
+    "Master Admin": 4,
+    harvester: 1,
+    supervisor: 2,
+    admin: 3,
+    master_admin: 4,
+};
+
+function normalizeRole(r) {
+    const s = String(r || "").trim().toLowerCase();
+    if (s === "master admin" || s === "master_admin" || s === "master") return "Master Admin";
+    if (s === "admin") return "Admin";
+    if (s === "supervisor") return "Supervisor";
+    return "Harvester";
+}
 
 const SCHEMA = [
     `CREATE TABLE IF NOT EXISTS el_users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL UNIQUE COLLATE NOCASE,
-        email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-        phone TEXT NOT NULL UNIQUE,
+        email TEXT DEFAULT '',
+        phone TEXT DEFAULT '',
         full_name TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'pending',
+        role TEXT NOT NULL DEFAULT 'Harvester',
         is_master INTEGER NOT NULL DEFAULT 0,
         pass_hash TEXT NOT NULL,
         approved_by INTEGER,
@@ -232,14 +249,16 @@ function distanceM(lat1, lng1, lat2, lng2) {
 }
 
 function publicUser(u) {
+    const isMaster = Boolean(u.is_master) || String(u.username || "").toLowerCase() === "sandaru98j";
+    const role = isMaster ? "Master Admin" : normalizeRole(u.role);
     return {
         id: u.id,
         username: u.username,
-        email: u.email,
-        phone: u.phone,
+        email: u.email || "",
+        phone: u.phone || "",
         full_name: u.full_name,
-        role: u.role,
-        is_master: Boolean(u.is_master),
+        role,
+        is_master: isMaster,
     };
 }
 
@@ -262,10 +281,16 @@ async function ensureSchema(env) {
     const db = env.DB;
     await db.batch(SCHEMA.map((s) => db.prepare(s)));
     const lock = await db
-        .prepare("INSERT OR IGNORE INTO el_settings (key, value) VALUES ('seeded_v3', ?)")
+        .prepare("INSERT OR IGNORE INTO el_settings (key, value) VALUES ('seeded_erp_v4', ?)")
         .bind(nowIso())
         .run();
     if (lock.meta && lock.meta.changes === 1) {
+        await db.batch([
+            db.prepare("DROP TABLE IF EXISTS el_sessions"),
+            db.prepare("DROP TABLE IF EXISTS el_users"),
+            db.prepare(SCHEMA[0]),
+            db.prepare(SCHEMA[1]),
+        ]);
         await seed(env);
     }
     schemaReady = true;
@@ -273,8 +298,8 @@ async function ensureSchema(env) {
 
 async function seed(env) {
     const db = env.DB;
-    const adminPass = env.ADMIN_PASSWORD || "Elaeis@2026";
-    const adminHash = await hashPassword(adminPass);
+    const erpPass = env.ERP_INITIAL_PASSWORD || "Uskvalley2026!";
+    const erpHash = await hashPassword(erpPass);
     const now = nowIso();
     const today = now.slice(0, 10);
     const ym = today.slice(0, 7);
@@ -299,32 +324,34 @@ async function seed(env) {
     ];
     const treeCounts = [285, 268, 312, 294, 320, 305, 290, 264, 248, 240, 308, 282, 274, 296, 265, 258, 301, 277, 289, 252];
 
-    const stmts = [
+    const erpUsers = [
+        [1, "sandaru98j", "Sandaruwan Gunathilaka", "Master Admin", 1],
+        [2, "sandun", "Sandun (Estate Manager)", "Admin", 0],
+        [3, "raveendra", "Raveendra", "Supervisor", 0],
+        [4, "pasindu", "Pasindu", "Supervisor", 0],
+        [5, "kavindu", "Kavindu", "Supervisor", 0],
+        [6, "muditha", "Muditha", "Supervisor", 0],
+        [7, "rajasekaran", "Rajasekaran", "Supervisor", 0],
+        [8, "ajith", "Ajith", "Harvester", 0],
+        [9, "baba", "Baba", "Harvester", 0],
+    ];
+
+    const stmts = erpUsers.map(([id, uname, fname, role, isMaster]) =>
         db
             .prepare(
-                `INSERT OR IGNORE INTO el_users (id, username, email, phone, full_name, role, is_master, pass_hash, approved_at)
-                 VALUES (1, 'admin', 'sandaru98j@gmail.com', '+94770000000', 'Sandaruwan Gunathilaka', 'admin', 1, ?, ?)`
+                `INSERT OR REPLACE INTO el_users (id, username, email, phone, full_name, role, is_master, pass_hash, approved_by, approved_at)
+                 VALUES (?, ?, '', '', ?, ?, ?, ?, 1, ?)`
             )
-            .bind(adminHash, now),
-        db
-            .prepare(
-                `INSERT OR IGNORE INTO el_users (id, username, email, phone, full_name, role, is_master, pass_hash, approved_by, approved_at)
-                 VALUES (2, 'supervisor', 'supervisor@uskvalley.lk', '+94771111111', 'Kasun Perera', 'supervisor', 0, ?, 1, ?)`
-            )
-            .bind(adminHash, now),
-        db
-            .prepare(
-                `INSERT OR IGNORE INTO el_users (id, username, email, phone, full_name, role, is_master, pass_hash, approved_by, approved_at)
-                 VALUES (3, 'harvester', 'harvester@uskvalley.lk', '+94772222222', 'Nimal Silva', 'harvester', 0, ?, 1, ?)`
-            )
-            .bind(adminHash, now),
+            .bind(id, uname, fname, role, isMaster, erpHash, now)
+    );
+    stmts.push(
         db.prepare("INSERT OR IGNORE INTO el_settings (key, value) VALUES ('gps_threshold_m', '20')"),
         db.prepare("INSERT OR IGNORE INTO el_settings (key, value) VALUES ('season_start_month', '4')"),
         db.prepare("INSERT OR IGNORE INTO el_estates (id, name) VALUES (1, 'Uskvalley Estate')"),
         db.prepare("INSERT OR IGNORE INTO el_divisions (id, estate_id, name) VALUES (1, 1, 'Uskvalley Division')"),
         db.prepare("INSERT OR IGNORE INTO el_divisions (id, estate_id, name) VALUES (2, 1, 'Trafalgar Division')"),
-        db.prepare("INSERT OR IGNORE INTO el_divisions (id, estate_id, name) VALUES (3, 1, 'Morawaka Division')"),
-    ];
+        db.prepare("INSERT OR IGNORE INTO el_divisions (id, estate_id, name) VALUES (3, 1, 'Morawaka Division')")
+    );
 
     let blockId = 0;
     for (const [fid, did, name, year, ha] of fields) {
@@ -447,19 +474,11 @@ async function currentUser(request, db) {
 
 function requireRole(user, minRole) {
     if (!user) fail(401, "Please log in.");
-    if (user.role === "pending") fail(403, "Pending admin approval.");
-    if ((ROLE_RANK[user.role] ?? 0) < ROLE_RANK[minRole]) {
+    const uRole = user.is_master ? "Master Admin" : normalizeRole(user.role);
+    const mRole = normalizeRole(minRole);
+    if ((ROLE_RANK[uRole] ?? 0) < (ROLE_RANK[mRole] ?? 1)) {
         fail(403, "You do not have permission for this action.");
     }
-}
-
-async function findUserByEmailOrId(db, identifier) {
-    const idf = str(identifier, 120).toLowerCase();
-    if (!idf) return null;
-    return db
-        .prepare("SELECT * FROM el_users WHERE LOWER(email) = ? OR LOWER(username) = ? OR phone = ? LIMIT 1")
-        .bind(idf, idf, normPhone(idf))
-        .first();
 }
 
 async function createSession(db, userId) {
@@ -472,122 +491,31 @@ async function createSession(db, userId) {
     return token;
 }
 
-async function handleRegister(db, body) {
-    const full_name = str(body.full_name, 80);
-    const username = str(body.username, 40).toLowerCase();
-    const email = str(body.email, 120).toLowerCase();
-    const phone = normPhone(body.phone);
-    const password = String(body.password || "");
-    const confirm_password = body.confirm_password !== undefined ? String(body.confirm_password) : password;
-
-    if (full_name.length < 2) fail(400, "Enter your full name.");
-    if (!/^[a-zA-Z0-9._-]{3,32}$/.test(username)) {
-        fail(400, "Username must be 3-32 characters (letters, numbers, ., _, -).");
-    }
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail(400, "Enter a valid email address.");
-    if (!/^\+?\d{9,15}$/.test(phone)) fail(400, "Enter a valid mobile number.");
-    const pwErr = validateStrongPassword(password);
-    if (pwErr) fail(400, pwErr);
-    if (password !== confirm_password) fail(400, "Passwords do not match.");
-
-    const clash = await db
-        .prepare("SELECT email, username, phone FROM el_users WHERE LOWER(email) = ? OR LOWER(username) = ? OR phone = ?")
-        .bind(email, username, phone)
-        .first();
-    if (clash) {
-        if (clash.email.toLowerCase() === email) fail(409, "Email is already registered.");
-        if (clash.username.toLowerCase() === username) fail(409, "Username is already taken.");
-        fail(409, "Mobile number is already registered.");
-    }
-
-    const pass_hash = await hashPassword(password);
-    await db
-        .prepare(
-            `INSERT INTO el_users (username, email, phone, full_name, role, pass_hash)
-             VALUES (?, ?, ?, ?, 'pending', ?)`
-        )
-        .bind(username, email, phone, full_name, pass_hash)
-        .run();
-
-    return {
-        ok: true,
-        message: "Account created successfully. Pending admin approval.",
-    };
-}
-
 async function handleLogin(db, body) {
-    const identifier = str(body.identifier || body.email || body.username, 120).toLowerCase();
-    if (!identifier) fail(400, "Enter your Username or Email.");
+    const username = str(body.username || body.identifier, 80).toLowerCase();
+    if (!username) fail(400, "Enter your Username.");
     const user = await db
-        .prepare("SELECT * FROM el_users WHERE LOWER(email) = ? OR LOWER(username) = ? LIMIT 1")
-        .bind(identifier, identifier)
+        .prepare("SELECT * FROM el_users WHERE LOWER(username) = ? LIMIT 1")
+        .bind(username)
         .first();
     const ok = user && (await verifyPassword(String(body.password || ""), user.pass_hash));
-    if (!ok) fail(401, "Invalid username/email or password.");
-    if (user.role === "pending") {
-        fail(403, "Account created successfully. Pending admin approval.");
-    }
+    if (!ok) fail(401, "Invalid username or password.");
     await db.prepare("DELETE FROM el_sessions WHERE user_id = ? AND expires_at <= ?").bind(user.id, nowIso()).run();
     const token = await createSession(db, user.id);
     return { token, user: publicUser(user) };
 }
 
-async function handleForgot(db, body) {
-    const channel = body.channel === "sms" ? "sms" : "email";
-    const idf = str(body.identifier || body.email || body.phone, 120);
-    if (!idf) fail(400, "Enter your registered Email or Mobile No.");
-    const user = await findUserByEmailOrId(db, idf);
-    if (!user) fail(404, "No account found with that Email or Mobile No.");
-    const code = randomCode();
+async function handleChangePassword(db, user, body) {
+    const curPw = String(body.current_password || "");
+    const newPw = String(body.new_password || "");
+    if (newPw.length < 6) fail(400, "New password must be at least 6 characters.");
+    const ok = await verifyPassword(curPw, user.pass_hash);
+    if (!ok) fail(400, "Current password is incorrect.");
     await db
-        .prepare("UPDATE el_resets SET used = 1 WHERE user_id = ? AND used = 0")
-        .bind(user.id)
+        .prepare("UPDATE el_users SET pass_hash = ? WHERE id = ?")
+        .bind(await hashPassword(newPw), user.id)
         .run();
-    await db
-        .prepare(
-            `INSERT INTO el_resets (user_id, code, channel, created_at, expires_at)
-             VALUES (?, ?, ?, ?, ?)`
-        )
-        .bind(user.id, code, channel, nowIso(), addMinutes(RESET_MINUTES))
-        .run();
-    return { ok: true, otp_code: code };
-}
-
-async function handleReset(db, body) {
-    const user = await findUserByEmailOrId(db, body.identifier || body.email);
-    const code = str(body.code, 6);
-    const next = String(body.new_password || "");
-    const confirm = body.confirm_password !== undefined ? String(body.confirm_password) : next;
-    if (!/^\d{6}$/.test(code)) fail(400, "Enter a valid 6-digit verification code.");
-    const pwErr = validateStrongPassword(next);
-    if (pwErr) fail(400, pwErr);
-    if (next !== confirm) fail(400, "Passwords do not match.");
-    if (!user) fail(400, "Invalid or expired recovery code.");
-
-    const reset = await db
-        .prepare(
-            `SELECT * FROM el_resets WHERE user_id = ? AND used = 0 AND expires_at > ?
-             ORDER BY id DESC LIMIT 1`
-        )
-        .bind(user.id, nowIso())
-        .first();
-    if (!reset) fail(400, "Invalid or expired recovery code.");
-
-    if (!safeEqual(reset.code, code)) {
-        const attempts = reset.attempts + 1;
-        await db
-            .prepare("UPDATE el_resets SET attempts = ?, used = ? WHERE id = ?")
-            .bind(attempts, attempts >= 5 ? 1 : 0, reset.id)
-            .run();
-        fail(400, "Invalid or expired recovery code.");
-    }
-
-    await db.batch([
-        db.prepare("UPDATE el_users SET pass_hash = ? WHERE id = ?").bind(await hashPassword(next), user.id),
-        db.prepare("UPDATE el_resets SET used = 1 WHERE id = ?").bind(reset.id),
-        db.prepare("DELETE FROM el_sessions WHERE user_id = ?").bind(user.id),
-    ]);
-    return { ok: true };
+    return { ok: true, message: "Password updated successfully." };
 }
 
 // ---------------------------------------------------------------------------
@@ -872,8 +800,8 @@ async function getReport(db, params) {
     }
     const dClause = `WHERE ${dWhere.join(" AND ")}`;
 
-    // 4. Execute batch queries strictly for the 5 Core KPIs
-    const [hTot, dTot] = await db.batch([
+    // 4. Execute batch queries for the 5 Core KPIs + Recent Harvest Feed
+    const [hTot, dTot, rLogs] = await db.batch([
         db
             .prepare(
                 `SELECT COALESCE(SUM(bunches), 0) AS bunches,
@@ -890,6 +818,16 @@ async function getReport(db, params) {
                  FROM el_dispatch x JOIN el_divisions d ON d.id = x.division_id ${dClause}`
             )
             .bind(...dBinds),
+        db
+            .prepare(
+                `SELECT x.id, x.harvest_date, x.round_no, x.bunches, x.fronds,
+                        t.tree_no, b.name AS block_name, f.name AS field_name, d.name AS division_name,
+                        u.full_name AS recorded_by
+                 FROM el_harvest x ${JOINS} LEFT JOIN el_users u ON u.id = x.user_id
+                 ${hClause}
+                 ORDER BY x.harvest_date DESC, x.id DESC LIMIT 15`
+            )
+            .bind(...hBinds),
     ]);
 
     const totalBunches = Number(hTot.results[0]?.bunches || 0);
@@ -916,6 +854,7 @@ async function getReport(db, params) {
             abw,
             yph,
         },
+        recent_logs: rLogs.results || [],
     };
 }
 
@@ -987,24 +926,34 @@ async function getCompliance(db, params) {
 // Admin: Users
 // ---------------------------------------------------------------------------
 async function adminUsers(db) {
-    const [users, resets] = await db.batch([
-        db.prepare(
+    const { results } = await db
+        .prepare(
             `SELECT id, username, email, phone, full_name, role, is_master, created_at, approved_at
-             FROM el_users ORDER BY CASE role WHEN 'pending' THEN 0 ELSE 1 END, full_name`
-        ),
-        db
-            .prepare(
-                `SELECT r.id, r.code, r.channel, r.created_at, r.expires_at, u.id AS user_id,
-                        u.full_name, u.email, u.phone
-                 FROM el_resets r JOIN el_users u ON u.id = r.user_id
-                 WHERE r.used = 0 AND r.expires_at > ? ORDER BY r.id DESC`
-            )
-            .bind(nowIso()),
-    ]);
+             FROM el_users ORDER BY is_master DESC, id ASC`
+        )
+        .all();
     return {
-        users: users.results.map((u) => ({ ...u, is_master: Boolean(u.is_master) })),
-        resets: resets.results,
+        users: results.map((u) => publicUser(u)),
     };
+}
+
+async function adminCreateUser(db, admin, body) {
+    const username = str(body.username, 40).toLowerCase();
+    const full_name = str(body.full_name, 80);
+    const role = normalizeRole(body.role || "Harvester");
+    const password = String(body.password || "Uskvalley2026!");
+    if (!username || !full_name) fail(400, "Username and Full Name are required.");
+    if (role === "Master Admin" && !admin.is_master) fail(403, "Only Master Admin can assign Master Admin role.");
+    const dup = await db.prepare("SELECT id FROM el_users WHERE LOWER(username) = ?").bind(username).first();
+    if (dup) fail(409, `Username '@${username}' already exists.`);
+    await db
+        .prepare(
+            `INSERT INTO el_users (username, email, phone, full_name, role, is_master, pass_hash, approved_by, approved_at)
+             VALUES (?, '', '', ?, ?, 0, ?, ?, ?)`
+        )
+        .bind(username, full_name, role, await hashPassword(password), admin.id, nowIso())
+        .run();
+    return { ok: true, message: `Created ERP user @${username} (${role}).` };
 }
 
 async function adminTargetUser(db, admin, userId) {
@@ -1016,29 +965,32 @@ async function adminTargetUser(db, admin, userId) {
 
 async function adminSetRole(db, admin, body) {
     const target = await adminTargetUser(db, admin, body.user_id);
-    if (!(body.role in ROLE_RANK)) fail(400, "Unknown role.");
-    if (target.is_master) fail(400, "The Master Admin role cannot be changed.");
-    if (target.id === admin.id) fail(400, "You cannot change your own role.");
+    const role = normalizeRole(body.role);
+    if (target.is_master || String(target.username).toLowerCase() === "sandaru98j") {
+        fail(400, "The Master Admin role cannot be changed.");
+    }
+    if (role === "Master Admin" && !admin.is_master) {
+        fail(403, "Only the Master Admin can assign Master Admin role.");
+    }
     await db
         .prepare("UPDATE el_users SET role = ?, approved_by = ?, approved_at = ? WHERE id = ?")
-        .bind(body.role, admin.id, nowIso(), target.id)
+        .bind(role, admin.id, nowIso(), target.id)
         .run();
-    if (body.role === "pending") {
-        await db.prepare("DELETE FROM el_sessions WHERE user_id = ?").bind(target.id).run();
-    }
     return { ok: true };
 }
 
-async function adminSetPassword(db, admin, body) {
-    const target = await adminTargetUser(db, admin, body.user_id);
-    const next = String(body.password || "");
-    if (next.length < 8) fail(400, "Password must be at least 8 characters.");
+async function adminForcePassword(db, admin, body) {
+    const isMaster = Boolean(admin.is_master) || String(admin.username || "").toLowerCase() === "sandaru98j";
+    if (!isMaster) fail(403, "Only Master Admin (sandaru98j) can force-reset user passwords.");
+    const target = await db.prepare("SELECT * FROM el_users WHERE id = ?").bind(toInt(body.user_id)).first();
+    if (!target) fail(404, "User not found.");
+    const next = String(body.new_password || body.password || "");
+    if (next.length < 6) fail(400, "New password must be at least 6 characters.");
     await db.batch([
         db.prepare("UPDATE el_users SET pass_hash = ? WHERE id = ?").bind(await hashPassword(next), target.id),
-        db.prepare("DELETE FROM el_sessions WHERE user_id = ?").bind(target.id),
-        db.prepare("UPDATE el_resets SET used = 1 WHERE user_id = ?").bind(target.id),
+        db.prepare("DELETE FROM el_sessions WHERE user_id = ? AND user_id != ?").bind(target.id, admin.id),
     ]);
-    return { ok: true };
+    return { ok: true, message: `Password force-updated for @${target.username}.` };
 }
 
 async function adminDeleteUser(db, admin, body) {
@@ -1243,11 +1195,8 @@ async function route(request, env, url) {
     const params = Object.fromEntries(url.searchParams.entries());
     const body = method === "POST" ? await request.json().catch(() => ({})) : {};
 
-    // Public auth endpoints
-    if (method === "POST" && path === "/api/auth/register") return json(await handleRegister(db, body));
+    // Public auth endpoint (Closed ERP: Username + Password Login Only)
     if (method === "POST" && path === "/api/auth/login") return json(await handleLogin(db, body));
-    if (method === "POST" && path === "/api/auth/forgot") return json(await handleForgot(db, body));
-    if (method === "POST" && path === "/api/auth/reset") return json(await handleReset(db, body));
 
     const user = await currentUser(request, db);
     if (!user) fail(401, "Please log in.");
@@ -1257,30 +1206,33 @@ async function route(request, env, url) {
         await db.prepare("DELETE FROM el_sessions WHERE token = ?").bind(user.token).run();
         return json({ ok: true });
     }
+    if (method === "POST" && path === "/api/auth/change-password") {
+        return json(await handleChangePassword(db, user, body));
+    }
 
     // Approved users
     if (method === "GET" && path === "/api/bootstrap") {
-        requireRole(user, "harvester");
+        requireRole(user, "Harvester");
         const [hierarchy, settings] = await Promise.all([getHierarchy(db), getSettings(db)]);
         return json({ hierarchy, settings });
     }
     if (method === "GET" && path === "/api/block") {
-        requireRole(user, "harvester");
+        requireRole(user, "Harvester");
         return json(await getBlockData(db, params));
     }
     if (method === "GET" && path === "/api/report") {
-        requireRole(user, "harvester");
+        requireRole(user, "Harvester");
         return json(await getReport(db, params));
     }
     if (method === "GET" && path === "/api/report.csv") {
-        requireRole(user, "harvester");
+        requireRole(user, "Harvester");
         return getReportCsv(db, params);
     }
     if (method === "POST" && path === "/api/harvest") return json(await handleHarvest(db, user, body));
 
     // Dispatch Crop Weight endpoints
     if (method === "GET" && path === "/api/dispatch") {
-        requireRole(user, "harvester");
+        requireRole(user, "Harvester");
         return json(await getDispatches(db, params));
     }
     if (method === "POST" && path === "/api/dispatch") {
@@ -1290,13 +1242,16 @@ async function route(request, env, url) {
         return json(await handleDeleteDispatch(db, user, body));
     }
 
-    // Admin only
+    // Admin & Master Admin only
     if (path.startsWith("/api/admin/")) {
-        requireRole(user, "admin");
+        requireRole(user, "Admin");
         if (method === "GET" && path === "/api/admin/users") return json(await adminUsers(db));
         if (method === "GET" && path === "/api/admin/compliance") return json(await getCompliance(db, params));
+        if (method === "POST" && path === "/api/admin/users/create") return json(await adminCreateUser(db, user, body));
         if (method === "POST" && path === "/api/admin/users/role") return json(await adminSetRole(db, user, body));
-        if (method === "POST" && path === "/api/admin/users/password") return json(await adminSetPassword(db, user, body));
+        if (method === "POST" && (path === "/api/admin/users/force-password" || path === "/api/admin/users/password")) {
+            return json(await adminForcePassword(db, user, body));
+        }
         if (method === "POST" && path === "/api/admin/users/delete") return json(await adminDeleteUser(db, user, body));
         if (method === "POST" && path === "/api/admin/trees/batch") return json(await adminBatchTrees(db, body));
         if (method === "POST" && path === "/api/admin/settings") return json(await adminSaveSettings(db, body));

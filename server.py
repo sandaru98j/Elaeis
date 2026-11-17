@@ -1,9 +1,10 @@
 ﻿import os
+import math
 import json
 import csv
 import io
 import secrets
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -13,14 +14,60 @@ from database import (
     hash_password,
     verify_password,
     compute_harvest_round,
+    ROLE_RANK,
 )
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 
-class ElaeisMonitoringHandler(BaseHTTPRequestHandler):
-    def log_message(self, format, *args):
-        # Clean console logging
+def normalize_role(role_str: str) -> str:
+    r = str(role_str or "").strip().lower()
+    if r in ("master admin", "master_admin", "master"):
+        return "Master Admin"
+    if r == "admin":
+        return "Admin"
+    if r == "supervisor":
+        return "Supervisor"
+    return "Harvester"
+
+
+def role_rank(role_str: str) -> int:
+    return ROLE_RANK.get(normalize_role(role_str), 1)
+
+
+def distance_m(lat1, lng1, lat2, lng2):
+    if None in (lat1, lng1, lat2, lng2):
+        return None
+    r = 6371000.0
+    p1 = math.radians(float(lat1))
+    p2 = math.radians(float(lat2))
+    dp = math.radians(float(lat2) - float(lat1))
+    dl = math.radians(float(lng2) - float(lng1))
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return round(2 * r * math.asin(math.sqrt(a)), 1)
+
+
+def format_user(row) -> dict:
+    d = dict(row)
+    role = normalize_role(d.get("role"))
+    is_master = bool(d.get("is_master")) or d.get("username", "").lower() == "sandaru98j" or role == "Master Admin"
+    if is_master:
+        role = "Master Admin"
+    return {
+        "id": d["id"],
+        "username": d["username"],
+        "email": d.get("email") or "",
+        "phone": d.get("phone") or "",
+        "full_name": d["full_name"],
+        "role": role,
+        "is_master": is_master,
+        "assigned_estate_id": d.get("assigned_estate_id") or 1,
+        "created_at": d.get("created_at"),
+    }
+
+
+class ElaeisErpHandler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
         pass
 
     def _send_json(self, data, status=200):
@@ -28,6 +75,7 @@ class ElaeisMonitoringHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -55,15 +103,13 @@ class ElaeisMonitoringHandler(BaseHTTPRequestHandler):
 
     def _get_current_user(self, conn):
         auth = self.headers.get("Authorization", "")
-        token = ""
-        if auth.startswith("Bearer "):
-            token = auth[7:].strip()
+        token = auth[7:].strip() if auth.startswith("Bearer ") else ""
         if not token:
             return None
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT u.id, u.username, u.email, u.phone, u.full_name, u.role, u.assigned_estate_id
+            SELECT u.*
             FROM sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.token = ?
@@ -71,7 +117,21 @@ class ElaeisMonitoringHandler(BaseHTTPRequestHandler):
             (token,),
         )
         row = cur.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        u = format_user(row)
+        u["token"] = token
+        return u
+
+    def _require_role(self, conn, min_role="Harvester"):
+        user = self._get_current_user(conn)
+        if not user:
+            self._send_json({"error": "Authentication required. Please log in."}, status=401)
+            return None
+        if role_rank(user["role"]) < role_rank(min_role):
+            self._send_json({"error": "Insufficient role permissions."}, status=403)
+            return None
+        return user
 
     def do_OPTIONS(self):
         self._send_json({"ok": True})
@@ -91,8 +151,7 @@ class ElaeisMonitoringHandler(BaseHTTPRequestHandler):
                 conn.close()
             return
 
-        # Serve static frontend files
-        if path == "/" or path == "":
+        if path in ("/", ""):
             path = "/index.html"
         file_path = os.path.normpath(os.path.join(STATIC_DIR, path.lstrip("/")))
         if not file_path.startswith(STATIC_DIR) or not os.path.isfile(file_path):
@@ -107,11 +166,10 @@ class ElaeisMonitoringHandler(BaseHTTPRequestHandler):
             ".svg": "image/svg+xml",
             ".png": "image/png",
         }
-        content_type = mime_map.get(ext, "application/octet-stream")
         with open(file_path, "rb") as f:
             content = f.read()
         self.send_response(200)
-        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Type", mime_map.get(ext, "application/octet-stream"))
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
@@ -134,7 +192,7 @@ class ElaeisMonitoringHandler(BaseHTTPRequestHandler):
         self._send_json({"error": "Not found"}, status=404)
 
     # -------------------------------------------------------------------------
-    # GET API HANDLERS
+    # GET API ROUTES
     # -------------------------------------------------------------------------
     def handle_api_get(self, path, params, conn):
         cur = conn.cursor()
@@ -142,968 +200,752 @@ class ElaeisMonitoringHandler(BaseHTTPRequestHandler):
         if path == "/api/auth/me":
             user = self._get_current_user(conn)
             if not user:
-                return self._send_json({"authenticated": False}, status=401)
-            return self._send_json({"authenticated": True, "user": user})
+                return self._send_json({"error": "Not authenticated"}, status=401)
+            return self._send_json({"user": user})
 
-        if path == "/api/round-info":
-            date_str = params.get("date", date.today().strftime("%Y-%m-%d"))
-            return self._send_json(compute_harvest_round(date_str))
+        if path in ("/api/bootstrap", "/api/hierarchy"):
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
 
-        if path == "/api/hierarchy":
-            cur.execute("SELECT * FROM estates ORDER BY id")
+            cur.execute("SELECT id, code, name, crop_type, location_region, total_area_ha FROM estates ORDER BY id")
             estates = [dict(r) for r in cur.fetchall()]
 
-            cur.execute("SELECT * FROM divisions ORDER BY id")
+            cur.execute("SELECT id, estate_id, code, name, supervisor_name FROM divisions ORDER BY id")
             divisions = [dict(r) for r in cur.fetchall()]
 
-            cur.execute("SELECT * FROM fields ORDER BY id")
+            cur.execute("SELECT id, division_id, code, name, planting_year, area_ha FROM fields ORDER BY planting_year, id")
             fields = [dict(r) for r in cur.fetchall()]
 
             cur.execute(
                 """
-                SELECT b.*, COUNT(t.id) AS registered_trees
+                SELECT b.id, b.field_id, b.code, b.name, b.boundary_note,
+                       COUNT(t.id) AS tree_total,
+                       SUM(CASE WHEN t.status = 'active' THEN 1 ELSE 0 END) AS tree_active,
+                       SUM(CASE WHEN t.latitude IS NOT NULL THEN 1 ELSE 0 END) AS tree_mapped
                 FROM blocks b
                 LEFT JOIN trees t ON t.block_id = b.id
                 GROUP BY b.id
                 ORDER BY b.id
                 """
             )
-            blocks = [dict(r) for r in cur.fetchall()]
+            blocks = [
+                {
+                    **dict(r),
+                    "tree_total": r["tree_total"] or 0,
+                    "tree_active": r["tree_active"] or 0,
+                    "tree_mapped": r["tree_mapped"] or 0,
+                }
+                for r in cur.fetchall()
+            ]
+
+            cur.execute("SELECT key, value FROM settings")
+            s_map = {r["key"]: r["value"] for r in cur.fetchall()}
+            settings = {
+                "gps_threshold_m": int(s_map.get("gps_threshold_m", 20)),
+                "season_start_month": int(s_map.get("season_start_month", 4)),
+            }
 
             return self._send_json(
                 {
-                    "estates": estates,
-                    "divisions": divisions,
-                    "fields": fields,
-                    "blocks": blocks,
+                    "hierarchy": {
+                        "estates": estates,
+                        "divisions": divisions,
+                        "fields": fields,
+                        "blocks": blocks,
+                    },
+                    "settings": settings,
                 }
             )
 
-        if path == "/api/custom-fields":
-            cur.execute("SELECT * FROM custom_field_defs WHERE is_active = 1 ORDER BY id")
-            fields = [dict(r) for r in cur.fetchall()]
-            return self._send_json({"custom_fields": fields})
+        if path == "/api/block":
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
+            block_id = int(params.get("block_id") or 1)
+            mode = params.get("mode", "map")
+            date_str = params.get("date") or date.today().strftime("%Y-%m-%d")
+            explicit_round = int(params["round_no"]) if params.get("round_no") else None
+            r_info = compute_harvest_round(date_str, explicit_round)
 
-        if path == "/api/users":
             cur.execute(
                 """
-                SELECT u.id, u.username, u.email, u.phone, u.full_name, u.role,
-                       u.assigned_estate_id, e.name AS estate_name, u.created_at
-                FROM users u
-                LEFT JOIN estates e ON e.id = u.assigned_estate_id
-                ORDER BY u.id
+                SELECT id, block_id, tree_number AS tree_no, latitude AS lat, longitude AS lng,
+                       gps_acc, status, mapped_at
+                FROM trees
+                WHERE block_id = ?
+                ORDER BY tree_number ASC
+                """,
+                (block_id,),
+            )
+            trees = [dict(r) for r in cur.fetchall()]
+
+            rec_map = {}
+            if mode == "harvest":
+                cur.execute(
+                    """
+                    SELECT tree_id, bunches_cut AS bunches, fronds_cut AS fronds,
+                           harvest_date, round_number AS round_no
+                    FROM harvest_logs
+                    WHERE block_id = ? AND year_month = ? AND round_number = ?
+                    """,
+                    (block_id, r_info["year_month"], r_info["round_number"]),
+                )
+                for r in cur.fetchall():
+                    rec_map[r["tree_id"]] = dict(r)
+
+            return self._send_json(
+                {
+                    "block_id": block_id,
+                    "date": date_str,
+                    "trees": [{**t, "rec": rec_map.get(t["id"])} for t in trees],
+                }
+            )
+
+        if path == "/api/dispatch":
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
+            cur.execute(
+                """
+                SELECT d.id, d.division_id, d.dispatch_date, d.year_month,
+                       d.round_number AS round_no, d.weight_kg,
+                       d.recorded_by_name AS recorded_by, d.created_at AS recorded_at,
+                       dv.name AS division_name
+                FROM dispatch_logs d
+                JOIN divisions dv ON dv.id = d.division_id
+                ORDER BY d.dispatch_date DESC, d.id DESC
+                LIMIT 200
                 """
             )
-            return self._send_json({"users": [dict(r) for r in cur.fetchall()]})
+            return self._send_json({"dispatches": [dict(r) for r in cur.fetchall()]})
 
-        if path == "/api/trees/lookup":
-            block_id = int(params.get("block_id", 0))
-            tree_number = int(params.get("tree_number", 1))
-            date_str = params.get("date", date.today().strftime("%Y-%m-%d"))
-            round_info = compute_harvest_round(date_str)
+        if path in ("/api/report", "/api/report.csv"):
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
+            from_d = params.get("from") or "1900-01-01"
+            to_d = params.get("to") or "2999-12-31"
+            round_no = int(params["round_no"]) if params.get("round_no") else None
+            estate_id = int(params["estate_id"]) if params.get("estate_id") else None
+            division_id = int(params["division_id"]) if params.get("division_id") else None
+            field_id = int(params["field_id"]) if params.get("field_id") else None
+            block_id = int(params["block_id"]) if params.get("block_id") else None
+            tree_id = int(params["tree_id"]) if params.get("tree_id") else None
 
+            # Calculate active Hectare extent & target division
+            target_div_id = division_id
+            total_ha = 0.0
+            if field_id:
+                cur.execute("SELECT area_ha, division_id FROM fields WHERE id = ?", (field_id,))
+                f_row = cur.fetchone()
+                if f_row:
+                    total_ha = float(f_row["area_ha"])
+                    if not target_div_id:
+                        target_div_id = f_row["division_id"]
+            elif block_id:
+                cur.execute(
+                    "SELECT f.area_ha, f.division_id FROM blocks b JOIN fields f ON f.id = b.field_id WHERE b.id = ?",
+                    (block_id,),
+                )
+                f_row = cur.fetchone()
+                if f_row:
+                    total_ha = float(f_row["area_ha"])
+                    if not target_div_id:
+                        target_div_id = f_row["division_id"]
+            elif tree_id:
+                cur.execute(
+                    """
+                    SELECT f.area_ha, f.division_id
+                    FROM trees t
+                    JOIN blocks b ON b.id = t.block_id
+                    JOIN fields f ON f.id = b.field_id
+                    WHERE t.id = ?
+                    """,
+                    (tree_id,),
+                )
+                f_row = cur.fetchone()
+                if f_row:
+                    total_ha = float(f_row["area_ha"])
+                    if not target_div_id:
+                        target_div_id = f_row["division_id"]
+            elif target_div_id:
+                cur.execute("SELECT COALESCE(SUM(area_ha), 0) AS ha FROM fields WHERE division_id = ?", (target_div_id,))
+                total_ha = float(cur.fetchone()["ha"] or 0.0)
+            else:
+                cur.execute("SELECT COALESCE(SUM(area_ha), 0) AS ha FROM fields")
+                total_ha = float(cur.fetchone()["ha"] or 0.0)
+
+            where_h = ["h.harvest_date >= ?", "h.harvest_date <= ?"]
+            args_h = [from_d, to_d]
+            if round_no in (1, 2, 3):
+                where_h.append("h.round_number = ?")
+                args_h.append(round_no)
+            if estate_id:
+                where_h.append("d.estate_id = ?")
+                args_h.append(estate_id)
+            if division_id:
+                where_h.append("d.id = ?")
+                args_h.append(division_id)
+            if field_id:
+                where_h.append("f.id = ?")
+                args_h.append(field_id)
+            if block_id:
+                where_h.append("b.id = ?")
+                args_h.append(block_id)
+            if tree_id:
+                where_h.append("t.id = ?")
+                args_h.append(tree_id)
+
+            where_sql = " AND ".join(where_h)
             cur.execute(
-                """
-                SELECT t.*, b.code AS block_code, b.name AS block_name,
-                       f.code AS field_code, f.name AS field_name,
-                       d.code AS division_code, d.name AS division_name,
-                       e.code AS estate_code, e.name AS estate_name
-                FROM trees t
+                f"""
+                SELECT COALESCE(SUM(h.bunches_cut), 0) AS bunches,
+                       COALESCE(SUM(h.fronds_cut), 0) AS fronds,
+                       COUNT(h.id) AS records,
+                       COUNT(DISTINCT h.tree_id) AS trees
+                FROM harvest_logs h
+                JOIN trees t ON t.id = h.tree_id
                 JOIN blocks b ON b.id = t.block_id
                 JOIN fields f ON f.id = b.field_id
                 JOIN divisions d ON d.id = f.division_id
-                JOIN estates e ON e.id = d.estate_id
-                WHERE t.block_id = ? AND t.tree_number = ?
+                WHERE {where_sql}
                 """,
-                (block_id, tree_number),
+                args_h,
             )
-            tree_row = cur.fetchone()
+            h_tot = dict(cur.fetchone())
 
-            # Total trees in block
+            where_d = ["dispatch_date >= ?", "dispatch_date <= ?"]
+            args_d = [from_d, to_d]
+            if round_no in (1, 2, 3):
+                where_d.append("round_number = ?")
+                args_d.append(round_no)
+            if target_div_id:
+                where_d.append("division_id = ?")
+                args_d.append(target_div_id)
+
             cur.execute(
-                "SELECT COUNT(*) AS total, MAX(tree_number) AS max_num FROM trees WHERE block_id = ?",
-                (block_id,),
-            )
-            blk_meta = dict(cur.fetchone())
-
-            if not tree_row:
-                # Suggest interpolated GPS based on last tree in block
-                cur.execute(
-                    "SELECT latitude, longitude, row_number FROM trees WHERE block_id = ? ORDER BY tree_number DESC LIMIT 1",
-                    (block_id,),
-                )
-                last_t = cur.fetchone()
-                sug_lat = round(last_t["latitude"] + 0.000075, 6) if last_t else 2.032500
-                sug_lng = round(last_t["longitude"] + 0.000085, 6) if last_t else 103.318500
-                return self._send_json(
-                    {
-                        "exists": False,
-                        "tree_number": tree_number,
-                        "tree_code": f"T-{tree_number:03d}",
-                        "suggested_latitude": sug_lat,
-                        "suggested_longitude": sug_lng,
-                        "round_info": round_info,
-                        "block_total_trees": blk_meta["total"] or 0,
-                        "max_tree_number": blk_meta["max_num"] or 0,
-                    }
-                )
-
-            tree = dict(tree_row)
-            # Check if harvest log already exists for this tree + year_month + round_number
-            cur.execute(
-                """
-                SELECT * FROM harvest_logs
-                WHERE tree_id = ? AND year_month = ? AND round_number = ?
-                ORDER BY id DESC LIMIT 1
+                f"""
+                SELECT COALESCE(SUM(weight_kg), 0) AS dispatch_kg,
+                       COUNT(id) AS dispatch_records
+                FROM dispatch_logs
+                WHERE {' AND '.join(where_d)}
                 """,
-                (tree["id"], round_info["year_month"], round_info["round_number"]),
+                args_d,
             )
-            existing_log = cur.fetchone()
+            d_tot = dict(cur.fetchone())
 
-            # Also get all 3 rounds summary for this tree in current year_month
-            cur.execute(
-                """
-                SELECT round_number, bunches_cut, fronds_cut, harvest_date, weed_growth, fertilizer_type
-                FROM harvest_logs
-                WHERE tree_id = ? AND year_month = ?
-                ORDER BY round_number
-                """,
-                (tree["id"], round_info["year_month"]),
-            )
-            month_rounds = {r["round_number"]: dict(r) for r in cur.fetchall()}
-
-            return self._send_json(
-                {
-                    "exists": True,
-                    "tree": tree,
-                    "round_info": round_info,
-                    "existing_log": dict(existing_log) if existing_log else None,
-                    "month_rounds": month_rounds,
-                    "block_total_trees": blk_meta["total"] or 0,
-                    "max_tree_number": blk_meta["max_num"] or 0,
-                    "next_tree_number": tree_number + 1,
-                }
-            )
-
-        if path == "/api/reports/block-rounds":
-            block_id = int(params.get("block_id", 1))
-            year_month = params.get("year_month", date.today().strftime("%Y-%m"))
-
-            # Block & Hierarchy metadata
-            cur.execute(
-                """
-                SELECT b.*, f.code AS field_code, f.name AS field_name,
-                       d.code AS division_code, d.name AS division_name,
-                       e.code AS estate_code, e.name AS estate_name, e.crop_type
-                FROM blocks b
-                JOIN fields f ON f.id = b.field_id
-                JOIN divisions d ON d.id = f.division_id
-                JOIN estates e ON e.id = d.estate_id
-                WHERE b.id = ?
-                """,
-                (block_id,),
-            )
-            blk_row = cur.fetchone()
-            block_info = dict(blk_row) if blk_row else {}
-
-            # All trees in block
-            cur.execute(
-                "SELECT * FROM trees WHERE block_id = ? ORDER BY tree_number ASC",
-                (block_id,),
-            )
-            trees = [dict(r) for r in cur.fetchall()]
-
-            # All harvest logs for this block and year_month
-            cur.execute(
-                """
-                SELECT * FROM harvest_logs
-                WHERE block_id = ? AND year_month = ?
-                ORDER BY round_number ASC, id ASC
-                """,
-                (block_id, year_month),
-            )
-            logs = [dict(r) for r in cur.fetchall()]
-
-            # Index logs by (tree_id, round_number)
-            log_map = {}
-            for lg in logs:
-                log_map[(lg["tree_id"], lg["round_number"])] = lg
-
-            matrix = []
-            summary = {
-                "total_trees": len(trees),
-                "r1_trees_harvested": 0,
-                "r1_bunches": 0,
-                "r1_fronds": 0,
-                "r2_trees_harvested": 0,
-                "r2_bunches": 0,
-                "r2_fronds": 0,
-                "r3_trees_harvested": 0,
-                "r3_bunches": 0,
-                "r3_fronds": 0,
-                "total_bunches": 0,
-                "total_fronds": 0,
-                "total_weight_kg": 0.0,
-            }
-
-            for t in trees:
-                tid = t["id"]
-                r1 = log_map.get((tid, 1))
-                r2 = log_map.get((tid, 2))
-                r3 = log_map.get((tid, 3))
-
-                b1 = r1["bunches_cut"] if r1 else 0
-                f1 = r1["fronds_cut"] if r1 else 0
-                b2 = r2["bunches_cut"] if r2 else 0
-                f2 = r2["fronds_cut"] if r2 else 0
-                b3 = r3["bunches_cut"] if r3 else 0
-                f3 = r3["fronds_cut"] if r3 else 0
-
-                w_tot = (
-                    (r1["bunch_weight_kg"] if r1 else 0.0)
-                    + (r2["bunch_weight_kg"] if r2 else 0.0)
-                    + (r3["bunch_weight_kg"] if r3 else 0.0)
-                )
-
-                if r1:
-                    summary["r1_trees_harvested"] += 1
-                    summary["r1_bunches"] += b1
-                    summary["r1_fronds"] += f1
-                if r2:
-                    summary["r2_trees_harvested"] += 1
-                    summary["r2_bunches"] += b2
-                    summary["r2_fronds"] += f2
-                if r3:
-                    summary["r3_trees_harvested"] += 1
-                    summary["r3_bunches"] += b3
-                    summary["r3_fronds"] += f3
-
-                tot_b = b1 + b2 + b3
-                tot_f = f1 + f2 + f3
-                summary["total_bunches"] += tot_b
-                summary["total_fronds"] += tot_f
-                summary["total_weight_kg"] = round(summary["total_weight_kg"] + w_tot, 1)
-
-                matrix.append(
-                    {
-                        "tree_id": tid,
-                        "tree_number": t["tree_number"],
-                        "tree_code": t["tree_code"],
-                        "row_number": t["row_number"],
-                        "latitude": t["latitude"],
-                        "longitude": t["longitude"],
-                        "health_status": t["health_status"],
-                        "weed_status": t["weed_status"],
-                        "last_fertilizer_type": t["last_fertilizer_type"],
-                        "last_fertilizer_kg": t["last_fertilizer_kg"],
-                        "round_1": r1,
-                        "round_2": r2,
-                        "round_3": r3,
-                        "total_bunches": tot_b,
-                        "total_fronds": tot_f,
-                        "total_weight_kg": round(w_tot, 1),
-                        "rounds_done": (1 if r1 else 0) + (1 if r2 else 0) + (1 if r3 else 0),
-                    }
-                )
-
-            return self._send_json(
-                {
-                    "block": block_info,
-                    "year_month": year_month,
-                    "summary": summary,
-                    "trees_matrix": matrix,
-                }
-            )
-
-        if path == "/api/reports/export-csv":
-            block_id = int(params.get("block_id", 1))
-            year_month = params.get("year_month", date.today().strftime("%Y-%m"))
+            bunches = int(h_tot["bunches"] or 0)
+            fronds = int(h_tot["fronds"] or 0)
+            dispatch_kg = float(d_tot["dispatch_kg"] or 0.0)
+            abw = round(dispatch_kg / bunches, 2) if bunches > 0 else 0.0
+            yph = round(dispatch_kg / total_ha, 2) if total_ha > 0 else 0.0
 
             cur.execute(
-                """
-                SELECT b.*, f.code AS field_code, f.name AS field_name,
-                       d.code AS division_code, d.name AS division_name,
-                       e.code AS estate_code, e.name AS estate_name
-                FROM blocks b
-                JOIN fields f ON f.id = b.field_id
-                JOIN divisions d ON d.id = f.division_id
-                JOIN estates e ON e.id = d.estate_id
-                WHERE b.id = ?
-                """,
-                (block_id,),
-            )
-            b_info = dict(cur.fetchone() or {})
-
-            cur.execute("SELECT * FROM trees WHERE block_id = ? ORDER BY tree_number ASC", (block_id,))
-            trees = [dict(r) for r in cur.fetchall()]
-
-            cur.execute(
-                "SELECT * FROM harvest_logs WHERE block_id = ? AND year_month = ?",
-                (block_id, year_month),
-            )
-            log_map = {(r["tree_id"], r["round_number"]): dict(r) for r in cur.fetchall()}
-
-            output = io.StringIO()
-            writer = csv.writer(output)
-            writer.writerow(
-                [
-                    "Estate",
-                    "Division",
-                    "Field",
-                    "Block",
-                    "Year-Month",
-                    "Tree No",
-                    "Tree Code",
-                    "Row No",
-                    "GPS Latitude",
-                    "GPS Longitude",
-                    "R1 (Days 1-10) Date",
-                    "R1 Bunches Cut",
-                    "R1 Fronds Cut",
-                    "R2 (Days 11-20) Date",
-                    "R2 Bunches Cut",
-                    "R2 Fronds Cut",
-                    "R3 (Days 21-End) Date",
-                    "R3 Bunches Cut",
-                    "R3 Fronds Cut",
-                    "Monthly Total Bunches",
-                    "Monthly Total Fronds",
-                    "Est Weight (kg)",
-                    "Weed Growth Status",
-                    "Last Fertilizer Type",
-                    "Fertilizer (kg)",
-                    "Palm Health Status",
-                ]
-            )
-
-            for t in trees:
-                tid = t["id"]
-                r1 = log_map.get((tid, 1), {})
-                r2 = log_map.get((tid, 2), {})
-                r3 = log_map.get((tid, 3), {})
-                b1, f1 = r1.get("bunches_cut", 0), r1.get("fronds_cut", 0)
-                b2, f2 = r2.get("bunches_cut", 0), r2.get("fronds_cut", 0)
-                b3, f3 = r3.get("bunches_cut", 0), r3.get("fronds_cut", 0)
-                w_tot = (
-                    r1.get("bunch_weight_kg", 0.0)
-                    + r2.get("bunch_weight_kg", 0.0)
-                    + r3.get("bunch_weight_kg", 0.0)
-                )
-
-                writer.writerow(
-                    [
-                        b_info.get("estate_name", ""),
-                        b_info.get("division_name", ""),
-                        b_info.get("field_name", ""),
-                        b_info.get("code", ""),
-                        year_month,
-                        t["tree_number"],
-                        t["tree_code"],
-                        t["row_number"],
-                        t["latitude"],
-                        t["longitude"],
-                        r1.get("harvest_date", "-"),
-                        b1,
-                        f1,
-                        r2.get("harvest_date", "-"),
-                        b2,
-                        f2,
-                        r3.get("harvest_date", "-"),
-                        b3,
-                        f3,
-                        b1 + b2 + b3,
-                        f1 + f2 + f3,
-                        round(w_tot, 1),
-                        t["weed_status"],
-                        t["last_fertilizer_type"],
-                        t["last_fertilizer_kg"],
-                        t["health_status"],
-                    ]
-                )
-
-            filename = f"Elaeis_Block_{b_info.get('code', 'Report')}_{year_month}.csv"
-            return self._send_csv(output.getvalue(), filename)
-
-        if path == "/api/dashboard":
-            year_month = params.get("year_month", date.today().strftime("%Y-%m"))
-            today_round = compute_harvest_round(date.today().strftime("%Y-%m-%d"))
-
-            cur.execute("SELECT COUNT(*) AS c FROM estates")
-            total_estates = cur.fetchone()["c"]
-            cur.execute("SELECT COUNT(*) AS c FROM divisions")
-            total_divisions = cur.fetchone()["c"]
-            cur.execute("SELECT COUNT(*) AS c FROM fields")
-            total_fields = cur.fetchone()["c"]
-            cur.execute("SELECT COUNT(*) AS c FROM blocks")
-            total_blocks = cur.fetchone()["c"]
-            cur.execute("SELECT COUNT(*) AS c FROM trees")
-            total_trees = cur.fetchone()["c"]
-
-            # Round breakdown for selected year_month
-            cur.execute(
-                """
-                SELECT round_number,
-                       COUNT(DISTINCT tree_id) AS trees_harvested,
-                       COALESCE(SUM(bunches_cut), 0) AS bunches,
-                       COALESCE(SUM(fronds_cut), 0) AS fronds,
-                       COALESCE(SUM(bunch_weight_kg), 0) AS weight_kg
-                FROM harvest_logs
-                WHERE year_month = ?
-                GROUP BY round_number
-                """,
-                (year_month,),
-            )
-            rounds_data = {
-                1: {"round_number": 1, "label": "Round 1 (1â€“10)", "trees_harvested": 0, "bunches": 0, "fronds": 0, "weight_kg": 0.0},
-                2: {"round_number": 2, "label": "Round 2 (11â€“20)", "trees_harvested": 0, "bunches": 0, "fronds": 0, "weight_kg": 0.0},
-                3: {"round_number": 3, "label": "Round 3 (21â€“End)", "trees_harvested": 0, "bunches": 0, "fronds": 0, "weight_kg": 0.0},
-            }
-            for r in cur.fetchall():
-                rn = r["round_number"]
-                if rn in rounds_data:
-                    rounds_data[rn].update(dict(r))
-
-            # Block-level summary table
-            cur.execute(
-                """
-                SELECT b.id AS block_id, b.code AS block_code, b.name AS block_name,
-                       f.name AS field_name, d.name AS division_name, e.name AS estate_name,
-                       COUNT(DISTINCT t.id) AS total_trees,
-                       COALESCE(SUM(CASE WHEN h.round_number = 1 THEN h.bunches_cut ELSE 0 END), 0) AS r1_bunches,
-                       COALESCE(SUM(CASE WHEN h.round_number = 1 THEN h.fronds_cut ELSE 0 END), 0) AS r1_fronds,
-                       COUNT(DISTINCT CASE WHEN h.round_number = 1 THEN h.tree_id END) AS r1_trees,
-                       COALESCE(SUM(CASE WHEN h.round_number = 2 THEN h.bunches_cut ELSE 0 END), 0) AS r2_bunches,
-                       COALESCE(SUM(CASE WHEN h.round_number = 2 THEN h.fronds_cut ELSE 0 END), 0) AS r2_fronds,
-                       COUNT(DISTINCT CASE WHEN h.round_number = 2 THEN h.tree_id END) AS r2_trees,
-                       COALESCE(SUM(CASE WHEN h.round_number = 3 THEN h.bunches_cut ELSE 0 END), 0) AS r3_bunches,
-                       COALESCE(SUM(CASE WHEN h.round_number = 3 THEN h.fronds_cut ELSE 0 END), 0) AS r3_fronds,
-                       COUNT(DISTINCT CASE WHEN h.round_number = 3 THEN h.tree_id END) AS r3_trees,
-                       COALESCE(SUM(h.bunches_cut), 0) AS total_bunches,
-                       COALESCE(SUM(h.fronds_cut), 0) AS total_fronds,
-                       COALESCE(SUM(h.bunch_weight_kg), 0) AS total_weight_kg
-                FROM blocks b
-                JOIN fields f ON f.id = b.field_id
-                JOIN divisions d ON d.id = f.division_id
-                JOIN estates e ON e.id = d.estate_id
-                LEFT JOIN trees t ON t.block_id = b.id
-                LEFT JOIN harvest_logs h ON h.tree_id = t.id AND h.year_month = ?
-                GROUP BY b.id
-                ORDER BY b.id
-                """,
-                (year_month,),
-            )
-            block_summaries = [dict(r) for r in cur.fetchall()]
-
-            # Recent harvest activity feed
-            cur.execute(
-                """
-                SELECT h.*, t.tree_number, t.tree_code, b.code AS block_code,
-                       f.code AS field_code, d.code AS division_code, e.name AS estate_name
+                f"""
+                SELECT h.id, h.harvest_date, h.round_number AS round_no,
+                       h.bunches_cut AS bunches, h.fronds_cut AS fronds,
+                       h.recorded_by_name AS recorded_by,
+                       t.tree_number AS tree_no, b.name AS block_name,
+                       f.name AS field_name, d.name AS division_name
                 FROM harvest_logs h
                 JOIN trees t ON t.id = h.tree_id
-                JOIN blocks b ON b.id = h.block_id
+                JOIN blocks b ON b.id = t.block_id
                 JOIN fields f ON f.id = b.field_id
                 JOIN divisions d ON d.id = f.division_id
-                JOIN estates e ON e.id = d.estate_id
-                ORDER BY h.id DESC
-                LIMIT 12
-                """
+                WHERE {where_sql}
+                ORDER BY h.harvest_date DESC, h.id DESC
+                LIMIT 15
+                """,
+                args_h,
             )
             recent_logs = [dict(r) for r in cur.fetchall()]
 
+            if path == "/api/report.csv":
+                out = io.StringIO()
+                writer = csv.writer(out)
+                writer.writerow(
+                    [
+                        "Period From",
+                        "Period To",
+                        "Total Bunches Cut",
+                        "Total Fronds Cut",
+                        "Dispatched Weight (kg)",
+                        "Extent (Ha)",
+                        "ABW (kg/bunch)",
+                        "YPH (kg/Ha)",
+                    ]
+                )
+                writer.writerow([from_d, to_d, bunches, fronds, dispatch_kg, total_ha, abw, yph])
+                return self._send_csv(out.getvalue(), f"elaes_erp_report_{date.today().isoformat()}.csv")
+
             return self._send_json(
                 {
-                    "year_month": year_month,
-                    "today_round": today_round,
-                    "counts": {
-                        "estates": total_estates,
-                        "divisions": total_divisions,
-                        "fields": total_fields,
-                        "blocks": total_blocks,
-                        "trees": total_trees,
+                    "from": from_d,
+                    "to": to_d,
+                    "totals": {
+                        "bunches": bunches,
+                        "fronds": fronds,
+                        "records": int(h_tot["records"] or 0),
+                        "trees": int(h_tot["trees"] or 0),
+                        "dispatch_kg": dispatch_kg,
+                        "dispatch_records": int(d_tot["dispatch_records"] or 0),
+                        "area_ha": total_ha,
+                        "abw": abw,
+                        "yph": yph,
                     },
-                    "rounds": rounds_data,
-                    "block_summaries": block_summaries,
                     "recent_logs": recent_logs,
                 }
             )
 
+        if path in ("/api/admin/users", "/api/users"):
+            user = self._require_role(conn, "Admin")
+            if not user:
+                return
+            cur.execute("SELECT * FROM users ORDER BY is_master DESC, id ASC")
+            users = [format_user(r) for r in cur.fetchall()]
+            return self._send_json({"users": users})
+
+        if path == "/api/admin/compliance":
+            user = self._require_role(conn, "Admin")
+            if not user:
+                return
+            cur.execute("SELECT value FROM settings WHERE key = 'gps_threshold_m'")
+            r_th = cur.fetchone()
+            threshold_m = float(r_th["value"]) if r_th else 20.0
+
+            cur.execute(
+                """
+                SELECT h.id, h.harvest_date AS work_date, h.created_at AS recorded_at,
+                       h.latitude AS user_lat, h.longitude AS user_lng, h.gps_acc AS user_acc,
+                       h.bunches_cut, h.fronds_cut, h.round_number,
+                       h.recorded_by_name AS full_name,
+                       t.tree_number AS tree_no, t.latitude AS tree_lat, t.longitude AS tree_lng,
+                       b.name AS block, f.name AS field, d.name AS division
+                FROM harvest_logs h
+                JOIN trees t ON t.id = h.tree_id
+                JOIN blocks b ON b.id = t.block_id
+                JOIN fields f ON f.id = b.field_id
+                JOIN divisions d ON d.id = f.division_id
+                ORDER BY h.id DESC
+                LIMIT 200
+                """
+            )
+            rows = []
+            for r in cur.fetchall():
+                dist = distance_m(r["tree_lat"], r["tree_lng"], r["user_lat"], r["user_lng"])
+                if r["user_lat"] is None:
+                    status = "no_gps"
+                elif r["tree_lat"] is None:
+                    status = "unmapped"
+                else:
+                    status = "far" if dist > threshold_m else "ok"
+                rows.append(
+                    {
+                        "id": r["id"],
+                        "work_date": r["work_date"],
+                        "recorded_at": r["recorded_at"],
+                        "user_lat": r["user_lat"],
+                        "user_lng": r["user_lng"],
+                        "user_acc": r["user_acc"],
+                        "full_name": r["full_name"],
+                        "tree_no": r["tree_no"],
+                        "tree_lat": r["tree_lat"],
+                        "tree_lng": r["tree_lng"],
+                        "block": r["block"],
+                        "field": r["field"],
+                        "division": r["division"],
+                        "detail": f"{r['bunches_cut']} Bunches / {r['fronds_cut']} Fronds (R{r['round_number']})",
+                        "distance_m": dist,
+                        "status": status,
+                    }
+                )
+            return self._send_json({"threshold_m": threshold_m, "rows": rows})
+
         return self._send_json({"error": f"Unknown endpoint {path}"}, status=404)
 
     # -------------------------------------------------------------------------
-    # POST API HANDLERS
+    # POST API ROUTES
     # -------------------------------------------------------------------------
     def handle_api_post(self, path, data, conn):
         cur = conn.cursor()
 
-        # 1. Login with Username, Email, OR Phone Number
+        # 1. ERP Login (Username + Password ONLY)
         if path == "/api/auth/login":
-            identifier = str(data.get("identifier", "")).strip()
-            password = str(data.get("password", ""))
-            if not identifier or not password:
-                return self._send_json(
-                    {"error": "Please enter your Username, Email, or Phone Number and Password."},
-                    status=400,
-                )
+            username = str(data.get("username") or data.get("identifier") or "").strip()
+            password = str(data.get("password") or "")
+            if not username or not password:
+                return self._send_json({"error": "Enter your Username and Password."}, status=400)
 
-            cur.execute(
-                """
-                SELECT * FROM users
-                WHERE LOWER(username) = LOWER(?)
-                   OR LOWER(email) = LOWER(?)
-                   OR phone = ?
-                """,
-                (identifier, identifier, identifier),
-            )
+            cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?) LIMIT 1", (username,))
             user_row = cur.fetchone()
             if not user_row or not verify_password(password, user_row["password_hash"]):
-                return self._send_json(
-                    {"error": "Invalid credentials. Check your username/email/phone and password."},
-                    status=401,
-                )
+                return self._send_json({"error": "Invalid username or password."}, status=401)
 
             token = secrets.token_hex(24)
-            cur.execute(
-                "INSERT INTO sessions (token, user_id) VALUES (?, ?)",
-                (token, user_row["id"]),
-            )
+            cur.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_row["id"]))
             conn.commit()
+            return self._send_json({"token": token, "user": format_user(user_row)})
 
-            user_dict = {
-                "id": user_row["id"],
-                "username": user_row["username"],
-                "email": user_row["email"],
-                "phone": user_row["phone"],
-                "full_name": user_row["full_name"],
-                "role": user_row["role"],
-                "assigned_estate_id": user_row["assigned_estate_id"],
-            }
-            return self._send_json({"token": token, "user": user_dict})
-
-        # 2. Register / Assign New User
-        if path == "/api/auth/register" or path == "/api/users":
-            username = str(data.get("username", "")).strip()
-            email = str(data.get("email", "")).strip()
-            phone = str(data.get("phone", "")).strip()
-            full_name = str(data.get("full_name", "")).strip()
-            role = str(data.get("role", "Harvester")).strip()
-            assigned_estate_id = data.get("assigned_estate_id") or 1
-            password = str(data.get("password", "")).strip()
-
-            if not (username and email and phone and full_name and password):
-                return self._send_json(
-                    {"error": "All fields (Username, Email, Phone, Full Name, Password) are required."},
-                    status=400,
-                )
-
-            try:
-                cur.execute(
-                    """
-                    INSERT INTO users (username, email, phone, full_name, role, assigned_estate_id, password_hash)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        username,
-                        email,
-                        phone,
-                        full_name,
-                        role,
-                        int(assigned_estate_id),
-                        hash_password(password),
-                    ),
-                )
-                conn.commit()
-                new_id = cur.lastrowid
-                return self._send_json(
-                    {
-                        "message": f"User '{full_name}' ({role}) created successfully.",
-                        "user_id": new_id,
-                    }
-                )
-            except Exception as e:
-                return self._send_json(
-                    {"error": f"Could not create user (Username, Email, or Phone may already exist): {e}"},
-                    status=400,
-                )
-
-        # 3. Forgot Password (by Username, Email, or Phone Number)
-        if path == "/api/auth/forgot-password":
-            identifier = str(data.get("identifier", "")).strip()
-            if not identifier:
-                return self._send_json(
-                    {"error": "Please enter your Username, Email, or Phone Number."},
-                    status=400,
-                )
-
-            cur.execute(
-                """
-                SELECT id, username, email, phone, full_name FROM users
-                WHERE LOWER(username) = LOWER(?)
-                   OR LOWER(email) = LOWER(?)
-                   OR phone = ?
-                """,
-                (identifier, identifier, identifier),
-            )
-            user_row = cur.fetchone()
-            if not user_row:
-                return self._send_json(
-                    {"error": "No account found matching that Username, Email, or Phone Number."},
-                    status=404,
-                )
-
-            otp_code = f"{secrets.randbelow(900000) + 100000}"
-            expires = (datetime.now() + timedelta(minutes=30)).isoformat()
-            cur.execute(
-                "UPDATE users SET reset_token = ?, reset_expires = ? WHERE id = ?",
-                (otp_code, expires, user_row["id"]),
-            )
-            conn.commit()
-
-            return self._send_json(
-                {
-                    "message": f"Recovery code generated for {user_row['full_name']} ({user_row['email']} / {user_row['phone']}).",
-                    "recovery_code_demo": otp_code,
-                    "user_hint": f"{user_row['username']} ({user_row['phone']})",
-                }
-            )
-
-        # 4. Reset Password using OTP Code
-        if path == "/api/auth/reset-password":
-            identifier = str(data.get("identifier", "")).strip()
-            reset_token = str(data.get("reset_token", "")).strip()
-            new_password = str(data.get("new_password", "")).strip()
-
-            if not (identifier and reset_token and new_password):
-                return self._send_json(
-                    {"error": "Identifier, recovery code, and new password are required."},
-                    status=400,
-                )
-
-            cur.execute(
-                """
-                SELECT id, reset_token FROM users
-                WHERE (LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?) OR phone = ?)
-                  AND reset_token = ?
-                """,
-                (identifier, identifier, identifier, reset_token),
-            )
-            user_row = cur.fetchone()
-            if not user_row:
-                return self._send_json(
-                    {"error": "Invalid recovery code or account identifier."},
-                    status=400,
-                )
-
-            cur.execute(
-                "UPDATE users SET password_hash = ?, reset_token = NULL, reset_expires = NULL WHERE id = ?",
-                (hash_password(new_password), user_row["id"]),
-            )
-            conn.commit()
-            return self._send_json({"message": "Password reset successfully! You can now sign in."})
-
-        # 5. Record Tree Harvest & Upkeep -> Auto-Advance to Next Tree
-        if path == "/api/harvest":
+        # 2. Logout
+        if path == "/api/auth/logout":
             user = self._get_current_user(conn)
-            recorded_by_id = user["id"] if user else 1
-            recorded_by_name = user["full_name"] if user else "Field Supervisor"
+            if user and user.get("token"):
+                cur.execute("DELETE FROM sessions WHERE token = ?", (user["token"],))
+                conn.commit()
+            return self._send_json({"ok": True})
 
-            block_id = int(data.get("block_id", 0))
-            tree_number = int(data.get("tree_number", 0))
-            harvest_date = str(data.get("harvest_date") or date.today().strftime("%Y-%m-%d"))
-            bunches_cut = int(data.get("bunches_cut", 0))
-            fronds_cut = int(data.get("fronds_cut", 0))
-            bunch_weight_kg = float(data.get("bunch_weight_kg") or round(bunches_cut * 18.5, 1))
-            loose_fruits_count = int(data.get("loose_fruits_count") or 0)
-            weed_growth = str(data.get("weed_growth") or "Clean Circle")
-            fertilizer_type = str(data.get("fertilizer_type") or "None")
-            fertilizer_kg = float(data.get("fertilizer_kg") or 0.0)
-            pruning_status = str(data.get("pruning_status") or "Standard Stacked")
-            pest_disease = str(data.get("pest_disease") or "Healthy")
-            custom_data = data.get("custom_data") or {}
-            remarks = str(data.get("remarks") or "")
+        # 3. Profile Password Update (Logged-in user updates their own password)
+        if path == "/api/auth/change-password":
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
+            current_pw = str(data.get("current_password") or "")
+            new_pw = str(data.get("new_password") or "")
+            if len(new_pw) < 6:
+                return self._send_json({"error": "New password must be at least 6 characters."}, status=400)
 
-            if block_id <= 0 or tree_number <= 0:
-                return self._send_json({"error": "Valid Block and Tree Number are required."}, status=400)
+            cur.execute("SELECT password_hash FROM users WHERE id = ?", (user["id"],))
+            row = cur.fetchone()
+            if not row or not verify_password(current_pw, row["password_hash"]):
+                return self._send_json({"error": "Current password is incorrect."}, status=400)
 
-            round_info = compute_harvest_round(harvest_date)
+            cur.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new_pw), user["id"]))
+            conn.commit()
+            return self._send_json({"ok": True, "message": "Password updated successfully."})
 
-            # Find or auto-create tree in block
-            cur.execute(
-                "SELECT * FROM trees WHERE block_id = ? AND tree_number = ?",
-                (block_id, tree_number),
-            )
-            tree_row = cur.fetchone()
+        # 4. Log Tree Harvest
+        if path == "/api/harvest":
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
+            tree_id = int(data.get("tree_id") or 0)
+            date_str = str(data.get("date") or date.today().strftime("%Y-%m-%d"))
+            round_no = int(data.get("round_no") or compute_harvest_round(date_str)["round_number"])
+            bunches = max(0, int(data.get("bunches") or 0))
+            fronds = max(0, int(data.get("fronds") or 0))
+            lat = data.get("lat")
+            lng = data.get("lng")
+            acc = data.get("acc")
 
-            lat = float(data.get("latitude") or (tree_row["latitude"] if tree_row else 2.032500))
-            lng = float(data.get("longitude") or (tree_row["longitude"] if tree_row else 103.318500))
+            cur.execute("SELECT * FROM trees WHERE id = ?", (tree_id,))
+            tree = cur.fetchone()
+            if not tree:
+                return self._send_json({"error": "Palm tree not found."}, status=404)
 
-            if not tree_row:
-                row_no = ((tree_number - 1) // 5) + 1
-                tree_code = f"T-{tree_number:03d}"
-                cur.execute(
-                    """
-                    INSERT INTO trees (
-                        block_id, tree_number, tree_code, row_number,
-                        latitude, longitude, planting_year, health_status,
-                        weed_status, last_fertilizer_type, last_fertilizer_kg, last_fertilizer_date, notes
-                    ) VALUES (?, ?, ?, ?, ?, ?, 2018, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        block_id,
-                        tree_number,
-                        tree_code,
-                        row_no,
-                        lat,
-                        lng,
-                        pest_disease,
-                        weed_growth,
-                        fertilizer_type if fertilizer_type != "None" else "NPK 12:12:17:2",
-                        fertilizer_kg,
-                        round_info["date"] if fertilizer_type != "None" else "",
-                        remarks,
-                    ),
-                )
-                tree_id = cur.lastrowid
-            else:
-                tree_id = tree_row["id"]
-                # Update tree's latest status & GPS if modified
-                fert_type_to_save = (
-                    fertilizer_type
-                    if fertilizer_type != "None"
-                    else tree_row["last_fertilizer_type"]
-                )
-                fert_kg_to_save = (
-                    fertilizer_kg
-                    if fertilizer_type != "None"
-                    else tree_row["last_fertilizer_kg"]
-                )
-                fert_date_to_save = (
-                    round_info["date"]
-                    if fertilizer_type != "None"
-                    else tree_row["last_fertilizer_date"]
-                )
-                cur.execute(
-                    """
-                    UPDATE trees
-                    SET latitude = ?, longitude = ?, health_status = ?, weed_status = ?,
-                        last_fertilizer_type = ?, last_fertilizer_kg = ?, last_fertilizer_date = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        lat,
-                        lng,
-                        pest_disease,
-                        weed_growth,
-                        fert_type_to_save,
-                        fert_kg_to_save,
-                        fert_date_to_save,
-                        tree_id,
-                    ),
-                )
-
-            # Upsert harvest log for (tree_id, year_month, round_number)
+            r_info = compute_harvest_round(date_str, round_no)
             cur.execute(
                 """
-                SELECT id FROM harvest_logs
-                WHERE tree_id = ? AND year_month = ? AND round_number = ?
+                INSERT INTO harvest_logs (
+                    tree_id, block_id, harvest_date, year_month, day_of_month, round_number,
+                    bunches_cut, fronds_cut, bunch_weight_kg, latitude, longitude, gps_acc,
+                    recorded_by_id, recorded_by_name
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(tree_id, year_month, round_number) DO UPDATE SET
+                    harvest_date = excluded.harvest_date,
+                    day_of_month = excluded.day_of_month,
+                    bunches_cut = excluded.bunches_cut,
+                    fronds_cut = excluded.fronds_cut,
+                    bunch_weight_kg = excluded.bunch_weight_kg,
+                    latitude = excluded.latitude,
+                    longitude = excluded.longitude,
+                    gps_acc = excluded.gps_acc,
+                    recorded_by_id = excluded.recorded_by_id,
+                    recorded_by_name = excluded.recorded_by_name
                 """,
-                (tree_id, round_info["year_month"], round_info["round_number"]),
+                (
+                    tree_id,
+                    tree["block_id"],
+                    r_info["date"],
+                    r_info["year_month"],
+                    r_info["day_of_month"],
+                    r_info["round_number"],
+                    bunches,
+                    fronds,
+                    round(bunches * 18.5, 1),
+                    lat,
+                    lng,
+                    acc,
+                    user["id"],
+                    user["full_name"],
+                ),
             )
-            existing = cur.fetchone()
-            if existing:
-                cur.execute(
-                    """
-                    UPDATE harvest_logs
-                    SET harvest_date = ?, day_of_month = ?, bunches_cut = ?, fronds_cut = ?,
-                        bunch_weight_kg = ?, loose_fruits_count = ?, weed_growth = ?,
-                        fertilizer_type = ?, fertilizer_kg = ?, pruning_status = ?,
-                        pest_disease = ?, custom_data_json = ?, latitude = ?, longitude = ?,
-                        recorded_by_id = ?, recorded_by_name = ?, remarks = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        round_info["date"],
-                        round_info["day_of_month"],
-                        bunches_cut,
-                        fronds_cut,
-                        bunch_weight_kg,
-                        loose_fruits_count,
-                        weed_growth,
-                        fertilizer_type,
-                        fertilizer_kg,
-                        pruning_status,
-                        pest_disease,
-                        json.dumps(custom_data),
-                        lat,
-                        lng,
-                        recorded_by_id,
-                        recorded_by_name,
-                        remarks,
-                        existing["id"],
-                    ),
-                )
-                log_id = existing["id"]
-                action_word = "Updated"
-            else:
-                cur.execute(
-                    """
-                    INSERT INTO harvest_logs (
-                        tree_id, block_id, harvest_date, year_month, day_of_month, round_number,
-                        bunches_cut, fronds_cut, bunch_weight_kg, loose_fruits_count,
-                        weed_growth, fertilizer_type, fertilizer_kg, pruning_status, pest_disease,
-                        custom_data_json, latitude, longitude, recorded_by_id, recorded_by_name, remarks
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        tree_id,
-                        block_id,
-                        round_info["date"],
-                        round_info["year_month"],
-                        round_info["day_of_month"],
-                        round_info["round_number"],
-                        bunches_cut,
-                        fronds_cut,
-                        bunch_weight_kg,
-                        loose_fruits_count,
-                        weed_growth,
-                        fertilizer_type,
-                        fertilizer_kg,
-                        pruning_status,
-                        pest_disease,
-                        json.dumps(custom_data),
-                        lat,
-                        lng,
-                        recorded_by_id,
-                        recorded_by_name,
-                        remarks,
-                    ),
-                )
-                log_id = cur.lastrowid
-                action_word = "Saved"
-
             conn.commit()
+            dist = distance_m(tree["latitude"], tree["longitude"], lat, lng)
+            return self._send_json({"ok": True, "round": r_info["round_number"], "distance_m": dist})
 
+        # 5. Mill Dispatch Weight Logging
+        if path == "/api/dispatch":
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
+            division_id = int(data.get("division_id") or 1)
+            date_str = str(data.get("date") or date.today().strftime("%Y-%m-%d"))
+            round_no = int(data.get("round_no") or compute_harvest_round(date_str)["round_number"])
+            weight_kg = float(data.get("weight_kg") or 0.0)
+            if weight_kg <= 0:
+                return self._send_json({"error": "Enter a valid dispatch weight in kg."}, status=400)
+
+            cur.execute(
+                """
+                INSERT INTO dispatch_logs (
+                    division_id, dispatch_date, year_month, round_number, weight_kg, recorded_by_id, recorded_by_name
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (division_id, date_str, date_str[:7], round_no, weight_kg, user["id"], user["full_name"]),
+            )
+            conn.commit()
+            return self._send_json({"ok": True})
+
+        if path == "/api/dispatch/delete":
+            user = self._require_role(conn, "Supervisor")
+            if not user:
+                return
+            cur.execute("DELETE FROM dispatch_logs WHERE id = ?", (int(data.get("id") or 0),))
+            conn.commit()
+            return self._send_json({"ok": True})
+
+        # 6. Directory (Admin & Master Admin User Management)
+        if path == "/api/admin/users/create":
+            user = self._require_role(conn, "Admin")
+            if not user:
+                return
+            username = str(data.get("username") or "").strip().lower()
+            full_name = str(data.get("full_name") or "").strip()
+            role = normalize_role(data.get("role") or "Harvester")
+            password = str(data.get("password") or "Uskvalley2026!")
+
+            if not username or not full_name:
+                return self._send_json({"error": "Username and Full Name are required."}, status=400)
+            if role == "Master Admin" and not user["is_master"]:
+                return self._send_json({"error": "Only the Master Admin can assign Master Admin role."}, status=403)
+
+            cur.execute("SELECT id FROM users WHERE LOWER(username) = ?", (username,))
+            if cur.fetchone():
+                return self._send_json({"error": f"Username '@{username}' already exists."}, status=409)
+
+            cur.execute(
+                """
+                INSERT INTO users (username, email, phone, full_name, role, is_master, assigned_estate_id, password_hash)
+                VALUES (?, '', '', ?, ?, 0, 1, ?)
+                """,
+                (username, full_name, role, hash_password(password)),
+            )
+            conn.commit()
+            return self._send_json({"ok": True, "message": f"Created ERP user @{username} ({role})."})
+
+        if path == "/api/admin/users/role":
+            user = self._require_role(conn, "Admin")
+            if not user:
+                return
+            target_id = int(data.get("user_id") or 0)
+            new_role = normalize_role(data.get("role") or "Harvester")
+
+            cur.execute("SELECT * FROM users WHERE id = ?", (target_id,))
+            target = cur.fetchone()
+            if not target:
+                return self._send_json({"error": "User not found."}, status=404)
+            if target["is_master"] or target["username"].lower() == "sandaru98j":
+                return self._send_json({"error": "Cannot modify the Master Admin role."}, status=400)
+            if new_role == "Master Admin" and not user["is_master"]:
+                return self._send_json({"error": "Only the Master Admin can grant Master Admin access."}, status=403)
+
+            cur.execute("UPDATE users SET role = ? WHERE id = ?", (new_role, target_id))
+            conn.commit()
+            return self._send_json({"ok": True})
+
+        if path == "/api/admin/users/force-password":
+            # Strictly Master Admin (sandaru98j) ultimate control feature
+            user = self._require_role(conn, "Master Admin")
+            if not user or not user["is_master"]:
+                return self._send_json(
+                    {"error": "Only Master Admin (sandaru98j) can force-reset user passwords."},
+                    status=403,
+                )
+            target_id = int(data.get("user_id") or 0)
+            new_password = str(data.get("new_password") or "")
+            if len(new_password) < 6:
+                return self._send_json({"error": "New password must be at least 6 characters."}, status=400)
+
+            cur.execute("SELECT id, username FROM users WHERE id = ?", (target_id,))
+            target = cur.fetchone()
+            if not target:
+                return self._send_json({"error": "User not found."}, status=404)
+
+            cur.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (hash_password(new_password), target_id),
+            )
+            cur.execute("DELETE FROM sessions WHERE user_id = ? AND user_id != ?", (target_id, user["id"]))
+            conn.commit()
             return self._send_json(
-                {
-                    "message": f"{action_word} Tree #{tree_number} ({round_info['round_label']}): {bunches_cut} Bunches, {fronds_cut} Fronds",
-                    "log_id": log_id,
-                    "tree_number": tree_number,
-                    "next_tree_number": tree_number + 1,
-                    "round_info": round_info,
-                }
+                {"ok": True, "message": f"Password force-updated for @{target['username']}."}
             )
 
-        # 6. Hierarchy Creation Endpoints (Estate / Division / Field / Block / Tree)
-        if path == "/api/hierarchy/create":
-            level = data.get("level")
-            if level == "estate":
-                cur.execute(
-                    "INSERT INTO estates (code, name, crop_type, location_region, total_area_ha) VALUES (?, ?, ?, ?, ?)",
-                    (
-                        data.get("code", "").strip(),
-                        data.get("name", "").strip(),
-                        data.get("crop_type", "Oil Palm (DxP Tenera)"),
-                        data.get("location_region", "Malaysia"),
-                        float(data.get("total_area_ha") or 100.0),
-                    ),
-                )
-            elif level == "division":
-                cur.execute(
-                    "INSERT INTO divisions (estate_id, code, name, supervisor_name) VALUES (?, ?, ?, ?)",
-                    (
-                        int(data["estate_id"]),
-                        data.get("code", "").strip(),
-                        data.get("name", "").strip(),
-                        data.get("supervisor_name", ""),
-                    ),
-                )
-            elif level == "field":
-                cur.execute(
-                    "INSERT INTO fields (division_id, code, name, planting_year, area_ha) VALUES (?, ?, ?, ?, ?)",
-                    (
-                        int(data["division_id"]),
-                        data.get("code", "").strip(),
-                        data.get("name", "").strip(),
-                        int(data.get("planting_year") or 2020),
-                        float(data.get("area_ha") or 25.0),
-                    ),
-                )
-            elif level == "block":
-                cur.execute(
-                    "INSERT INTO blocks (field_id, code, name, palm_variety, area_ha, target_stands) VALUES (?, ?, ?, ?, ?, ?)",
-                    (
-                        int(data["field_id"]),
-                        data.get("code", "").strip(),
-                        data.get("name", "").strip(),
-                        data.get("palm_variety", "DxP Tenera"),
-                        float(data.get("area_ha") or 15.0),
-                        int(data.get("target_stands") or 20),
-                    ),
-                )
-                blk_id = cur.lastrowid
-                # Auto-generate initial palm trees with GPS grid if requested
-                auto_trees = int(data.get("auto_generate_trees") or 0)
-                base_lat = float(data.get("base_latitude") or 2.035000)
-                base_lng = float(data.get("base_longitude") or 103.320000)
-                for i in range(1, auto_trees + 1):
-                    r_no = ((i - 1) // 5) + 1
-                    c_no = (i - 1) % 5
-                    t_lat = round(base_lat + (r_no - 1) * 0.000075, 6)
-                    t_lng = round(base_lng + c_no * 0.000085 + (0.000042 if r_no % 2 == 0 else 0), 6)
+        if path == "/api/admin/users/delete":
+            user = self._require_role(conn, "Admin")
+            if not user:
+                return
+            target_id = int(data.get("user_id") or 0)
+            cur.execute("SELECT * FROM users WHERE id = ?", (target_id,))
+            target = cur.fetchone()
+            if not target:
+                return self._send_json({"error": "User not found."}, status=404)
+            if target["is_master"] or target["username"].lower() == "sandaru98j":
+                return self._send_json({"error": "Cannot delete the Master Admin account."}, status=400)
+
+            cur.execute("DELETE FROM sessions WHERE user_id = ?", (target_id,))
+            cur.execute("DELETE FROM users WHERE id = ?", (target_id,))
+            conn.commit()
+            return self._send_json({"ok": True})
+
+        # 7. Estates / 5-Tier Plantation Hierarchy Management
+        if path == "/api/admin/settings":
+            user = self._require_role(conn, "Admin")
+            if not user:
+                return
+            gps_th = int(data.get("gps_threshold_m") or 20)
+            season_m = int(data.get("season_start_month") or 4)
+            cur.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('gps_threshold_m', ?)", (str(gps_th),))
+            cur.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('season_start_month', ?)", (str(season_m),))
+            conn.commit()
+            return self._send_json({"ok": True})
+
+        if path == "/api/admin/trees/batch":
+            user = self._require_role(conn, "Admin")
+            if not user:
+                return
+            block_id = int(data.get("block_id") or 0)
+            count = int(data.get("count") or 0)
+            if block_id <= 0 or count <= 0:
+                return self._send_json({"error": "Select a valid block and palm count."}, status=400)
+            cur.execute("SELECT COALESCE(MAX(tree_number), 0) AS mx FROM trees WHERE block_id = ?", (block_id,))
+            start_no = int(cur.fetchone()["mx"] or 0) + 1
+            rows = [
+                (block_id, n, f"T-{n:03d}", ((n - 1) // 10) + 1, "active")
+                for n in range(start_no, start_no + count)
+            ]
+            cur.executemany(
+                "INSERT OR IGNORE INTO trees (block_id, tree_number, tree_code, row_number, status) VALUES (?, ?, ?, ?, ?)",
+                rows,
+            )
+            conn.commit()
+            return self._send_json({"ok": True, "from": start_no, "to": start_no + count - 1})
+
+        if path.startswith("/api/admin/") and path.endswith(("/save", "/delete")):
+            user = self._require_role(conn, "Admin")
+            if not user:
+                return
+            parts = path.strip("/").split("/")
+            entity, action = parts[2], parts[3]
+            item_id = int(data.get("id") or 0)
+
+            if action == "delete":
+                table_map = {
+                    "estate": "estates",
+                    "division": "divisions",
+                    "field": "fields",
+                    "block": "blocks",
+                    "tree": "trees",
+                }
+                tbl = table_map.get(entity)
+                if tbl:
+                    cur.execute(f"DELETE FROM {tbl} WHERE id = ?", (item_id,))
+                    conn.commit()
+                return self._send_json({"ok": True})
+
+            if entity == "estate":
+                name = str(data.get("name") or "").strip()
+                if item_id:
+                    cur.execute("UPDATE estates SET name = ? WHERE id = ?", (name, item_id))
+                else:
+                    code = f"EST-{secrets.token_hex(2).upper()}"
+                    cur.execute("INSERT INTO estates (code, name) VALUES (?, ?)", (code, name))
+            elif entity == "division":
+                name = str(data.get("name") or "").strip()
+                estate_id = int(data.get("estate_id") or 1)
+                if item_id:
+                    cur.execute("UPDATE divisions SET name = ? WHERE id = ?", (name, item_id))
+                else:
+                    code = f"DIV-{secrets.token_hex(2).upper()}"
+                    cur.execute(
+                        "INSERT INTO divisions (estate_id, code, name) VALUES (?, ?, ?)",
+                        (estate_id, code, name),
+                    )
+            elif entity == "field":
+                name = str(data.get("name") or "").strip()
+                div_id = int(data.get("division_id") or 1)
+                pyear = int(data.get("planting_year") or 2014)
+                area_ha = float(data.get("area_ha") or 10.0)
+                if item_id:
+                    cur.execute(
+                        "UPDATE fields SET name = ?, planting_year = ?, area_ha = ? WHERE id = ?",
+                        (name, pyear, area_ha, item_id),
+                    )
+                else:
+                    code = f"FLD-{secrets.token_hex(2).upper()}"
+                    cur.execute(
+                        "INSERT INTO fields (division_id, code, name, planting_year, area_ha) VALUES (?, ?, ?, ?, ?)",
+                        (div_id, code, name, pyear, area_ha),
+                    )
+            elif entity == "block":
+                name = str(data.get("name") or "").strip()
+                field_id = int(data.get("field_id") or 1)
+                note = str(data.get("boundary_note") or "").strip()
+                tree_count = int(data.get("tree_count") or 0)
+                if item_id:
+                    cur.execute(
+                        "UPDATE blocks SET name = ?, boundary_note = ? WHERE id = ?",
+                        (name, note, item_id),
+                    )
+                else:
+                    code = f"BLK-{secrets.token_hex(2).upper()}"
+                    cur.execute(
+                        "INSERT INTO blocks (field_id, code, name, boundary_note, target_stands) VALUES (?, ?, ?, ?, ?)",
+                        (field_id, code, name, note, tree_count or 280),
+                    )
+                    new_bid = cur.lastrowid
+                    if tree_count > 0:
+                        rows = [
+                            (new_bid, n, f"T-{n:03d}", ((n - 1) // 10) + 1, "active")
+                            for n in range(1, tree_count + 1)
+                        ]
+                        cur.executemany(
+                            "INSERT INTO trees (block_id, tree_number, tree_code, row_number, status) VALUES (?, ?, ?, ?, ?)",
+                            rows,
+                        )
+            elif entity == "tree":
+                block_id = int(data.get("block_id") or 1)
+                tree_no = int(data.get("tree_no") or 1)
+                lat = data.get("lat")
+                lng = data.get("lng")
+                acc = data.get("acc") or 4.0
+                now_s = datetime.utcnow().isoformat()
+                if item_id:
                     cur.execute(
                         """
-                        INSERT INTO trees (block_id, tree_number, tree_code, row_number, latitude, longitude, planting_year)
-                        VALUES (?, ?, ?, ?, ?, ?, 2020)
+                        UPDATE trees
+                        SET tree_number = ?, latitude = ?, longitude = ?, gps_acc = ?, mapped_by = ?, mapped_at = ?
+                        WHERE id = ?
                         """,
-                        (blk_id, i, f"T-{i:03d}", r_no, t_lat, t_lng),
+                        (tree_no, lat, lng, acc, user["id"], now_s, item_id),
                     )
-            elif level == "tree":
-                block_id = int(data["block_id"])
-                tree_number = int(data["tree_number"])
-                cur.execute(
-                    """
-                    INSERT OR REPLACE INTO trees (
-                        block_id, tree_number, tree_code, row_number,
-                        latitude, longitude, planting_year, health_status, weed_status, last_fertilizer_type
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        block_id,
-                        tree_number,
-                        f"T-{tree_number:03d}",
-                        int(data.get("row_number") or 1),
-                        float(data["latitude"]),
-                        float(data["longitude"]),
-                        int(data.get("planting_year") or 2019),
-                        data.get("health_status", "Healthy"),
-                        data.get("weed_status", "Clean Circle"),
-                        data.get("last_fertilizer_type", "NPK 12:12:17:2"),
-                    ),
-                )
-            else:
-                return self._send_json({"error": "Invalid hierarchy level"}, status=400)
-
+                else:
+                    cur.execute(
+                        """
+                        INSERT INTO trees (block_id, tree_number, tree_code, row_number, latitude, longitude, gps_acc, status, mapped_by, mapped_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                        ON CONFLICT(block_id, tree_number) DO UPDATE SET
+                            latitude = excluded.latitude,
+                            longitude = excluded.longitude,
+                            gps_acc = excluded.gps_acc,
+                            mapped_by = excluded.mapped_by,
+                            mapped_at = excluded.mapped_at
+                        """,
+                        (block_id, tree_no, f"T-{tree_no:03d}", ((tree_no - 1) // 10) + 1, lat, lng, acc, user["id"], now_s),
+                    )
             conn.commit()
-            return self._send_json({"message": f"{level.capitalize()} created successfully!"})
-
-        # 7. Add Dynamic Agronomic Field Definition
-        if path == "/api/custom-fields":
-            label = str(data.get("field_label", "")).strip()
-            field_type = str(data.get("field_type", "text")).strip()
-            options_csv = str(data.get("options_csv", "")).strip()
-            unit = str(data.get("unit", "")).strip()
-            if not label:
-                return self._send_json({"error": "Field label is required"}, status=400)
-            key = "".join(c if c.isalnum() else "_" for c in label.lower()).strip("_")
-            cur.execute(
-                """
-                INSERT OR REPLACE INTO custom_field_defs (field_key, field_label, field_type, options_csv, unit, is_active)
-                VALUES (?, ?, ?, ?, ?, 1)
-                """,
-                (key, label, field_type, options_csv, unit),
-            )
-            conn.commit()
-            return self._send_json({"message": f"Custom field '{label}' added to harvesting & upkeep form!"})
+            return self._send_json({"ok": True})
 
         return self._send_json({"error": f"Unknown endpoint {path}"}, status=404)
 
@@ -1112,11 +954,10 @@ def run_server(port=None, host=None):
     init_db()
     bind_host = host or os.environ.get("HOST", "0.0.0.0")
     bind_port = int(port or os.environ.get("PORT", 8080))
-    server = ThreadingHTTPServer((bind_host, bind_port), ElaeisMonitoringHandler)
-    print(f"Elaeis — Palm Basis Crop Monitoring System running at http://{bind_host}:{bind_port}")
+    server = ThreadingHTTPServer((bind_host, bind_port), ElaeisErpHandler)
+    print(f"Elaeis Corporate ERP running at http://{bind_host}:{bind_port}")
     server.serve_forever()
 
 
 if __name__ == "__main__":
     run_server()
-

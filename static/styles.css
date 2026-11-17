@@ -1,30 +1,18 @@
 /* ============================================================================
-   ELAEIS — Palm-based Crop Monitoring System
-   Modern Minimal Icon-First Agri-Tech Stylesheet
+   ELAEIS — Corporate ERP (Palm-based Crop Monitoring System)
+   Twitter / X Minimalist Monochromatic Design System
    ============================================================================ */
 
 :root {
-    --emerald-50: #ecfdf5;
-    --emerald-100: #d1fae5;
-    --emerald-500: #10b981;
-    --emerald-600: #059669;
-    --emerald-700: #047857;
-    --emerald-900: #064e3b;
-    --slate-50: #f8fafc;
-    --slate-100: #f1f5f9;
-    --slate-200: #e2e8f0;
-    --slate-300: #cbd5e1;
-    --slate-400: #94a3b8;
-    --slate-500: #64748b;
-    --slate-600: #475669;
-    --slate-700: #334155;
-    --slate-800: #1e293b;
-    --slate-900: #0f172a;
-    --red-50: #fef2f2;
-    --red-100: #fee2e2;
-    --red-500: #ef4444;
-    --red-600: #dc2626;
-    --red-700: #b91c1c;
+    --x-black: #0f1419;
+    --x-black-hover: #272c30;
+    --x-gray: #536471;
+    --x-border: #eff3f4;
+    --x-surface: #f7f9f9;
+    --x-hover: rgba(15, 20, 25, 0.04);
+    --x-white: #ffffff;
+    --x-red: #f4212e;
+    --x-emerald: #00ba7c;
 }
 
 * {
@@ -35,44 +23,177 @@
 html, body {
     margin: 0;
     padding: 0;
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background-color: var(--slate-50);
-    color: var(--slate-900);
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--x-white);
+    color: var(--x-black);
     min-height: 100vh;
     overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
 }
 
 .font-mono-code {
     font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-/* Custom Scrollbar */
+/* Custom Minimal Scrollbar */
 ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
 }
 ::-webkit-scrollbar-track {
-    background: var(--slate-100);
+    background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background: var(--slate-300);
+    background: #cfd9de;
     border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--slate-400);
+    background: #8b98a5;
 }
 
-/* 2D Palm Card Map Grid */
+/* 3-Column Twitter/X Shell Layout */
+.x-shell {
+    max-width: 1280px;
+    margin: 0 auto;
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+    .x-shell {
+        grid-template-columns: 76px minmax(0, 1fr);
+    }
+}
+
+@media (min-width: 1024px) {
+    .x-shell {
+        grid-template-columns: 256px minmax(0, 1fr);
+    }
+}
+
+@media (min-width: 1280px) {
+    .x-shell {
+        grid-template-columns: 260px minmax(0, 1fr) 330px;
+    }
+}
+
+/* Left Navigation Rail Buttons */
+.x-nav-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: 9999px;
+    color: var(--x-black);
+    font-size: 1.05rem;
+    font-weight: 500;
+    transition: background-color 0.15s ease;
+    width: 100%;
+    text-align: left;
+}
+
+.x-nav-item:hover {
+    background-color: rgba(15, 20, 25, 0.08);
+}
+
+.x-nav-item.active {
+    font-weight: 800;
+}
+
+/* Sticky Frosted Center Header */
+.x-sticky-header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background-color: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--x-border);
+}
+
+/* Flat Monochromatic Form Inputs */
+.x-input {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    border-radius: 0.75rem;
+    border: 1px solid #cfd9de;
+    background-color: #ffffff;
+    color: var(--x-black);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.x-input:focus {
+    border-color: var(--x-black);
+    box-shadow: 0 0 0 1px var(--x-black);
+}
+
+/* Rounded Pill Buttons */
+.x-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 9999px;
+    background-color: var(--x-black);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 0.8125rem;
+    padding: 0.625rem 1.25rem;
+    border: 1px solid var(--x-black);
+    transition: background-color 0.15s ease, transform 0.1s ease;
+    cursor: pointer;
+}
+
+.x-btn-primary:hover {
+    background-color: var(--x-black-hover);
+}
+
+.x-btn-primary:active {
+    transform: scale(0.98);
+}
+
+.x-btn-outline {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border-radius: 9999px;
+    background-color: #ffffff;
+    color: var(--x-black);
+    font-weight: 700;
+    font-size: 0.75rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid #cfd9de;
+    transition: background-color 0.15s ease;
+    cursor: pointer;
+}
+
+.x-btn-outline:hover {
+    background-color: var(--x-surface);
+}
+
+/* Right Supplementary Cards */
+.x-widget {
+    background-color: var(--x-surface);
+    border: 1px solid var(--x-border);
+    border-radius: 1rem;
+    padding: 1rem;
+}
+
+/* 2D Palm Card Map Grid (Flat High-Contrast Monochromatic) */
 .palm-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(82px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
     gap: 0.5rem;
 }
 
 @media (min-width: 640px) {
     .palm-grid {
         grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-        gap: 0.625rem;
+        gap: 0.6rem;
     }
 }
 
@@ -84,63 +205,53 @@ html, body {
     justify-content: space-between;
     min-height: 82px;
     padding: 0.5rem 0.375rem;
-    border-radius: 0.875rem;
-    border: 1.5px solid var(--slate-200);
+    border-radius: 0.75rem;
+    border: 1px solid #cfd9de;
     background: #ffffff;
     cursor: pointer;
     user-select: none;
-    transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, background-color 0.14s ease;
+    transition: border-color 0.12s ease, background-color 0.12s ease, transform 0.1s ease;
 }
 
 .palm-card:hover {
-    transform: translateY(-2px);
-    border-color: var(--emerald-500);
-    box-shadow: 0 6px 14px -4px rgba(5, 150, 105, 0.16);
+    border-color: var(--x-black);
+    background-color: var(--x-surface);
 }
 
 .palm-card:active {
-    transform: scale(0.96);
+    transform: scale(0.97);
 }
 
 .palm-card.done-harvest {
-    background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
-    border-color: #10b981;
+    background-color: var(--x-black);
+    border-color: var(--x-black);
+    color: #ffffff;
 }
 
 .palm-card.mapped-gps {
-    background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
-    border-color: #3b82f6;
-}
-
-.palm-card.inactive-tree {
-    opacity: 0.45;
-    background: var(--slate-100);
-    border-style: dashed;
+    background-color: var(--x-surface);
+    border-color: var(--x-black);
 }
 
 /* Compliance red-flagged row */
 .row-flagged {
     background-color: #fef2f2 !important;
-    border-left: 4px solid #dc2626 !important;
-}
-.row-flagged:hover {
-    background-color: #fee2e2 !important;
+    border-left: 3px solid var(--x-red) !important;
 }
 
-/* Bottom Navigation safe area for mobile */
+/* Mobile bottom bar safe area */
 .mobile-bottom-nav {
     padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Modal backdrop animation */
+/* Modal Backdrop */
 .modal-backdrop {
-    background-color: rgba(15, 23, 42, 0.55);
-    backdrop-filter: blur(4px);
-    animation: fadeIn 0.15s ease-out;
+    background-color: rgba(0, 0, 0, 0.45);
+    animation: fadeIn 0.14s ease-out;
 }
 
 .modal-sheet {
-    animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: slideUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes fadeIn {
@@ -149,11 +260,10 @@ html, body {
 }
 
 @keyframes slideUp {
-    from { transform: translateY(20px); opacity: 0.8; }
+    from { transform: translateY(14px); opacity: 0.85; }
     to { transform: translateY(0); opacity: 1; }
 }
 
-/* Print / PDF Export Styling */
 @media print {
     .no-print {
         display: none !important;
@@ -162,8 +272,7 @@ html, body {
         background: #ffffff !important;
     }
     .print-card {
-        box-shadow: none !important;
-        border: 1px solid #cbd5e1 !important;
+        border: 1px solid #cfd9de !important;
         break-inside: avoid;
     }
 }
