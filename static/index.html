@@ -209,18 +209,21 @@
                                 </span>
                             </div>
                             <div class="flex items-center gap-1.5 text-[11px] sm:text-xs text-[#536471] truncate">
-                                <span id="hdr-greeting" class="font-medium truncate">Good morning</span>
-                                <span>&bull;</span>
-                                <span id="hdr-clock" class="font-mono-code truncate">--:--</span>
+                                <span id="hdr-greeting" class="font-medium truncate">Good evening</span>
                             </div>
                         </div>
                     </div>
 
+                    <!-- Top-Right Live Auto-Refresh Clock & Action Controls -->
                     <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                        <button type="button" id="btn-gps-ping" title="Capture Live Device GPS" class="x-btn-outline !px-2.5 sm:!px-3.5">
+                        <div id="hdr-clock-pill" class="live-clock-pill" title="Live Estate Telemetry Clock">
+                            <span class="live-clock-dot"></span>
+                            <span id="hdr-clock" class="font-mono-code truncate">Wed, Nov 18, 2026 &bull; 08:36 PM</span>
+                        </div>
+                        <button type="button" id="btn-gps-ping" title="Capture Live Device GPS" class="x-btn-outline !px-2.5 sm:!px-3">
                             <span id="gps-dot" class="w-2 h-2 rounded-full bg-[#00ba7c] shrink-0"></span>
                             <i data-lucide="locate-fixed" class="w-3.5 h-3.5 shrink-0"></i>
-                            <span id="gps-label" class="hidden sm:inline font-mono-code">GPS Active</span>
+                            <span id="gps-label" class="hidden md:inline font-mono-code">GPS Active</span>
                         </button>
                         <button type="button" id="btn-theme-quick" title="Switch Theme Settings" class="p-2 rounded-full border border-[#cfd9de] text-[#0f1419] hover:bg-[#f7f9f9] shrink-0">
                             <i data-lucide="palette" class="w-4 h-4"></i>
@@ -237,23 +240,37 @@
                 <section id="page-overview" class="page-view divide-y divide-[#eff3f4]">
                     <!-- Unified Cascading Filters -->
                     <div class="p-4 sm:p-6 space-y-4 print-card w-full max-w-full box-border">
-                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 min-w-0">
-                            <div class="flex items-start sm:items-center gap-2 min-w-0 flex-1">
-                                <i data-lucide="sliders-horizontal" class="w-4 h-4 text-[#0f1419] shrink-0 mt-0.5 sm:mt-0"></i>
-                                <div id="dash-breadcrumb" class="text-xs font-bold text-[#0f1419] break-words min-w-0">
-                                    Uskvalley Estate | Season 2026/27 | Season-to-Date | Entire Month
+                        <!-- Professional Dashboard Header with Flexbox Badges & Icon-Only Reset -->
+                        <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3.5 border-b border-[#eff3f4] min-w-0">
+                            <div class="space-y-2 min-w-0 flex-1">
+                                <div class="flex items-center gap-2.5 min-w-0">
+                                    <h1 id="dash-estate-heading" class="text-xl sm:text-2xl font-extrabold tracking-tight text-[#0f1419] truncate">
+                                        Uskvalley Estate
+                                    </h1>
+                                    <button type="button" id="btn-dash-reset" title="Reset Overview Filters" aria-label="Reset Overview Filters" class="erp-icon-reset-btn no-print shrink-0">
+                                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                                            <path d="M3 3v5h5"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                                <div id="dash-breadcrumb" class="flex flex-wrap items-center gap-1.5 min-w-0">
+                                    <span id="badge-season" class="erp-meta-badge erp-meta-badge-accent">Season 2026/27</span>
+                                    <span class="text-[#536471] text-xs font-bold select-none">&bull;</span>
+                                    <span id="badge-period" class="erp-meta-badge font-mono-code">YTD: Apr 1 - Nov 18</span>
+                                    <span class="text-[#536471] text-xs font-bold select-none">&bull;</span>
+                                    <span id="badge-filter-round" class="erp-meta-badge">Filter: Entire Month</span>
+                                    <span id="badge-scope-sep" class="hidden text-[#536471] text-xs font-bold select-none">&bull;</span>
+                                    <span id="badge-scope" class="hidden erp-meta-badge erp-meta-badge-scope"></span>
                                 </div>
                             </div>
-                            <div class="flex flex-wrap items-center gap-1.5 no-print shrink-0">
-                                <button type="button" id="btn-dash-reset" class="x-btn-outline">
-                                    <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-                                    <span>Reset</span>
-                                </button>
-                                <button type="button" id="btn-export-excel" class="x-btn-outline" title="Download Monthly Tree-by-Tree 3-Round Excel Matrix (.xlsx)">
+
+                            <div class="flex flex-wrap items-center gap-2 no-print shrink-0 self-start">
+                                <button type="button" id="btn-export-excel" class="x-btn-outline !py-2 !px-3.5" title="Download Monthly Tree-by-Tree 3-Round Excel Matrix (.xlsx)">
                                     <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
-                                    <span>Excel (.xlsx)</span>
+                                    <span>Export Excel (.xlsx)</span>
                                 </button>
-                                <button type="button" id="btn-export-pdf" class="x-btn-primary !py-1.5 !px-3.5 !text-xs">
+                                <button type="button" id="btn-export-pdf" class="x-btn-primary !py-2 !px-4 !text-xs">
                                     <i data-lucide="printer" class="w-3.5 h-3.5"></i>
                                     <span>PDF</span>
                                 </button>

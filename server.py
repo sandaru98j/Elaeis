@@ -7,8 +7,9 @@ import io
 import base64
 import zipfile
 import secrets
+import sqlite3
 from xml.sax.saxutils import escape as xml_escape
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -24,6 +25,46 @@ from database import (
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 UPLOADS_DIR = os.path.join(STATIC_DIR, "uploads")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
+MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB limit for uploaded profile/cover images
+SESSION_TTL_DAYS = 30
+
+
+class ErpHttpError(Exception):
+    """Safe, user-facing HTTP exception that never leaks internal stack traces."""
+    def __init__(self, message: str, status: int = 400):
+        super().__init__(message)
+        self.message = message
+        self.status = status
+
+
+def safe_int(val, default=None, min_val=None, max_val=None):
+    if val is None or val == "":
+        return default
+    try:
+        n = int(float(val))
+    except (ValueError, TypeError):
+        return default
+    if min_val is not None and n < min_val:
+        return min_val
+    if max_val is not None and n > max_val:
+        return max_val
+    return n
+
+
+def safe_float(val, default=None, min_val=None, max_val=None):
+    if val is None or val == "":
+        return default
+    try:
+        n = float(val)
+        if not math.isfinite(n):
+            return default
+    except (ValueError, TypeError):
+        return default
+    if min_val is not None and n < min_val:
+        return min_val
+    if max_val is not None and n > max_val:
+        return max_val
+    return n
 
 
 def normalize_role(role_str: str) -> str:
@@ -77,25 +118,39 @@ def format_user(row) -> dict:
 
 def save_uploaded_image(image_value: str, prefix: str, user_id: int) -> str:
     """
-    Accepts either a base64 Data URI ('data:image/png;base64,...') or an existing path/URL.
-    Saves base64 images to static/uploads/ and returns the public path ('/uploads/...').
+    Accepts either a base64 Data URI ('data:image/png;base64,...') or an existing safe path/URL.
+    Validates payload size, MIME type, and path safety before writing to static/uploads/.
     """
     val = str(image_value or "").strip()
     if not val:
         return ""
+    safe_prefix = "avatar" if prefix == "avatar" else "cover"
     if val.startswith("data:image/"):
         match = re.match(r"^data:image/([a-zA-Z0-9+.-]+);base64,(.+)$", val, re.DOTALL)
         if not match:
-            raise ValueError("Invalid image Data URI format.")
+            raise ErpHttpError("Invalid image Data URI format.", status=400)
         ext_raw = match.group(1).lower()
-        ext = "jpg" if ext_raw in ("jpeg", "jpg") else ("webp" if ext_raw == "webp" else ("gif" if ext_raw == "gif" else "png"))
-        raw_bytes = base64.b64decode(match.group(2))
-        filename = f"{prefix}_{user_id}_{secrets.token_hex(4)}.{ext}"
-        file_path = os.path.join(UPLOADS_DIR, filename)
+        if ext_raw not in ("jpeg", "jpg", "png", "webp", "gif"):
+            raise ErpHttpError("Unsupported image format. Use PNG, JPG, WEBP, or GIF.", status=400)
+        ext = "jpg" if ext_raw in ("jpeg", "jpg") else ext_raw
+        try:
+            raw_bytes = base64.b64decode(match.group(2), validate=False)
+        except Exception:
+            raise ErpHttpError("Corrupted base64 image payload.", status=400)
+        if len(raw_bytes) > MAX_IMAGE_BYTES:
+            raise ErpHttpError("Image exceeds the 5 MB maximum upload size.", status=400)
+        filename = f"{safe_prefix}_{int(user_id)}_{secrets.token_hex(6)}.{ext}"
+        file_path = os.path.normpath(os.path.join(UPLOADS_DIR, filename))
+        if not file_path.startswith(UPLOADS_DIR):
+            raise ErpHttpError("Invalid upload destination.", status=400)
         with open(file_path, "wb") as f:
             f.write(raw_bytes)
         return f"/uploads/{filename}"
-    return val
+    if val.startswith("/uploads/") and ".." not in val:
+        return val
+    if val.startswith("https://"):
+        return val[:500]
+    raise ErpHttpError("Invalid image URL or upload path.", status=400)
 
 
 def get_user_recent_activity(conn, user: dict, limit: int = 5) -> list:
@@ -161,21 +216,27 @@ def query_monthly_tree_matrix(conn, params: dict) -> tuple[str, list]:
     where_clauses = ["h.year_month = ?"]
     sql_args = [year_month]
 
-    if params.get("estate_id"):
+    estate_id = safe_int(params.get("estate_id"), min_val=1)
+    division_id = safe_int(params.get("division_id"), min_val=1)
+    field_id = safe_int(params.get("field_id"), min_val=1)
+    block_id = safe_int(params.get("block_id"), min_val=1)
+    tree_id = safe_int(params.get("tree_id"), min_val=1)
+
+    if estate_id:
         where_clauses.append("e.id = ?")
-        sql_args.append(int(params["estate_id"]))
-    if params.get("division_id"):
+        sql_args.append(estate_id)
+    if division_id:
         where_clauses.append("d.id = ?")
-        sql_args.append(int(params["division_id"]))
-    if params.get("field_id"):
+        sql_args.append(division_id)
+    if field_id:
         where_clauses.append("f.id = ?")
-        sql_args.append(int(params["field_id"]))
-    if params.get("block_id"):
+        sql_args.append(field_id)
+    if block_id:
         where_clauses.append("b.id = ?")
-        sql_args.append(int(params["block_id"]))
-    if params.get("tree_id"):
+        sql_args.append(block_id)
+    if tree_id:
         where_clauses.append("t.id = ?")
-        sql_args.append(int(params["tree_id"]))
+        sql_args.append(tree_id)
 
     round_expr = "COALESCE(h.round_number, CASE WHEN h.day_of_month <= 10 THEN 1 WHEN h.day_of_month <= 20 THEN 2 ELSE 3 END)"
 
@@ -211,9 +272,10 @@ def generate_monthly_tree_matrix_xlsx(conn, params: dict) -> tuple[bytes, str]:
     """
     Generates the Monthly Tree-by-Tree 3-Round Matrix Excel (.xlsx) report using openpyxl
     (with a standards-compliant OpenXML .xlsx fallback if openpyxl is unavailable).
+    Returns (xlsx_bytes, "Uskvalley_Harvest_Report.xlsx").
     """
     year_month, rows = query_monthly_tree_matrix(conn, params)
-    filename = f"elaeis_tree_matrix_{year_month}.xlsx"
+    filename = "Uskvalley_Harvest_Report.xlsx"
 
     try:
         from openpyxl import Workbook
@@ -437,6 +499,11 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
+    def _send_security_headers(self):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+
     def _send_json(self, data, status=200):
         body = json.dumps(data, default=str).encode("utf-8")
         self.send_response(status)
@@ -446,6 +513,7 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -455,10 +523,12 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/csv; charset=utf-8")
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_xlsx(self, xlsx_bytes: bytes, filename: str):
+    def _send_xlsx(self, xlsx_bytes: bytes, filename: str = "Uskvalley_Harvest_Report.xlsx"):
         self.send_response(200)
         self.send_header(
             "Content-Type",
@@ -468,33 +538,39 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(xlsx_bytes)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Expose-Headers", "Content-Disposition")
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(xlsx_bytes)
 
     def _read_json(self):
-        length = int(self.headers.get("Content-Length", 0))
+        length = safe_int(self.headers.get("Content-Length", 0), default=0, min_val=0, max_val=15 * 1024 * 1024)
         if length == 0:
             return {}
-        raw = self.rfile.read(length).decode("utf-8")
+        raw = self.rfile.read(length).decode("utf-8", errors="replace")
         try:
-            return json.loads(raw)
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
         except Exception:
             return {}
 
-    def _get_current_user(self, conn):
+    def _get_current_user(self, conn, params=None):
         auth = self.headers.get("Authorization", "")
         token = auth[7:].strip() if auth.startswith("Bearer ") else ""
+        if not token and isinstance(params, dict):
+            token = str(params.get("token") or "").strip()
         if not token:
             return None
+        now_iso = datetime.utcnow().isoformat()
         cur = conn.cursor()
         cur.execute(
             """
             SELECT u.*
             FROM sessions s
             JOIN users u ON u.id = s.user_id
-            WHERE s.token = ?
+            WHERE s.token = ? AND (s.expires_at IS NULL OR s.expires_at > ?)
             """,
-            (token,),
+            (token, now_iso),
         )
         row = cur.fetchone()
         if not row:
@@ -503,15 +579,39 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
         u["token"] = token
         return u
 
-    def _require_role(self, conn, min_role="Harvester"):
-        user = self._get_current_user(conn)
+    def _require_role(self, conn, min_role="Harvester", params=None):
+        user = self._get_current_user(conn, params=params)
         if not user:
             self._send_json({"error": "Authentication required. Please log in."}, status=401)
             return None
         if role_rank(user["role"]) < role_rank(min_role):
-            self._send_json({"error": "Insufficient role permissions."}, status=403)
+            self._send_json({"error": "Insufficient role permissions for this operation."}, status=403)
             return None
         return user
+
+    def _handle_route_error(self, err: Exception):
+        if isinstance(err, ErpHttpError):
+            self._send_json({"error": err.message}, status=err.status)
+        elif isinstance(err, sqlite3.IntegrityError):
+            self._send_json(
+                {"error": "Database constraint conflict: record already exists or references invalid data."},
+                status=409,
+            )
+        elif isinstance(err, sqlite3.Error):
+            self._send_json(
+                {"error": "A database error occurred while processing your request."},
+                status=500,
+            )
+        elif isinstance(err, (ValueError, TypeError)):
+            self._send_json(
+                {"error": "Invalid input parameter format provided."},
+                status=400,
+            )
+        else:
+            self._send_json(
+                {"error": "An internal server error occurred. Please try again."},
+                status=500,
+            )
 
     def do_OPTIONS(self):
         self._send_json({"ok": True})
@@ -521,12 +621,12 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
         path = parsed.path
         params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
 
-        if path.startswith("/api/"):
+        if path.startswith("/api/") or path in ("/export/excel", "/report.xlsx"):
             conn = get_connection()
             try:
                 self.handle_api_get(path, params, conn)
-            except Exception as e:
-                self._send_json({"error": str(e)}, status=500)
+            except Exception as err:
+                self._handle_route_error(err)
             finally:
                 conn.close()
             return
@@ -556,20 +656,29 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", mime_map.get(ext, "application/octet-stream"))
         self.send_header("Content-Length", str(len(content)))
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(content)
 
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
         data = self._read_json()
 
-        if path.startswith("/api/"):
+        if path.startswith("/api/") or path in ("/export/excel", "/report.xlsx"):
             conn = get_connection()
             try:
-                self.handle_api_post(path, data, conn)
-            except Exception as e:
-                self._send_json({"error": str(e)}, status=500)
+                if path in ("/export/excel", "/api/export/excel", "/api/report.xlsx", "/report.xlsx"):
+                    merged_params = {**params, **data}
+                    user = self._require_role(conn, "Harvester", params=merged_params)
+                    if user:
+                        xlsx_bytes, filename = generate_monthly_tree_matrix_xlsx(conn, merged_params)
+                        self._send_xlsx(xlsx_bytes, filename)
+                else:
+                    self.handle_api_post(path, data, conn)
+            except Exception as err:
+                self._handle_route_error(err)
             finally:
                 conn.close()
             return
@@ -583,28 +692,28 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
         cur = conn.cursor()
 
         if path == "/api/auth/me":
-            user = self._get_current_user(conn)
+            user = self._get_current_user(conn, params=params)
             if not user:
                 return self._send_json({"error": "Not authenticated"}, status=401)
             recent_activity = get_user_recent_activity(conn, user, limit=5)
             return self._send_json({"user": user, "recent_activity": recent_activity})
 
         if path == "/api/profile/activity":
-            user = self._require_role(conn, "Harvester")
+            user = self._require_role(conn, "Harvester", params=params)
             if not user:
                 return
             recent_activity = get_user_recent_activity(conn, user, limit=5)
             return self._send_json({"recent_activity": recent_activity})
 
-        if path in ("/api/report.xlsx", "/api/export/excel"):
-            user = self._require_role(conn, "Harvester")
+        if path in ("/export/excel", "/api/export/excel", "/api/report.xlsx", "/report.xlsx"):
+            user = self._require_role(conn, "Harvester", params=params)
             if not user:
                 return
             xlsx_bytes, filename = generate_monthly_tree_matrix_xlsx(conn, params)
             return self._send_xlsx(xlsx_bytes, filename)
 
         if path == "/api/report/matrix":
-            user = self._require_role(conn, "Harvester")
+            user = self._require_role(conn, "Harvester", params=params)
             if not user:
                 return
             year_month, rows = query_monthly_tree_matrix(conn, params)
@@ -989,8 +1098,14 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             if not user_row or not verify_password(password, user_row["password_hash"]):
                 return self._send_json({"error": "Invalid username or password."}, status=401)
 
-            token = secrets.token_hex(24)
-            cur.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_row["id"]))
+            now_iso = datetime.utcnow().isoformat()
+            expires_iso = (datetime.utcnow() + timedelta(days=SESSION_TTL_DAYS)).isoformat()
+            cur.execute("DELETE FROM sessions WHERE expires_at IS NOT NULL AND expires_at <= ?", (now_iso,))
+            token = secrets.token_hex(32)
+            cur.execute(
+                "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
+                (token, user_row["id"], expires_iso),
+            )
             conn.commit()
             return self._send_json({"token": token, "user": format_user(user_row)})
 
@@ -1210,8 +1325,11 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             user = self._require_role(conn, "Admin")
             if not user:
                 return
-            target_id = int(data.get("user_id") or 0)
+            target_id = safe_int(data.get("user_id"), default=0)
             new_role = normalize_role(data.get("role") or "Harvester")
+
+            if target_id == user["id"]:
+                return self._send_json({"error": "You cannot modify your own role."}, status=400)
 
             cur.execute("SELECT * FROM users WHERE id = ?", (target_id,))
             target = cur.fetchone()
@@ -1219,6 +1337,8 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                 return self._send_json({"error": "User not found."}, status=404)
             if target["is_master"] or target["username"].lower() == "sandaru98j":
                 return self._send_json({"error": "Cannot modify the Master Admin role."}, status=400)
+            if normalize_role(target["role"]) == "Admin" and not user["is_master"]:
+                return self._send_json({"error": "Only the Master Admin can change another Admin's role."}, status=403)
             if new_role == "Master Admin" and not user["is_master"]:
                 return self._send_json({"error": "Only the Master Admin can grant Master Admin access."}, status=403)
 
@@ -1234,7 +1354,7 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                     {"error": "Only Master Admin (sandaru98j) can force-reset user passwords."},
                     status=403,
                 )
-            target_id = int(data.get("user_id") or 0)
+            target_id = safe_int(data.get("user_id"), default=0)
             new_password = str(data.get("new_password") or "")
             if len(new_password) < 6:
                 return self._send_json({"error": "New password must be at least 6 characters."}, status=400)
@@ -1258,13 +1378,17 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             user = self._require_role(conn, "Admin")
             if not user:
                 return
-            target_id = int(data.get("user_id") or 0)
+            target_id = safe_int(data.get("user_id"), default=0)
+            if target_id == user["id"]:
+                return self._send_json({"error": "You cannot delete your own account."}, status=400)
             cur.execute("SELECT * FROM users WHERE id = ?", (target_id,))
             target = cur.fetchone()
             if not target:
                 return self._send_json({"error": "User not found."}, status=404)
             if target["is_master"] or target["username"].lower() == "sandaru98j":
                 return self._send_json({"error": "Cannot delete the Master Admin account."}, status=400)
+            if normalize_role(target["role"]) == "Admin" and not user["is_master"]:
+                return self._send_json({"error": "Only the Master Admin can delete an Admin account."}, status=403)
 
             cur.execute("DELETE FROM sessions WHERE user_id = ?", (target_id,))
             cur.execute("DELETE FROM users WHERE id = ?", (target_id,))
@@ -1313,17 +1437,19 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             item_id = int(data.get("id") or 0)
 
             if action == "delete":
-                table_map = {
-                    "estate": "estates",
-                    "division": "divisions",
-                    "field": "fields",
-                    "block": "blocks",
-                    "tree": "trees",
-                }
-                tbl = table_map.get(entity)
-                if tbl:
-                    cur.execute(f"DELETE FROM {tbl} WHERE id = ?", (item_id,))
-                    conn.commit()
+                if entity == "estate":
+                    cur.execute("DELETE FROM estates WHERE id = ?", (item_id,))
+                elif entity == "division":
+                    cur.execute("DELETE FROM divisions WHERE id = ?", (item_id,))
+                elif entity == "field":
+                    cur.execute("DELETE FROM fields WHERE id = ?", (item_id,))
+                elif entity == "block":
+                    cur.execute("DELETE FROM blocks WHERE id = ?", (item_id,))
+                elif entity == "tree":
+                    cur.execute("DELETE FROM trees WHERE id = ?", (item_id,))
+                else:
+                    return self._send_json({"error": "Unknown hierarchy entity."}, status=404)
+                conn.commit()
                 return self._send_json({"ok": True})
 
             if entity == "estate":

@@ -339,6 +339,92 @@ body {
     border-color: var(--accent-primary);
 }
 
+/* ============================================================================
+   LIVE AUTO-REFRESH DIGITAL CLOCK & EXECUTIVE OVERVIEW HEADER BADGES
+   ============================================================================ */
+.live-clock-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 9999px;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-strong);
+    color: var(--text-primary);
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: var(--shadow-card);
+}
+
+.live-clock-dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 9999px;
+    background-color: var(--accent-primary);
+    box-shadow: 0 0 6px var(--accent-primary);
+    animation: clockPulse 2s infinite ease-in-out;
+    flex-shrink: 0;
+}
+
+@keyframes clockPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.88); }
+}
+
+.erp-meta-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: 9999px;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-strong);
+    color: var(--text-primary);
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.25;
+    white-space: nowrap;
+}
+
+.erp-meta-badge-accent {
+    background-color: var(--btn-bg);
+    border-color: var(--btn-bg);
+    color: var(--btn-text);
+}
+
+.erp-meta-badge-scope {
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+    background-color: var(--bg-hover);
+}
+
+.erp-icon-reset-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 9999px;
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.25s ease;
+}
+
+.erp-icon-reset-btn:hover {
+    background-color: var(--bg-secondary);
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+    transform: rotate(-45deg);
+}
+
+.erp-icon-reset-btn:active {
+    transform: rotate(-90deg) scale(0.95);
+}
+
 /* Right Supplementary Cards & Structured Detail Cards */
 .x-widget,
 .erp-card {

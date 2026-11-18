@@ -461,9 +461,10 @@ async function getSettings(db) {
 // ---------------------------------------------------------------------------
 // Auth (Strictly Email + Password Login, Clean Pending Sign-Up)
 // ---------------------------------------------------------------------------
-async function currentUser(request, db) {
+async function currentUser(request, db, urlParams = {}) {
     const header = request.headers.get("Authorization") || "";
-    const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+    let token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+    if (!token && urlParams.token) token = String(urlParams.token).trim();
     if (!token) return null;
     const user = await db
         .prepare(
@@ -902,6 +903,256 @@ async function getReportCsv(db, params) {
     });
 }
 
+const EXCEL_MATRIX_HEADERS = [
+    "Estate",
+    "Division",
+    "Field",
+    "Block",
+    "Tree Number",
+    "R1 Bunches",
+    "R1 Fronds",
+    "R2 Bunches",
+    "R2 Fronds",
+    "R3 Bunches",
+    "R3 Fronds",
+    "Month Total Bunches",
+    "Month Total Fronds",
+];
+
+function xmlEsc(s) {
+    return String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+function crc32Bytes(u8) {
+    let c = 0xffffffff;
+    for (let i = 0; i < u8.length; i++) {
+        c ^= u8[i];
+        for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1;
+    }
+    return (c ^ 0xffffffff) >>> 0;
+}
+
+function buildZipStore(files) {
+    const enc = new TextEncoder();
+    const entries = files.map((f) => {
+        const nameBytes = enc.encode(f.name);
+        const dataBytes = typeof f.content === "string" ? enc.encode(f.content) : f.content;
+        const crc = crc32Bytes(dataBytes);
+        return { nameBytes, dataBytes, crc };
+    });
+
+    let localSize = 0;
+    let cdSize = 0;
+    for (const e of entries) {
+        localSize += 30 + e.nameBytes.length + e.dataBytes.length;
+        cdSize += 46 + e.nameBytes.length;
+    }
+    const out = new Uint8Array(localSize + cdSize + 22);
+    const dv = new DataView(out.buffer);
+    let offset = 0;
+
+    for (const e of entries) {
+        e.localOffset = offset;
+        dv.setUint32(offset, 0x04034b50, true);
+        dv.setUint16(offset + 4, 20, true);
+        dv.setUint16(offset + 6, 0, true);
+        dv.setUint16(offset + 8, 0, true);
+        dv.setUint16(offset + 10, 0, true);
+        dv.setUint16(offset + 12, 0x21, true);
+        dv.setUint32(offset + 14, e.crc, true);
+        dv.setUint32(offset + 18, e.dataBytes.length, true);
+        dv.setUint32(offset + 22, e.dataBytes.length, true);
+        dv.setUint16(offset + 26, e.nameBytes.length, true);
+        dv.setUint16(offset + 28, 0, true);
+        out.set(e.nameBytes, offset + 30);
+        out.set(e.dataBytes, offset + 30 + e.nameBytes.length);
+        offset += 30 + e.nameBytes.length + e.dataBytes.length;
+    }
+
+    const cdStart = offset;
+    for (const e of entries) {
+        dv.setUint32(offset, 0x02014b50, true);
+        dv.setUint16(offset + 4, 20, true);
+        dv.setUint16(offset + 6, 20, true);
+        dv.setUint16(offset + 8, 0, true);
+        dv.setUint16(offset + 10, 0, true);
+        dv.setUint16(offset + 12, 0, true);
+        dv.setUint16(offset + 14, 0x21, true);
+        dv.setUint32(offset + 16, e.crc, true);
+        dv.setUint32(offset + 20, e.dataBytes.length, true);
+        dv.setUint32(offset + 24, e.dataBytes.length, true);
+        dv.setUint16(offset + 28, e.nameBytes.length, true);
+        dv.setUint16(offset + 30, 0, true);
+        dv.setUint16(offset + 32, 0, true);
+        dv.setUint16(offset + 34, 0, true);
+        dv.setUint16(offset + 36, 0, true);
+        dv.setUint32(offset + 38, 0, true);
+        dv.setUint32(offset + 42, e.localOffset, true);
+        out.set(e.nameBytes, offset + 46);
+        offset += 46 + e.nameBytes.length;
+    }
+
+    dv.setUint32(offset, 0x06054b50, true);
+    dv.setUint16(offset + 4, 0, true);
+    dv.setUint16(offset + 6, 0, true);
+    dv.setUint16(offset + 8, entries.length, true);
+    dv.setUint16(offset + 10, entries.length, true);
+    dv.setUint32(offset + 12, cdSize, true);
+    dv.setUint32(offset + 16, cdStart, true);
+    dv.setUint16(offset + 20, 0, true);
+    return out;
+}
+
+async function queryMonthlyTreeMatrix(db, params) {
+    let ym = String(params.year_month || params.month || (params.to || "").slice(0, 7) || (params.from || "").slice(0, 7) || nowIso().slice(0, 7));
+    if (!/^\d{4}-\d{2}$/.test(ym)) ym = nowIso().slice(0, 7);
+
+    const where = ["x.year_month = ?"];
+    const binds = [ym];
+    const estateId = toInt(params.estate_id);
+    const divisionId = toInt(params.division_id);
+    const fieldId = toInt(params.field_id);
+    const blockId = toInt(params.block_id);
+    const treeId = toInt(params.tree_id);
+
+    if (estateId) {
+        where.push("e.id = ?");
+        binds.push(estateId);
+    }
+    if (divisionId) {
+        where.push("d.id = ?");
+        binds.push(divisionId);
+    }
+    if (fieldId) {
+        where.push("f.id = ?");
+        binds.push(fieldId);
+    }
+    if (blockId) {
+        where.push("b.id = ?");
+        binds.push(blockId);
+    }
+    if (treeId) {
+        where.push("t.id = ?");
+        binds.push(treeId);
+    }
+
+    const sql = `
+        SELECT
+            e.name AS estate_name,
+            d.name AS division_name,
+            f.name AS field_name,
+            b.name AS block_name,
+            t.id AS tree_id,
+            t.tree_no AS tree_number,
+            COALESCE(SUM(CASE WHEN x.round_no = 1 THEN x.bunches ELSE 0 END), 0) AS r1_bunches,
+            COALESCE(SUM(CASE WHEN x.round_no = 1 THEN x.fronds ELSE 0 END), 0) AS r1_fronds,
+            COALESCE(SUM(CASE WHEN x.round_no = 2 THEN x.bunches ELSE 0 END), 0) AS r2_bunches,
+            COALESCE(SUM(CASE WHEN x.round_no = 2 THEN x.fronds ELSE 0 END), 0) AS r2_fronds,
+            COALESCE(SUM(CASE WHEN x.round_no = 3 THEN x.bunches ELSE 0 END), 0) AS r3_bunches,
+            COALESCE(SUM(CASE WHEN x.round_no = 3 THEN x.fronds ELSE 0 END), 0) AS r3_fronds
+        FROM el_harvest x
+        ${JOINS}
+        WHERE ${where.join(" AND ")}
+        GROUP BY t.id, e.name, d.name, f.name, b.name, t.tree_no
+        ORDER BY e.id ASC, d.id ASC, f.id ASC, b.id ASC, t.tree_no ASC
+    `;
+    const { results } = await db.prepare(sql).bind(...binds).all();
+    return { year_month: ym, rows: results || [] };
+}
+
+async function getReportXlsx(db, params) {
+    const { year_month, rows } = await queryMonthlyTreeMatrix(db, params);
+    const cols = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
+    const rowXml = [];
+
+    const hdrCells = EXCEL_MATRIX_HEADERS.map(
+        (h, i) => `<c r="${cols[i]}1" t="inlineStr"><is><t>${xmlEsc(h)}</t></is></c>`
+    ).join("");
+    rowXml.push(`<row r="1">${hdrCells}</row>`);
+
+    rows.forEach((r, idx) => {
+        const rNum = idx + 2;
+        const r1b = Number(r.r1_bunches || 0);
+        const r1f = Number(r.r1_fronds || 0);
+        const r2b = Number(r.r2_bunches || 0);
+        const r2f = Number(r.r2_fronds || 0);
+        const r3b = Number(r.r3_bunches || 0);
+        const r3f = Number(r.r3_fronds || 0);
+        const totB = r1b + r2b + r3b;
+        const totF = r1f + r2f + r3f;
+
+        const textVals = [
+            r.estate_name || "Uskvalley Estate",
+            r.division_name || "Uskvalley Division",
+            r.field_name || "Field 1",
+            r.block_name || "Block A",
+            `Palm #${r.tree_number}`,
+        ];
+        const intVals = [r1b, r1f, r2b, r2f, r3b, r3f];
+
+        const cells = [];
+        textVals.forEach((tv, ci) => {
+            cells.push(`<c r="${cols[ci]}${rNum}" t="inlineStr"><is><t>${xmlEsc(tv)}</t></is></c>`);
+        });
+        intVals.forEach((iv, ci) => {
+            cells.push(`<c r="${cols[5 + ci]}${rNum}" t="n"><v>${iv}</v></c>`);
+        });
+        cells.push(`<c r="L${rNum}" t="n"><f>F${rNum}+H${rNum}+J${rNum}</f><v>${totB}</v></c>`);
+        cells.push(`<c r="M${rNum}" t="n"><f>G${rNum}+I${rNum}+K${rNum}</f><v>${totF}</v></c>`);
+        rowXml.push(`<row r="${rNum}">${cells.join("")}</row>`);
+    });
+
+    const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>${rowXml.join("")}</sheetData>
+</worksheet>`;
+
+    const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Tree Matrix ${xmlEsc(year_month)}" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`;
+
+    const wbRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`;
+
+    const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+
+    const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`;
+
+    const xlsxBytes = buildZipStore([
+        { name: "[Content_Types].xml", content: contentTypesXml },
+        { name: "_rels/.rels", content: rootRelsXml },
+        { name: "xl/workbook.xml", content: workbookXml },
+        { name: "xl/_rels/workbook.xml.rels", content: wbRelsXml },
+        { name: "xl/worksheets/sheet1.xml", content: sheetXml },
+    ]);
+
+    return new Response(xlsxBytes, {
+        status: 200,
+        headers: {
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Content-Disposition": 'attachment; filename="Uskvalley_Harvest_Report.xlsx"',
+            "Cache-Control": "no-store",
+        },
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Admin: GPS Compliance Log (Harvest Only)
 // ---------------------------------------------------------------------------
@@ -1214,7 +1465,7 @@ async function route(request, env, url) {
     // Public auth endpoint (Closed ERP: Username + Password Login Only)
     if (method === "POST" && path === "/api/auth/login") return json(await handleLogin(db, body));
 
-    const user = await currentUser(request, db);
+    const user = await currentUser(request, db, params);
     if (!user) fail(401, "Please log in.");
 
     if (method === "GET" && path === "/api/auth/me") return json({ user: publicUser(user) });
@@ -1300,6 +1551,14 @@ async function route(request, env, url) {
         requireRole(user, "Harvester");
         return getReportCsv(db, params);
     }
+    if ((method === "GET" || method === "POST") && (path === "/export/excel" || path === "/api/export/excel" || path === "/api/report.xlsx" || path === "/report.xlsx")) {
+        requireRole(user, "Harvester");
+        return getReportXlsx(db, { ...params, ...body });
+    }
+    if (method === "GET" && path === "/api/report/matrix") {
+        requireRole(user, "Harvester");
+        return json(await queryMonthlyTreeMatrix(db, params));
+    }
     if (method === "POST" && path === "/api/harvest") return json(await handleHarvest(db, user, body));
 
     // Dispatch Crop Weight endpoints
@@ -1339,7 +1598,11 @@ async function route(request, env, url) {
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
-        if (!url.pathname.startsWith("/api/")) {
+        const isBackendRoute =
+            url.pathname.startsWith("/api/") ||
+            url.pathname === "/export/excel" ||
+            url.pathname === "/report.xlsx";
+        if (!isBackendRoute) {
             const assetRes = await env.ASSETS.fetch(request);
             if (assetRes.status === 404 && !url.pathname.includes(".")) {
                 return env.ASSETS.fetch(new Request(new URL("/index.html", url.origin), request));

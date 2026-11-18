@@ -859,21 +859,45 @@ function localApiFallback(path, method, body) {
 }
 
 // ----------------------------------------------------------------------------
-// Live Clock & Time-Sensitive Greeting
+// Live Auto-Refresh Digital Clock (Updates every 1000ms) & Greeting
 // ----------------------------------------------------------------------------
+function formatShortDateLabel(isoDateStr) {
+    if (!isoDateStr || !/^\d{4}-\d{2}-\d{2}$/.test(isoDateStr)) return isoDateStr || "";
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const mIdx = Math.max(0, Math.min(11, Number(isoDateStr.slice(5, 7)) - 1));
+    const day = Number(isoDateStr.slice(8, 10));
+    return `${months[mIdx]} ${day}`;
+}
+
+function formatMonthYearLabel(ymStr) {
+    if (!ymStr || !/^\d{4}-\d{2}$/.test(ymStr)) return ymStr || "";
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const yr = ymStr.slice(0, 4);
+    const mIdx = Math.max(0, Math.min(11, Number(ymStr.slice(5, 7)) - 1));
+    return `${months[mIdx]} ${yr}`;
+}
+
 function updateClockAndGreeting() {
     const now = new Date();
-    const hrs = now.getHours();
+    const hrs24 = now.getHours();
     const mins = String(now.getMinutes()).padStart(2, "0");
     const secs = String(now.getSeconds()).padStart(2, "0");
-    const period = hrs < 12 ? "Good morning" : hrs < 17 ? "Good afternoon" : "Good evening";
+    const ampm = hrs24 >= 12 ? "PM" : "AM";
+    const hrs12 = String(hrs24 % 12 || 12).padStart(2, "0");
+
+    const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const datePart = `${weekdays[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+    const timePart = `${hrs12}:${mins}:${secs} ${ampm}`;
+
+    const period = hrs24 < 12 ? "Good morning" : hrs24 < 17 ? "Good afternoon" : "Good evening";
     const name = state.user ? state.user.full_name.split(" ")[0] : "";
     const gEl = $("hdr-greeting");
     const cEl = $("hdr-clock");
     const rEl = $("hdr-round-pill");
     const rRight = $("right-active-round");
     if (gEl) gEl.textContent = name ? `${period}, ${name}` : period;
-    if (cEl) cEl.textContent = `${todayStr()} ${String(hrs).padStart(2, "0")}:${mins}:${secs}`;
+    if (cEl) cEl.textContent = `${datePart} • ${timePart}`;
     const { round, rangeLabel } = roundOfDate(todayStr());
     if (rEl) rEl.textContent = `R${round} (${rangeLabel})`;
     if (rRight) rRight.textContent = `Round ${round} (${rangeLabel})`;
@@ -1395,23 +1419,23 @@ function getDashboardQuery() {
 
     let from = `${yr}-${sMonth}-01`;
     let to = todayStr();
-    let periodLabel = "Season-to-Date";
+    let periodBadgeText = `YTD: ${formatShortDateLabel(from)} - ${formatShortDateLabel(to)}`;
 
     if (mode === "std") {
         from = `${yr}-${sMonth}-01`;
         to = todayStr();
-        periodLabel = `Season-to-Date (${from} to ${to})`;
+        periodBadgeText = `YTD: ${formatShortDateLabel(from)} - ${formatShortDateLabel(to)}`;
         const stdLbl = $("flt-std-label");
-        if (stdLbl) stdLbl.textContent = `${from} to ${to}`;
+        if (stdLbl) stdLbl.textContent = `${formatShortDateLabel(from)} to ${formatShortDateLabel(to)}`;
     } else if (mode === "month") {
         const ym = $("flt-month").value || todayStr().slice(0, 7);
         from = `${ym}-01`;
         to = `${ym}-31`;
-        periodLabel = `Month: ${ym}`;
+        periodBadgeText = `Month: ${formatMonthYearLabel(ym)}`;
     } else if (mode === "custom") {
         from = $("flt-from").value || `${yr}-${sMonth}-01`;
         to = $("flt-to").value || todayStr();
-        periodLabel = `${from} to ${to}`;
+        periodBadgeText = `Range: ${formatShortDateLabel(from)} - ${formatShortDateLabel(to)}`;
     }
 
     const yearMonth = mode === "month" ? ($("flt-month").value || todayStr().slice(0, 7)) : (to || todayStr()).slice(0, 7);
@@ -1424,14 +1448,15 @@ function getDashboardQuery() {
     }
 
     const estateName = state.hierarchy.estates[0]?.name || "Uskvalley Estate";
-    const roundLabel = roundVal ? `Round ${roundVal}` : "Entire Month";
-    const parts = [estateName, `Season ${seasonLabel}`, periodLabel, roundLabel];
+    const roundBadgeText = roundVal ? `Filter: Round ${roundVal}` : "Filter: Entire Month";
+    const scopeParts = [];
 
     const addPart = (id, param) => {
         const el = $(id);
         if (el && el.value) {
             q.set(param, el.value);
-            parts.push(el.options[el.selectedIndex]?.text || "");
+            const rawTxt = el.options[el.selectedIndex]?.text || "";
+            if (rawTxt) scopeParts.push(rawTxt);
         }
     };
     addPart("flt-division", "division_id");
@@ -1439,7 +1464,18 @@ function getDashboardQuery() {
     addPart("flt-block", "block_id");
     addPart("flt-tree", "tree_id");
 
-    $("dash-breadcrumb").textContent = parts.filter(Boolean).join(" | ");
+    // Update Clean Executive Overview Header & Flexbox Badges
+    if ($("dash-estate-heading")) $("dash-estate-heading").textContent = estateName;
+    if ($("badge-season")) $("badge-season").textContent = `Season ${seasonLabel}`;
+    if ($("badge-period")) $("badge-period").textContent = periodBadgeText;
+    if ($("badge-filter-round")) $("badge-filter-round").textContent = roundBadgeText;
+    if ($("badge-scope") && $("badge-scope-sep")) {
+        const hasScope = scopeParts.length > 0;
+        $("badge-scope").textContent = scopeParts.join(" • ");
+        $("badge-scope").classList.toggle("hidden", !hasScope);
+        $("badge-scope-sep").classList.toggle("hidden", !hasScope);
+    }
+
     return q.toString();
 }
 
@@ -2194,6 +2230,187 @@ function renderDirectoryUsers() {
     });
 }
 
+function buildClientXlsxFallback(yearMonth, paramsObj) {
+    const db = LocalDB.load();
+    const ym = /^\d{4}-\d{2}$/.test(yearMonth || "") ? yearMonth : todayStr().slice(0, 7);
+
+    const matchTree = (t) => {
+        const b = db.blocks.find((x) => x.id === t.block_id);
+        if (!b) return false;
+        const f = db.fields.find((x) => x.id === b.field_id);
+        if (!f) return false;
+        const d = db.divisions.find((x) => x.id === f.division_id);
+        if (!d) return false;
+        if (paramsObj.tree_id && t.id !== Number(paramsObj.tree_id)) return false;
+        if (paramsObj.block_id && b.id !== Number(paramsObj.block_id)) return false;
+        if (paramsObj.field_id && f.id !== Number(paramsObj.field_id)) return false;
+        if (paramsObj.division_id && d.id !== Number(paramsObj.division_id)) return false;
+        if (paramsObj.estate_id && d.estate_id !== Number(paramsObj.estate_id)) return false;
+        return true;
+    };
+
+    const grouped = new Map();
+    for (const h of db.harvest || []) {
+        const hYm = h.year_month || (h.harvest_date || "").slice(0, 7);
+        if (hYm !== ym) continue;
+        const t = db.trees.find((x) => x.id === h.tree_id);
+        if (!t || !matchTree(t)) continue;
+        const b = db.blocks.find((x) => x.id === t.block_id) || {};
+        const f = db.fields.find((x) => x.id === b.field_id) || {};
+        const d = db.divisions.find((x) => x.id === f.division_id) || {};
+        const e = db.estates.find((x) => x.id === d.estate_id) || { name: "Uskvalley Estate" };
+
+        if (!grouped.has(t.id)) {
+            grouped.set(t.id, {
+                estate_name: e.name || "Uskvalley Estate",
+                division_name: d.name || "Uskvalley Division",
+                field_name: f.name || "Field 1",
+                block_name: b.name || "Block A",
+                tree_number: t.tree_no,
+                r1_bunches: 0,
+                r1_fronds: 0,
+                r2_bunches: 0,
+                r2_fronds: 0,
+                r3_bunches: 0,
+                r3_fronds: 0,
+            });
+        }
+        const entry = grouped.get(t.id);
+        const rnd = Number(h.round_no) || roundOfDate(h.harvest_date).round;
+        if (rnd === 1) {
+            entry.r1_bunches += Number(h.bunches || 0);
+            entry.r1_fronds += Number(h.fronds || 0);
+        } else if (rnd === 2) {
+            entry.r2_bunches += Number(h.bunches || 0);
+            entry.r2_fronds += Number(h.fronds || 0);
+        } else {
+            entry.r3_bunches += Number(h.bunches || 0);
+            entry.r3_fronds += Number(h.fronds || 0);
+        }
+    }
+
+    const rows = Array.from(grouped.values()).sort((a, b) => a.tree_number - b.tree_number);
+    const headers = [
+        "Estate",
+        "Division",
+        "Field",
+        "Block",
+        "Tree Number",
+        "R1 Bunches",
+        "R1 Fronds",
+        "R2 Bunches",
+        "R2 Fronds",
+        "R3 Bunches",
+        "R3 Fronds",
+        "Month Total Bunches",
+        "Month Total Fronds",
+    ];
+    const cols = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
+    const rowXml = [];
+    const hdrCells = headers.map((h, i) => `<c r="${cols[i]}1" t="inlineStr"><is><t>${esc(h)}</t></is></c>`).join("");
+    rowXml.push(`<row r="1">${hdrCells}</row>`);
+
+    rows.forEach((r, idx) => {
+        const rNum = idx + 2;
+        const totB = r.r1_bunches + r.r2_bunches + r.r3_bunches;
+        const totF = r.r1_fronds + r.r2_fronds + r.r3_fronds;
+        const textVals = [r.estate_name, r.division_name, r.field_name, r.block_name, `Palm #${r.tree_number}`];
+        const intVals = [r.r1_bunches, r.r1_fronds, r.r2_bunches, r.r2_fronds, r.r3_bunches, r.r3_fronds];
+        const cells = [];
+        textVals.forEach((tv, ci) => cells.push(`<c r="${cols[ci]}${rNum}" t="inlineStr"><is><t>${esc(tv)}</t></is></c>`));
+        intVals.forEach((iv, ci) => cells.push(`<c r="${cols[5 + ci]}${rNum}" t="n"><v>${iv}</v></c>`));
+        cells.push(`<c r="L${rNum}" t="n"><f>F${rNum}+H${rNum}+J${rNum}</f><v>${totB}</v></c>`);
+        cells.push(`<c r="M${rNum}" t="n"><f>G${rNum}+I${rNum}+K${rNum}</f><v>${totF}</v></c>`);
+        rowXml.push(`<row r="${rNum}">${cells.join("")}</row>`);
+    });
+
+    const crc32 = (u8) => {
+        let c = 0xffffffff;
+        for (let i = 0; i < u8.length; i++) {
+            c ^= u8[i];
+            for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1;
+        }
+        return (c ^ 0xffffffff) >>> 0;
+    };
+
+    const enc = new TextEncoder();
+    const files = [
+        {
+            name: "[Content_Types].xml",
+            content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`,
+        },
+        {
+            name: "_rels/.rels",
+            content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+        },
+        {
+            name: "xl/workbook.xml",
+            content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Tree Matrix ${esc(ym)}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+        },
+        {
+            name: "xl/_rels/workbook.xml.rels",
+            content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`,
+        },
+        {
+            name: "xl/worksheets/sheet1.xml",
+            content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rowXml.join("")}</sheetData></worksheet>`,
+        },
+    ];
+
+    const entries = files.map((f) => {
+        const nameBytes = enc.encode(f.name);
+        const dataBytes = enc.encode(f.content);
+        return { nameBytes, dataBytes, crc: crc32(dataBytes), localOffset: 0 };
+    });
+
+    let localSize = 0;
+    let cdSize = 0;
+    entries.forEach((e) => {
+        localSize += 30 + e.nameBytes.length + e.dataBytes.length;
+        cdSize += 46 + e.nameBytes.length;
+    });
+    const out = new Uint8Array(localSize + cdSize + 22);
+    const dv = new DataView(out.buffer);
+    let offset = 0;
+
+    entries.forEach((e) => {
+        e.localOffset = offset;
+        dv.setUint32(offset, 0x04034b50, true);
+        dv.setUint16(offset + 4, 20, true);
+        dv.setUint16(offset + 12, 0x21, true);
+        dv.setUint32(offset + 14, e.crc, true);
+        dv.setUint32(offset + 18, e.dataBytes.length, true);
+        dv.setUint32(offset + 22, e.dataBytes.length, true);
+        dv.setUint16(offset + 26, e.nameBytes.length, true);
+        out.set(e.nameBytes, offset + 30);
+        out.set(e.dataBytes, offset + 30 + e.nameBytes.length);
+        offset += 30 + e.nameBytes.length + e.dataBytes.length;
+    });
+
+    const cdStart = offset;
+    entries.forEach((e) => {
+        dv.setUint32(offset, 0x02014b50, true);
+        dv.setUint16(offset + 4, 20, true);
+        dv.setUint16(offset + 6, 20, true);
+        dv.setUint16(offset + 14, 0x21, true);
+        dv.setUint32(offset + 16, e.crc, true);
+        dv.setUint32(offset + 20, e.dataBytes.length, true);
+        dv.setUint32(offset + 24, e.dataBytes.length, true);
+        dv.setUint16(offset + 28, e.nameBytes.length, true);
+        dv.setUint32(offset + 42, e.localOffset, true);
+        out.set(e.nameBytes, offset + 46);
+        offset += 46 + e.nameBytes.length;
+    });
+
+    dv.setUint32(offset, 0x06054b50, true);
+    dv.setUint16(offset + 8, entries.length, true);
+    dv.setUint16(offset + 10, entries.length, true);
+    dv.setUint32(offset + 12, cdSize, true);
+    dv.setUint32(offset + 16, cdStart, true);
+    return new Blob([out], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+}
 // ----------------------------------------------------------------------------
 // Event Listeners & Initialization
 // ----------------------------------------------------------------------------
@@ -2299,24 +2516,35 @@ document.addEventListener("DOMContentLoaded", () => {
             const qs = getDashboardQuery();
             const qParams = new URLSearchParams(qs);
             const ym = qParams.get("year_month") || todayStr().slice(0, 7);
-            try {
-                const headers = {};
-                if (state.token) headers["Authorization"] = `Bearer ${state.token}`;
-                const res = await fetch(`/api/report.xlsx?${qs}`, { method: "GET", headers });
-                if (!res.ok) throw new Error(`Export failed (${res.status})`);
-                const blob = await res.blob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `elaeis_tree_matrix_${ym}.xlsx`;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                URL.revokeObjectURL(url);
-                toast(`Excel Tree Matrix (${ym}) exported`);
-            } catch (err) {
-                toast(err.message || "Could not export Excel matrix", "err");
+            const paramsObj = Object.fromEntries(qParams.entries());
+            const headers = {};
+            if (state.token) headers["Authorization"] = `Bearer ${state.token}`;
+
+            let blob = null;
+            for (const endpoint of [`/export/excel?${qs}`, `/api/export/excel?${qs}`, `/api/report.xlsx?${qs}`]) {
+                try {
+                    const res = await fetch(endpoint, { method: "GET", headers });
+                    const ct = (res.headers.get("content-type") || "").toLowerCase();
+                    if (res.ok && (ct.includes("spreadsheetml") || ct.includes("octet-stream") || ct.includes("excel"))) {
+                        blob = await res.blob();
+                        break;
+                    }
+                } catch (_) {}
             }
+
+            if (!blob) {
+                blob = buildClientXlsxFallback(ym, paramsObj);
+            }
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "Uskvalley_Harvest_Report.xlsx";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            toast("Uskvalley_Harvest_Report.xlsx downloaded");
         };
     }
 
