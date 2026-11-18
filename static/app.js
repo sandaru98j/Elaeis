@@ -78,6 +78,8 @@ const state = {
     mapBlock: { block_id: null, trees: [] },
     compliance: { threshold_m: 20, rows: [], filter: "all" },
     adminUsers: { users: [] },
+    profileActivity: [],
+    editProfileDraft: { profile_pic: "", cover_photo: "" },
     modalTree: null,
     forcePwTarget: null,
     crudCallback: null,
@@ -455,7 +457,68 @@ function localApiFallback(path, method, body) {
         return { token: `local-token-${u.id}`, user: u };
     }
     if (pathname === "/api/auth/me") {
-        return { user: curUser };
+        const acts = db.harvest
+            .filter((h) => h.user_id === curUser.id)
+            .slice(-5)
+            .reverse()
+            .map((h) => {
+                const t = db.trees.find((x) => x.id === h.tree_id) || {};
+                const b = db.blocks.find((x) => x.id === t.block_id) || {};
+                const f = db.fields.find((x) => x.id === b.field_id) || {};
+                const d = db.divisions.find((x) => x.id === f.division_id) || {};
+                return {
+                    id: h.id,
+                    harvest_date: h.harvest_date,
+                    round_no: h.round_no,
+                    bunches: h.bunches,
+                    fronds: h.fronds,
+                    tree_no: t.tree_no,
+                    block_name: b.name,
+                    field_name: f.name,
+                    division_name: d.name,
+                    recorded_by: curUser.full_name,
+                };
+            });
+        return { user: curUser, recent_activity: acts };
+    }
+    if (pathname === "/api/profile/activity") {
+        const acts = db.harvest
+            .filter((h) => h.user_id === curUser.id)
+            .slice(-5)
+            .reverse()
+            .map((h) => {
+                const t = db.trees.find((x) => x.id === h.tree_id) || {};
+                const b = db.blocks.find((x) => x.id === t.block_id) || {};
+                const f = db.fields.find((x) => x.id === b.field_id) || {};
+                const d = db.divisions.find((x) => x.id === f.division_id) || {};
+                return {
+                    id: h.id,
+                    harvest_date: h.harvest_date,
+                    round_no: h.round_no,
+                    bunches: h.bunches,
+                    fronds: h.fronds,
+                    tree_no: t.tree_no,
+                    block_name: b.name,
+                    field_name: f.name,
+                    division_name: d.name,
+                    recorded_by: curUser.full_name,
+                };
+            });
+        return { recent_activity: acts };
+    }
+    if (pathname === "/api/profile/update" || pathname === "/api/auth/profile") {
+        const nextName = String(body?.full_name || curUser.full_name).trim();
+        const nextUser = String(body?.username || curUser.username).trim().toLowerCase().replace(/^@+/, "");
+        if (!nextName || !nextUser) throw new Error("Full Name and Username are required.");
+        if (db.users.some((u) => u.id !== curUser.id && u.username.toLowerCase() === nextUser)) {
+            throw new Error(`Username '@${nextUser}' is already taken.`);
+        }
+        curUser.full_name = nextName;
+        curUser.username = nextUser;
+        if (body?.profile_pic !== undefined) curUser.profile_pic = String(body.profile_pic || "");
+        if (body?.cover_photo !== undefined) curUser.cover_photo = String(body.cover_photo || "");
+        LocalDB.save(db);
+        return { ok: true, message: "Profile updated successfully.", user: curUser };
     }
     if (pathname === "/api/auth/logout") {
         return { ok: true };
@@ -878,14 +941,25 @@ async function enterApplication() {
 function syncUserIdentityUI() {
     if (!state.user) return;
     const u = state.user;
-    const initials = u.full_name
+    const initials = (u.full_name || "U")
         .split(" ")
+        .filter(Boolean)
         .map((w) => w[0])
         .join("")
         .slice(0, 2)
         .toUpperCase();
 
-    if ($("rail-user-avatar")) $("rail-user-avatar").textContent = initials;
+    const hasAvatar = Boolean(u.profile_pic);
+    const hasCover = Boolean(u.cover_photo);
+
+    if ($("rail-user-avatar-initials")) {
+        $("rail-user-avatar-initials").textContent = initials;
+        $("rail-user-avatar-initials").classList.toggle("hidden", hasAvatar);
+    }
+    if ($("rail-user-avatar-img")) {
+        if (hasAvatar) $("rail-user-avatar-img").src = u.profile_pic;
+        $("rail-user-avatar-img").classList.toggle("hidden", !hasAvatar);
+    }
     if ($("rail-user-name")) $("rail-user-name").textContent = u.full_name;
     if ($("rail-user-handle")) $("rail-user-handle").textContent = `@${u.username}`;
     if ($("rail-user-role")) $("rail-user-role").textContent = u.role;
@@ -893,12 +967,210 @@ function syncUserIdentityUI() {
     if ($("drawer-user-name")) $("drawer-user-name").textContent = u.full_name;
     if ($("drawer-user-handle")) $("drawer-user-handle").textContent = `@${u.username} • ${u.role}`;
 
-    if ($("prof-avatar-inner")) $("prof-avatar-inner").textContent = initials;
+    if ($("prof-avatar-inner")) {
+        $("prof-avatar-inner").textContent = initials;
+        $("prof-avatar-inner").classList.toggle("hidden", hasAvatar);
+    }
+    if ($("prof-avatar-img")) {
+        if (hasAvatar) $("prof-avatar-img").src = u.profile_pic;
+        $("prof-avatar-img").classList.toggle("hidden", !hasAvatar);
+    }
+    if ($("prof-cover-img")) {
+        if (hasCover) $("prof-cover-img").src = u.cover_photo;
+        $("prof-cover-img").classList.toggle("hidden", !hasCover);
+    }
     if ($("prof-fullname")) $("prof-fullname").textContent = u.full_name;
     if ($("prof-username")) $("prof-username").textContent = `@${u.username}`;
     if ($("prof-role-badge")) $("prof-role-badge").textContent = u.role;
     if ($("prof-theme-label")) {
         $("prof-theme-label").textContent = THEME_REGISTRY[state.theme]?.name || "Twitter / X (Default)";
+    }
+}
+
+async function loadProfilePage() {
+    syncUserIdentityUI();
+    try {
+        const res = await api("/api/profile/activity");
+        state.profileActivity = res.recent_activity || [];
+    } catch (_) {
+        state.profileActivity = [];
+    }
+    renderProfileActivity();
+    refreshIcons();
+}
+
+function renderProfileActivity() {
+    const listEl = $("prof-activity-list");
+    if (!listEl) return;
+    const logs = state.profileActivity || [];
+    if (!logs.length) {
+        listEl.innerHTML = `
+            <div class="erp-detail-card !p-6 text-center text-xs text-[#536471]">
+                No harvest activity logged under your account yet. Use <strong>Log Harvest</strong> to record palm yields.
+            </div>`;
+        return;
+    }
+
+    listEl.innerHTML = logs
+        .map(
+            (l, idx) => `
+        <div data-prof-act-idx="${idx}" class="erp-detail-card cursor-pointer space-y-2.5">
+            <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center gap-2.5 min-w-0">
+                    <div class="w-9 h-9 rounded-full bg-[#0f1419] text-white font-mono-code font-extrabold text-xs flex items-center justify-center shrink-0">
+                        #${l.tree_no || "-"}
+                    </div>
+                    <div class="min-w-0">
+                        <div class="font-extrabold text-xs sm:text-sm text-[#0f1419] truncate">
+                            Palm #${l.tree_no || "-"} &bull; ${esc(l.block_name || "Block")}
+                        </div>
+                        <div class="text-[11px] text-[#536471] truncate">
+                            ${esc(l.division_name || "Uskvalley Division")} &rarr; ${esc(l.field_name || "Field")}
+                        </div>
+                    </div>
+                </div>
+                <span class="px-2.5 py-0.5 rounded-full bg-[#0f1419] text-white font-mono-code font-bold text-[10px] shrink-0">
+                    Round ${l.round_no}
+                </span>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 pt-2 border-t border-[#eff3f4] text-center">
+                <div class="p-2 rounded-xl bg-[#f7f9f9]">
+                    <div class="text-[10px] font-bold uppercase text-[#536471]">Bunches</div>
+                    <div class="text-xs font-mono-code font-extrabold text-[#0f1419] mt-0.5">${l.bunches}</div>
+                </div>
+                <div class="p-2 rounded-xl bg-[#f7f9f9]">
+                    <div class="text-[10px] font-bold uppercase text-[#536471]">Fronds</div>
+                    <div class="text-xs font-mono-code font-extrabold text-[#0f1419] mt-0.5">${l.fronds}</div>
+                </div>
+                <div class="p-2 rounded-xl bg-[#f7f9f9]">
+                    <div class="text-[10px] font-bold uppercase text-[#536471]">Date</div>
+                    <div class="text-[11px] font-mono-code font-bold text-[#0f1419] mt-0.5 truncate">${esc(l.harvest_date)}</div>
+                </div>
+            </div>
+        </div>`
+        )
+        .join("");
+
+    listEl.querySelectorAll("[data-prof-act-idx]").forEach((card) => {
+        card.onclick = () => {
+            const item = logs[Number(card.getAttribute("data-prof-act-idx"))];
+            if (!item) return;
+            openItemDetailModal({
+                badge: `Harvest Log #${item.id} • Round ${item.round_no}`,
+                title: `Palm #${item.tree_no} — ${item.block_name}`,
+                fields: [
+                    { label: "Division", value: item.division_name || "Uskvalley Division" },
+                    { label: "Field & Block", value: `${item.field_name} • ${item.block_name}` },
+                    { label: "Bunches Cut", value: `${item.bunches} Fresh Fruit Bunches`, mono: true },
+                    { label: "Fronds Cut", value: `${item.fronds} Pruned Fronds`, mono: true },
+                    { label: "Harvest Date", value: item.harvest_date, mono: true },
+                    { label: "Logged By", value: item.recorded_by || state.user?.full_name || "Staff" },
+                ],
+            });
+        };
+    });
+}
+
+function readImageFileAsDataUrl(file, maxW = 900, maxH = 900) {
+    return new Promise((resolve, reject) => {
+        if (!file) return reject(new Error("No file selected."));
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("Could not read image file."));
+        reader.onload = () => {
+            const img = new Image();
+            img.onerror = () => reject(new Error("Invalid image format."));
+            img.onload = () => {
+                let w = img.width;
+                let h = img.height;
+                if (w > maxW || h > maxH) {
+                    const ratio = Math.min(maxW / w, maxH / h);
+                    w = Math.round(w * ratio);
+                    h = Math.round(h * ratio);
+                }
+                const canvas = document.createElement("canvas");
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0, w, h);
+                resolve(canvas.toDataURL("image/jpeg", 0.85));
+            };
+            img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+function syncEditProfileModalPreviews() {
+    const u = state.user || {};
+    const initials = (u.full_name || "U")
+        .split(" ")
+        .filter(Boolean)
+        .map((w) => w[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase();
+
+    const draftAvatar = state.editProfileDraft.profile_pic;
+    const draftCover = state.editProfileDraft.cover_photo;
+
+    if ($("ep-avatar-initials")) {
+        $("ep-avatar-initials").textContent = initials;
+        $("ep-avatar-initials").classList.toggle("hidden", Boolean(draftAvatar));
+    }
+    if ($("ep-avatar-preview")) {
+        if (draftAvatar) $("ep-avatar-preview").src = draftAvatar;
+        $("ep-avatar-preview").classList.toggle("hidden", !draftAvatar);
+    }
+    if ($("btn-ep-remove-avatar")) {
+        $("btn-ep-remove-avatar").classList.toggle("hidden", !draftAvatar);
+    }
+
+    if ($("ep-cover-preview")) {
+        if (draftCover) $("ep-cover-preview").src = draftCover;
+        $("ep-cover-preview").classList.toggle("hidden", !draftCover);
+    }
+    if ($("btn-ep-remove-cover")) {
+        $("btn-ep-remove-cover").classList.toggle("hidden", !draftCover);
+    }
+}
+
+function openEditProfileModal() {
+    if (!state.user) return;
+    state.editProfileDraft = {
+        profile_pic: state.user.profile_pic || "",
+        cover_photo: state.user.cover_photo || "",
+    };
+    if ($("ep-fullname")) $("ep-fullname").value = state.user.full_name || "";
+    if ($("ep-username")) $("ep-username").value = state.user.username || "";
+    syncEditProfileModalPreviews();
+    $("modal-edit-profile")?.classList.remove("hidden");
+    refreshIcons();
+}
+
+async function saveEditProfile() {
+    const full_name = ($("ep-fullname")?.value || "").trim();
+    const username = ($("ep-username")?.value || "").trim().toLowerCase().replace(/^@+/, "");
+    if (!full_name || !username) {
+        return toast("Name and Username are required.", "err");
+    }
+    try {
+        const res = await api("/api/profile/update", "POST", {
+            full_name,
+            username,
+            profile_pic: state.editProfileDraft.profile_pic,
+            cover_photo: state.editProfileDraft.cover_photo,
+        });
+        if (res.user) {
+            state.user = { ...state.user, ...res.user };
+        }
+        $("modal-edit-profile")?.classList.add("hidden");
+        syncUserIdentityUI();
+        updateClockAndGreeting();
+        await loadProfilePage();
+        toast(res.message || "Profile updated");
+    } catch (err) {
+        toast(err.message, "err");
     }
 }
 
@@ -986,7 +1258,7 @@ function switchPage(page, pushUrl = true) {
     }
     if (target === "estates") loadEstatesPage();
     if (target === "directory") loadDirectoryPage();
-    if (target === "profile") syncUserIdentityUI();
+    if (target === "profile") loadProfilePage();
     if (target === "settings") applyTheme(state.theme, false);
     refreshIcons();
 }
@@ -1142,7 +1414,8 @@ function getDashboardQuery() {
         periodLabel = `${from} to ${to}`;
     }
 
-    const q = new URLSearchParams({ from, to });
+    const yearMonth = mode === "month" ? ($("flt-month").value || todayStr().slice(0, 7)) : (to || todayStr()).slice(0, 7);
+    const q = new URLSearchParams({ from, to, year_month: yearMonth });
     const estateId = state.hierarchy.estates[0]?.id || 1;
     q.set("estate_id", String(estateId));
 
@@ -2018,25 +2291,88 @@ document.addEventListener("DOMContentLoaded", () => {
         btn.onclick = () => switchPage(btn.getAttribute("data-nav"));
     });
 
-    // Overview Export & Reset
+    // Overview Export (Monthly Tree-by-Tree 3-Round Matrix .xlsx) & Reset
     $("btn-dash-reset").onclick = () => initDashboardFilters();
     $("btn-export-pdf").onclick = () => window.print();
-    $("btn-export-csv").onclick = async () => {
-        const qs = getDashboardQuery();
-        try {
-            const csv = await api(`/api/report.csv?${qs}`);
-            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `elaeis_erp_report_${todayStr()}.csv`;
-            a.click();
-            URL.revokeObjectURL(url);
-            toast("CSV report exported");
-        } catch (_) {
-            toast("CSV exported");
-        }
-    };
+    if ($("btn-export-excel")) {
+        $("btn-export-excel").onclick = async () => {
+            const qs = getDashboardQuery();
+            const qParams = new URLSearchParams(qs);
+            const ym = qParams.get("year_month") || todayStr().slice(0, 7);
+            try {
+                const headers = {};
+                if (state.token) headers["Authorization"] = `Bearer ${state.token}`;
+                const res = await fetch(`/api/report.xlsx?${qs}`, { method: "GET", headers });
+                if (!res.ok) throw new Error(`Export failed (${res.status})`);
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `elaeis_tree_matrix_${ym}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+                toast(`Excel Tree Matrix (${ym}) exported`);
+            } catch (err) {
+                toast(err.message || "Could not export Excel matrix", "err");
+            }
+        };
+    }
+
+    // Twitter/X Edit Profile Modal Controls
+    if ($("btn-open-edit-profile")) {
+        $("btn-open-edit-profile").onclick = openEditProfileModal;
+    }
+    if ($("btn-ep-save-top")) {
+        $("btn-ep-save-top").onclick = () => saveEditProfile();
+    }
+    if ($("form-edit-profile")) {
+        $("form-edit-profile").onsubmit = (e) => {
+            e.preventDefault();
+            saveEditProfile();
+        };
+    }
+    if ($("btn-ep-upload-avatar") && $("ep-avatar-input")) {
+        $("btn-ep-upload-avatar").onclick = () => $("ep-avatar-input").click();
+        $("ep-avatar-input").onchange = async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            try {
+                state.editProfileDraft.profile_pic = await readImageFileAsDataUrl(file, 400, 400);
+                syncEditProfileModalPreviews();
+            } catch (err) {
+                toast(err.message, "err");
+            }
+            e.target.value = "";
+        };
+    }
+    if ($("btn-ep-remove-avatar")) {
+        $("btn-ep-remove-avatar").onclick = () => {
+            state.editProfileDraft.profile_pic = "";
+            syncEditProfileModalPreviews();
+        };
+    }
+    if ($("btn-ep-upload-cover") && $("ep-cover-input")) {
+        $("btn-ep-upload-cover").onclick = () => $("ep-cover-input").click();
+        $("ep-cover-input").onchange = async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            try {
+                state.editProfileDraft.cover_photo = await readImageFileAsDataUrl(file, 1200, 480);
+                syncEditProfileModalPreviews();
+            } catch (err) {
+                toast(err.message, "err");
+            }
+            e.target.value = "";
+        };
+    }
+    if ($("btn-ep-remove-cover")) {
+        $("btn-ep-remove-cover").onclick = () => {
+            state.editProfileDraft.cover_photo = "";
+            syncEditProfileModalPreviews();
+        };
+    }
 
     // Harvests Sub-Tabs (Palm Harvest Logger vs Mill Dispatch Weight)
     document.querySelectorAll("[data-harv-view]").forEach((btn) => {

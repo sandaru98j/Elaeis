@@ -1,9 +1,13 @@
 ﻿import os
+import re
 import math
 import json
 import csv
 import io
+import base64
+import zipfile
 import secrets
+from xml.sax.saxutils import escape as xml_escape
 from datetime import datetime, date
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -18,6 +22,8 @@ from database import (
 )
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+UPLOADS_DIR = os.path.join(STATIC_DIR, "uploads")
+os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 
 def normalize_role(role_str: str) -> str:
@@ -62,9 +68,369 @@ def format_user(row) -> dict:
         "role": role,
         "is_master": is_master,
         "theme": d.get("theme") or "twitter",
+        "profile_pic": d.get("profile_pic") or "",
+        "cover_photo": d.get("cover_photo") or "",
         "assigned_estate_id": d.get("assigned_estate_id") or 1,
         "created_at": d.get("created_at"),
     }
+
+
+def save_uploaded_image(image_value: str, prefix: str, user_id: int) -> str:
+    """
+    Accepts either a base64 Data URI ('data:image/png;base64,...') or an existing path/URL.
+    Saves base64 images to static/uploads/ and returns the public path ('/uploads/...').
+    """
+    val = str(image_value or "").strip()
+    if not val:
+        return ""
+    if val.startswith("data:image/"):
+        match = re.match(r"^data:image/([a-zA-Z0-9+.-]+);base64,(.+)$", val, re.DOTALL)
+        if not match:
+            raise ValueError("Invalid image Data URI format.")
+        ext_raw = match.group(1).lower()
+        ext = "jpg" if ext_raw in ("jpeg", "jpg") else ("webp" if ext_raw == "webp" else ("gif" if ext_raw == "gif" else "png"))
+        raw_bytes = base64.b64decode(match.group(2))
+        filename = f"{prefix}_{user_id}_{secrets.token_hex(4)}.{ext}"
+        file_path = os.path.join(UPLOADS_DIR, filename)
+        with open(file_path, "wb") as f:
+            f.write(raw_bytes)
+        return f"/uploads/{filename}"
+    return val
+
+
+def get_user_recent_activity(conn, user: dict, limit: int = 5) -> list:
+    """
+    Fetches the user's most recent harvest logs (default last 5) for the Twitter/X-style Profile feed.
+    """
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT h.id, h.harvest_date, h.year_month, h.round_number AS round_no,
+               h.bunches_cut AS bunches, h.fronds_cut AS fronds,
+               h.recorded_by_name AS recorded_by, h.created_at,
+               t.tree_number AS tree_no, b.name AS block_name,
+               f.name AS field_name, d.name AS division_name, e.name AS estate_name
+        FROM harvest_logs h
+        JOIN trees t ON t.id = h.tree_id
+        JOIN blocks b ON b.id = t.block_id
+        JOIN fields f ON f.id = b.field_id
+        JOIN divisions d ON d.id = f.division_id
+        JOIN estates e ON e.id = d.estate_id
+        WHERE h.recorded_by_id = ? OR LOWER(h.recorded_by_name) = LOWER(?)
+        ORDER BY h.harvest_date DESC, h.id DESC
+        LIMIT ?
+        """,
+        (user["id"], user["full_name"], limit),
+    )
+    return [dict(r) for r in cur.fetchall()]
+
+
+EXCEL_MATRIX_HEADERS = [
+    "Estate",
+    "Division",
+    "Field",
+    "Block",
+    "Tree Number",
+    "R1 Bunches",
+    "R1 Fronds",
+    "R2 Bunches",
+    "R2 Fronds",
+    "R3 Bunches",
+    "R3 Fronds",
+    "Month Total Bunches",
+    "Month Total Fronds",
+]
+
+
+def query_monthly_tree_matrix(conn, params: dict) -> tuple[str, list]:
+    """
+    Aggregates and pivots harvest_logs by tree_id for a selected year_month (e.g. '2026-11')
+    into Round 1 (days 1-10), Round 2 (days 11-20), and Round 3 (days 21-end).
+    """
+    cur = conn.cursor()
+    year_month = (
+        params.get("year_month")
+        or params.get("month")
+        or (params.get("to") or "")[:7]
+        or (params.get("from") or "")[:7]
+        or date.today().strftime("%Y-%m")
+    )
+    if not re.match(r"^\d{4}-\d{2}$", year_month):
+        year_month = date.today().strftime("%Y-%m")
+
+    where_clauses = ["h.year_month = ?"]
+    sql_args = [year_month]
+
+    if params.get("estate_id"):
+        where_clauses.append("e.id = ?")
+        sql_args.append(int(params["estate_id"]))
+    if params.get("division_id"):
+        where_clauses.append("d.id = ?")
+        sql_args.append(int(params["division_id"]))
+    if params.get("field_id"):
+        where_clauses.append("f.id = ?")
+        sql_args.append(int(params["field_id"]))
+    if params.get("block_id"):
+        where_clauses.append("b.id = ?")
+        sql_args.append(int(params["block_id"]))
+    if params.get("tree_id"):
+        where_clauses.append("t.id = ?")
+        sql_args.append(int(params["tree_id"]))
+
+    round_expr = "COALESCE(h.round_number, CASE WHEN h.day_of_month <= 10 THEN 1 WHEN h.day_of_month <= 20 THEN 2 ELSE 3 END)"
+
+    sql = f"""
+        SELECT
+            e.name AS estate_name,
+            d.name AS division_name,
+            f.name AS field_name,
+            b.name AS block_name,
+            t.id AS tree_id,
+            t.tree_number AS tree_number,
+            COALESCE(SUM(CASE WHEN {round_expr} = 1 THEN h.bunches_cut ELSE 0 END), 0) AS r1_bunches,
+            COALESCE(SUM(CASE WHEN {round_expr} = 1 THEN h.fronds_cut ELSE 0 END), 0) AS r1_fronds,
+            COALESCE(SUM(CASE WHEN {round_expr} = 2 THEN h.bunches_cut ELSE 0 END), 0) AS r2_bunches,
+            COALESCE(SUM(CASE WHEN {round_expr} = 2 THEN h.fronds_cut ELSE 0 END), 0) AS r2_fronds,
+            COALESCE(SUM(CASE WHEN {round_expr} = 3 THEN h.bunches_cut ELSE 0 END), 0) AS r3_bunches,
+            COALESCE(SUM(CASE WHEN {round_expr} = 3 THEN h.fronds_cut ELSE 0 END), 0) AS r3_fronds
+        FROM harvest_logs h
+        JOIN trees t ON t.id = h.tree_id
+        JOIN blocks b ON b.id = t.block_id
+        JOIN fields f ON f.id = b.field_id
+        JOIN divisions d ON d.id = f.division_id
+        JOIN estates e ON e.id = d.estate_id
+        WHERE {' AND '.join(where_clauses)}
+        GROUP BY t.id, e.name, d.name, f.name, b.name, t.tree_number
+        ORDER BY e.id ASC, d.id ASC, f.id ASC, b.id ASC, t.tree_number ASC
+    """
+    cur.execute(sql, sql_args)
+    return year_month, [dict(r) for r in cur.fetchall()]
+
+
+def generate_monthly_tree_matrix_xlsx(conn, params: dict) -> tuple[bytes, str]:
+    """
+    Generates the Monthly Tree-by-Tree 3-Round Matrix Excel (.xlsx) report using openpyxl
+    (with a standards-compliant OpenXML .xlsx fallback if openpyxl is unavailable).
+    """
+    year_month, rows = query_monthly_tree_matrix(conn, params)
+    filename = f"elaeis_tree_matrix_{year_month}.xlsx"
+
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f"Tree Matrix {year_month}"
+
+        header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="0F1419", end_color="0F1419", fill_type="solid")
+        total_fill = PatternFill(start_color="F7F9F9", end_color="F7F9F9", fill_type="solid")
+        bold_font = Font(name="Calibri", size=11, bold=True, color="0F1419")
+        regular_font = Font(name="Calibri", size=11, color="0F1419")
+        thin_border = Border(
+            left=Side(style="thin", color="CFD9DE"),
+            right=Side(style="thin", color="CFD9DE"),
+            top=Side(style="thin", color="CFD9DE"),
+            bottom=Side(style="thin", color="CFD9DE"),
+        )
+
+        # Write Header Row
+        ws.append(EXCEL_MATRIX_HEADERS)
+        for col_idx in range(1, len(EXCEL_MATRIX_HEADERS) + 1):
+            cell = ws.cell(row=1, column=col_idx)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center" if col_idx > 5 else "left", vertical="center")
+            cell.border = thin_border
+
+        # Write Pivoted Tree Rows (1 Row per Tree)
+        for idx, r in enumerate(rows, start=2):
+            r1_b = int(r["r1_bunches"] or 0)
+            r1_f = int(r["r1_fronds"] or 0)
+            r2_b = int(r["r2_bunches"] or 0)
+            r2_f = int(r["r2_fronds"] or 0)
+            r3_b = int(r["r3_bunches"] or 0)
+            r3_f = int(r["r3_fronds"] or 0)
+
+            row_values = [
+                str(r["estate_name"]),
+                str(r["division_name"]),
+                str(r["field_name"]),
+                str(r["block_name"]),
+                f"Palm #{r['tree_number']}",
+                r1_b,
+                r1_f,
+                r2_b,
+                r2_f,
+                r3_b,
+                r3_f,
+                f"=F{idx}+H{idx}+J{idx}",
+                f"=G{idx}+I{idx}+K{idx}",
+            ]
+            ws.append(row_values)
+
+            for col_idx in range(1, 14):
+                c = ws.cell(row=idx, column=col_idx)
+                c.border = thin_border
+                if col_idx >= 12:
+                    c.font = bold_font
+                    c.fill = total_fill
+                    c.alignment = Alignment(horizontal="right", vertical="center")
+                elif col_idx >= 6:
+                    c.font = regular_font
+                    c.alignment = Alignment(horizontal="right", vertical="center")
+                else:
+                    c.font = regular_font
+                    c.alignment = Alignment(horizontal="left", vertical="center")
+
+        # Auto-fit column widths
+        col_widths = [18, 20, 14, 14, 15, 13, 13, 13, 13, 13, 13, 22, 22]
+        for i, w in enumerate(col_widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+        ws.freeze_panes = "A2"
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue(), filename
+
+    except ImportError:
+        return _build_xlsx_zip_fallback(year_month, rows), filename
+
+
+def _build_xlsx_zip_fallback(year_month: str, rows: list) -> bytes:
+    """
+    Pure-Python OpenXML (.xlsx) generator fallback when openpyxl is not installed.
+    Writes the exact 13-column structure with text cells, integer cells, and Excel SUM formulas.
+    """
+    col_letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"]
+    sheet_rows_xml = []
+
+    # Row 1: Headers
+    header_cells = []
+    for c_idx, h_text in enumerate(EXCEL_MATRIX_HEADERS):
+        ref = f"{col_letters[c_idx]}1"
+        header_cells.append(f'<c r="{ref}" s="1" t="inlineStr"><is><t>{xml_escape(h_text)}</t></is></c>')
+    sheet_rows_xml.append(f'<row r="1" ht="24" customHeight="1">{"".join(header_cells)}</row>')
+
+    # Rows 2..N: Pivoted Tree Rows
+    for idx, r in enumerate(rows, start=2):
+        r1_b = int(r["r1_bunches"] or 0)
+        r1_f = int(r["r1_fronds"] or 0)
+        r2_b = int(r["r2_bunches"] or 0)
+        r2_f = int(r["r2_fronds"] or 0)
+        r3_b = int(r["r3_bunches"] or 0)
+        r3_f = int(r["r3_fronds"] or 0)
+        tot_b = r1_b + r2_b + r3_b
+        tot_f = r1_f + r2_f + r3_f
+
+        text_cols = [
+            str(r["estate_name"]),
+            str(r["division_name"]),
+            str(r["field_name"]),
+            str(r["block_name"]),
+            f"Palm #{r['tree_number']}",
+        ]
+        int_cols = [r1_b, r1_f, r2_b, r2_f, r3_b, r3_f]
+
+        cells = []
+        for c_idx, val in enumerate(text_cols):
+            ref = f"{col_letters[c_idx]}{idx}"
+            cells.append(f'<c r="{ref}" s="2" t="inlineStr"><is><t>{xml_escape(val)}</t></is></c>')
+        for offset, val in enumerate(int_cols):
+            ref = f"{col_letters[5 + offset]}{idx}"
+            cells.append(f'<c r="{ref}" s="3" t="n"><v>{val}</v></c>')
+
+        # Column L: Month Total Bunches (Formula + cached integer value)
+        cells.append(f'<c r="L{idx}" s="4" t="n"><f>F{idx}+H{idx}+J{idx}</f><v>{tot_b}</v></c>')
+        # Column M: Month Total Fronds (Formula + cached integer value)
+        cells.append(f'<c r="M{idx}" s="4" t="n"><f>G{idx}+I{idx}+K{idx}</f><v>{tot_f}</v></c>')
+
+        sheet_rows_xml.append(f'<row r="{idx}" ht="20" customHeight="1">{"".join(cells)}</row>')
+
+    sheet_xml = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+  <cols>
+    <col min="1" max="2" width="20" customWidth="1"/>
+    <col min="3" max="5" width="15" customWidth="1"/>
+    <col min="6" max="11" width="13" customWidth="1"/>
+    <col min="12" max="13" width="22" customWidth="1"/>
+  </cols>
+  <sheetData>{"".join(sheet_rows_xml)}</sheetData>
+</worksheet>"""
+
+    styles_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="3">
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><color rgb="FF0F1419"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="4">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF0F1419"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF7F9F9"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border>
+      <left style="thin"><color rgb="FFCFD9DE"/></left>
+      <right style="thin"><color rgb="FFCFD9DE"/></right>
+      <top style="thin"><color rgb="FFCFD9DE"/></top>
+      <bottom style="thin"><color rgb="FFCFD9DE"/></bottom>
+      <diagonal/>
+    </border>
+  </borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="5">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
+    <xf numFmtId="1" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
+    <xf numFmtId="1" fontId="2" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>
+  </cellXfs>
+</styleSheet>"""
+
+    workbook_xml = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Tree Matrix {xml_escape(year_month)}" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>"""
+
+    wb_rels_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>"""
+
+    root_rels_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>"""
+
+    content_types_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>"""
+
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", content_types_xml)
+        zf.writestr("_rels/.rels", root_rels_xml)
+        zf.writestr("xl/workbook.xml", workbook_xml)
+        zf.writestr("xl/_rels/workbook.xml.rels", wb_rels_xml)
+        zf.writestr("xl/styles.xml", styles_xml)
+        zf.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+    return out.getvalue()
 
 
 class ElaeisErpHandler(BaseHTTPRequestHandler):
@@ -91,6 +457,19 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_xlsx(self, xlsx_bytes: bytes, filename: str):
+        self.send_response(200)
+        self.send_header(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(xlsx_bytes)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(xlsx_bytes)
 
     def _read_json(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -166,6 +545,11 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             ".json": "application/json; charset=utf-8",
             ".svg": "image/svg+xml",
             ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+            ".gif": "image/gif",
+            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }
         with open(file_path, "rb") as f:
             content = f.read()
@@ -202,7 +586,29 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             user = self._get_current_user(conn)
             if not user:
                 return self._send_json({"error": "Not authenticated"}, status=401)
-            return self._send_json({"user": user})
+            recent_activity = get_user_recent_activity(conn, user, limit=5)
+            return self._send_json({"user": user, "recent_activity": recent_activity})
+
+        if path == "/api/profile/activity":
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
+            recent_activity = get_user_recent_activity(conn, user, limit=5)
+            return self._send_json({"recent_activity": recent_activity})
+
+        if path in ("/api/report.xlsx", "/api/export/excel"):
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
+            xlsx_bytes, filename = generate_monthly_tree_matrix_xlsx(conn, params)
+            return self._send_xlsx(xlsx_bytes, filename)
+
+        if path == "/api/report/matrix":
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
+            year_month, rows = query_monthly_tree_matrix(conn, params)
+            return self._send_json({"year_month": year_month, "rows": rows})
 
         if path in ("/api/bootstrap", "/api/hierarchy"):
             user = self._require_role(conn, "Harvester")
@@ -615,7 +1021,60 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             conn.commit()
             return self._send_json({"ok": True, "message": "Password updated successfully."})
 
-        # 3b. User UI Theme Persistence (/settings Theme Engine)
+        # 3c. Edit Profile (Full Name, Username, Profile Picture & Cover Photo)
+        if path in ("/api/profile/update", "/api/auth/profile"):
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
+            full_name = str(data.get("full_name") or user["full_name"]).strip()
+            username = str(data.get("username") or user["username"]).strip().lower().lstrip("@")
+            if not full_name or not username:
+                return self._send_json({"error": "Full Name and Username are required."}, status=400)
+            if not re.match(r"^[a-z0-9_.-]{2,40}$", username):
+                return self._send_json(
+                    {"error": "Username must be 2-40 characters (letters, numbers, _, ., -)."},
+                    status=400,
+                )
+
+            cur.execute("SELECT id FROM users WHERE LOWER(username) = ? AND id != ?", (username, user["id"]))
+            if cur.fetchone():
+                return self._send_json({"error": f"Username '@{username}' is already taken."}, status=409)
+
+            profile_pic = user.get("profile_pic") or ""
+            cover_photo = user.get("cover_photo") or ""
+
+            if "profile_pic" in data and data["profile_pic"] is not None:
+                profile_pic = save_uploaded_image(data["profile_pic"], "avatar", user["id"])
+            if "cover_photo" in data and data["cover_photo"] is not None:
+                cover_photo = save_uploaded_image(data["cover_photo"], "cover", user["id"])
+
+            cur.execute(
+                """
+                UPDATE users
+                SET full_name = ?, username = ?, profile_pic = ?, cover_photo = ?
+                WHERE id = ?
+                """,
+                (full_name, username, profile_pic, cover_photo, user["id"]),
+            )
+            cur.execute(
+                "UPDATE harvest_logs SET recorded_by_name = ? WHERE recorded_by_id = ?",
+                (full_name, user["id"]),
+            )
+            cur.execute(
+                "UPDATE dispatch_logs SET recorded_by_name = ? WHERE recorded_by_id = ?",
+                (full_name, user["id"]),
+            )
+            conn.commit()
+
+            cur.execute("SELECT * FROM users WHERE id = ?", (user["id"],))
+            updated_user = format_user(cur.fetchone())
+            return self._send_json(
+                {
+                    "ok": True,
+                    "message": "Profile updated successfully.",
+                    "user": updated_user,
+                }
+            )
         if path == "/api/settings/theme":
             user = self._require_role(conn, "Harvester")
             if not user:

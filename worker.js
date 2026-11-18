@@ -260,6 +260,8 @@ function publicUser(u) {
         role,
         is_master: isMaster,
         theme: u.theme || "twitter",
+        profile_pic: u.profile_pic || "",
+        cover_photo: u.cover_photo || "",
     };
 }
 
@@ -465,10 +467,15 @@ async function currentUser(request, db) {
     if (!token) return null;
     const user = await db
         .prepare(
-            `SELECT u.*, COALESCE(st.value, 'twitter') AS theme
+            `SELECT u.*,
+                    COALESCE(st.value, 'twitter') AS theme,
+                    COALESCE(sp.value, '') AS profile_pic,
+                    COALESCE(sc.value, '') AS cover_photo
              FROM el_sessions s
              JOIN el_users u ON u.id = s.user_id
              LEFT JOIN el_settings st ON st.key = ('user_theme_' || u.id)
+             LEFT JOIN el_settings sp ON sp.key = ('user_pic_' || u.id)
+             LEFT JOIN el_settings sc ON sc.key = ('user_cover_' || u.id)
              WHERE s.token = ? AND s.expires_at > ?`
         )
         .bind(token, nowIso())
@@ -1211,6 +1218,53 @@ async function route(request, env, url) {
     if (!user) fail(401, "Please log in.");
 
     if (method === "GET" && path === "/api/auth/me") return json({ user: publicUser(user) });
+    if (method === "GET" && path === "/api/profile/activity") {
+        const { results } = await db
+            .prepare(
+                `SELECT x.id, x.harvest_date, x.round_no, x.bunches, x.fronds,
+                        t.tree_no, b.name AS block_name, f.name AS field_name, d.name AS division_name,
+                        u.full_name AS recorded_by
+                 FROM el_harvest x ${JOINS} LEFT JOIN el_users u ON u.id = x.user_id
+                 WHERE x.user_id = ?
+                 ORDER BY x.harvest_date DESC, x.id DESC LIMIT 5`
+            )
+            .bind(user.id)
+            .all();
+        return json({ recent_activity: results || [] });
+    }
+    if (method === "POST" && (path === "/api/profile/update" || path === "/api/auth/profile")) {
+        const full_name = str(body.full_name || user.full_name, 80);
+        const username = str(body.username || user.username, 40).toLowerCase().replace(/^@+/, "");
+        if (!full_name || !username) fail(400, "Full Name and Username are required.");
+        const dup = await db
+            .prepare("SELECT id FROM el_users WHERE LOWER(username) = ? AND id != ?")
+            .bind(username, user.id)
+            .first();
+        if (dup) fail(409, `Username '@${username}' is already taken.`);
+        const stmts = [
+            db.prepare("UPDATE el_users SET full_name = ?, username = ? WHERE id = ?").bind(full_name, username, user.id),
+        ];
+        if (body.profile_pic !== undefined) {
+            stmts.push(
+                db
+                    .prepare("INSERT OR REPLACE INTO el_settings (key, value) VALUES (?, ?)")
+                    .bind(`user_pic_${user.id}`, String(body.profile_pic || ""))
+            );
+            user.profile_pic = String(body.profile_pic || "");
+        }
+        if (body.cover_photo !== undefined) {
+            stmts.push(
+                db
+                    .prepare("INSERT OR REPLACE INTO el_settings (key, value) VALUES (?, ?)")
+                    .bind(`user_cover_${user.id}`, String(body.cover_photo || ""))
+            );
+            user.cover_photo = String(body.cover_photo || "");
+        }
+        await db.batch(stmts);
+        user.full_name = full_name;
+        user.username = username;
+        return json({ ok: true, message: "Profile updated successfully.", user: publicUser(user) });
+    }
     if (method === "POST" && path === "/api/auth/logout") {
         await db.prepare("DELETE FROM el_sessions WHERE token = ?").bind(user.token).run();
         return json({ ok: true });

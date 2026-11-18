@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS users (
     is_master INTEGER NOT NULL DEFAULT 0,
     assigned_estate_id INTEGER DEFAULT 1,
     theme TEXT DEFAULT 'twitter',
+    profile_pic TEXT DEFAULT '',
+    cover_photo TEXT DEFAULT '',
     password_hash TEXT NOT NULL,
     reset_token TEXT,
     reset_expires TEXT,

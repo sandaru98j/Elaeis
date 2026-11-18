@@ -158,6 +158,8 @@ def init_db(force_reseed_users: bool = False):
             is_master INTEGER NOT NULL DEFAULT 0,
             assigned_estate_id INTEGER DEFAULT 1,
             theme TEXT DEFAULT 'twitter',
+            profile_pic TEXT DEFAULT '',
+            cover_photo TEXT DEFAULT '',
             password_hash TEXT NOT NULL,
             reset_token TEXT,
             reset_expires TEXT,
@@ -282,11 +284,16 @@ def init_db(force_reseed_users: bool = False):
     cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('gps_threshold_m', '20')")
     cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('season_start_month', '4')")
 
-    # Ensure theme column exists on existing SQLite databases
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'twitter'")
-    except Exception:
-        pass
+    # Ensure theme, profile_pic, and cover_photo columns exist on existing SQLite databases
+    for col_sql in (
+        "ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'twitter'",
+        "ALTER TABLE users ADD COLUMN profile_pic TEXT DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN cover_photo TEXT DEFAULT ''",
+    ):
+        try:
+            cur.execute(col_sql)
+        except Exception:
+            pass
 
     # Seed or refresh ERP users if empty, if force_reseed_users is True, or if master admin sandaru98j is missing
     cur.execute("SELECT COUNT(*) as cnt FROM users WHERE LOWER(username) = 'sandaru98j'")
@@ -397,15 +404,17 @@ def seed_plantation_data(cur):
                 tree_rows,
             )
 
-    # Seed initial harvest logs on Block 1
+    # Seed initial harvest logs on Block 1 across Rounds 1, 2, and 3
     sample_harvest = [
         (1, f"{ym}-04", ym, 4, 1, 12, 8, 8, "Ajith", 0.00002, 0.00001, 4.1),
+        (1, f"{ym}-14", ym, 14, 2, 11, 7, 1, "Sandaruwan Gunathilaka", 0.00001, 0.00002, 3.8),
         (2, f"{ym}-04", ym, 4, 1, 10, 7, 8, "Ajith", 0.00003, -0.00002, 3.9),
+        (2, f"{ym}-22", ym, 22, 3, 9, 6, 1, "Sandaruwan Gunathilaka", 0.00002, -0.00001, 3.9),
         (3, f"{ym}-05", ym, 5, 1, 14, 9, 9, "Baba", 0.00042, 0.00035, 6.2),
         (4, f"{ym}-05", ym, 5, 1, 11, 8, 3, "Raveendra", 0.00001, 0.00002, 3.5),
         (5, today_str, ym, int(today_str[8:10]), cur_round, 15, 10, 8, "Ajith", 0.00002, 0.00002, 4.0),
         (6, today_str, ym, int(today_str[8:10]), cur_round, 9, 6, 9, "Baba", 0.00075, -0.00048, 8.0),
-        (7, today_str, ym, int(today_str[8:10]), cur_round, 13, 8, 8, "Ajith", 0.00001, -0.00001, 3.7),
+        (7, today_str, ym, int(today_str[8:10]), cur_round, 13, 8, 1, "Sandaruwan Gunathilaka", 0.00001, -0.00001, 3.7),
         (8, today_str, ym, int(today_str[8:10]), cur_round, 11, 7, 3, "Raveendra", 0.00002, 0.00001, 4.2),
     ]
     for tno, hdate, ymo, dom, rnd, bunches, fronds, uid, uname, dlat, dlng, acc in sample_harvest:

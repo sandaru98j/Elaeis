@@ -166,8 +166,9 @@
                 <div class="pt-3 border-t border-[#eff3f4]">
                     <div class="p-2 rounded-full hover:bg-[#f7f9f9] flex items-center justify-between gap-2 transition">
                         <button type="button" id="btn-rail-profile" class="flex items-center gap-2.5 min-w-0 text-left flex-1">
-                            <div id="rail-user-avatar" class="w-10 h-10 rounded-full bg-[#0f1419] text-white font-extrabold text-xs flex items-center justify-center shrink-0">
-                                SG
+                            <div id="rail-user-avatar" class="w-10 h-10 rounded-full bg-[#0f1419] text-white font-extrabold text-xs flex items-center justify-center shrink-0 overflow-hidden">
+                                <img id="rail-user-avatar-img" src="" alt="" class="hidden w-full h-full object-cover" />
+                                <span id="rail-user-avatar-initials">SG</span>
                             </div>
                             <div class="hidden lg:block min-w-0">
                                 <div id="rail-user-name" class="text-xs font-extrabold text-[#0f1419] truncate">Sandaruwan Gunathilaka</div>
@@ -248,9 +249,9 @@
                                     <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
                                     <span>Reset</span>
                                 </button>
-                                <button type="button" id="btn-export-csv" class="x-btn-outline">
-                                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
-                                    <span>CSV</span>
+                                <button type="button" id="btn-export-excel" class="x-btn-outline" title="Download Monthly Tree-by-Tree 3-Round Excel Matrix (.xlsx)">
+                                    <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+                                    <span>Excel (.xlsx)</span>
                                 </button>
                                 <button type="button" id="btn-export-pdf" class="x-btn-primary !py-1.5 !px-3.5 !text-xs">
                                     <i data-lucide="printer" class="w-3.5 h-3.5"></i>
@@ -746,107 +747,63 @@
                 </section>
 
                 <!-- ============================================================
-                     VIEW 5: PROFILE (Secure ERP Account & Standard Password Change)
+                     VIEW 5: PROFILE (Twitter/X Style Profile Header + Recent Activity Feed)
                      ============================================================ -->
                 <section id="page-profile" class="page-view hidden divide-y divide-[#eff3f4]">
-                    <!-- Twitter/X Profile Header Banner & Avatar -->
+                    <!-- Twitter/X Profile Banner, Avatar & Edit Profile Button -->
                     <div class="w-full max-w-full box-border">
-                        <div class="h-28 bg-[#0f1419] relative"></div>
-                        <div class="px-4 sm:px-6 pb-6">
-                            <div class="flex items-end justify-between -mt-10 mb-3 gap-2">
-                                <div id="prof-avatar" class="w-20 h-20 rounded-full bg-white p-1 border-4 border-white shrink-0">
-                                    <div id="prof-avatar-inner" class="w-full h-full rounded-full bg-[#0f1419] text-white font-extrabold text-xl flex items-center justify-center">
+                        <!-- Cover Photo Banner -->
+                        <div id="prof-cover-wrap" class="h-32 sm:h-44 bg-[#0f1419] relative overflow-hidden">
+                            <img id="prof-cover-img" src="" alt="Cover photo" class="hidden w-full h-full object-cover" />
+                        </div>
+
+                        <div class="px-4 sm:px-6 pb-5">
+                            <!-- Avatar & Edit Profile Action Row -->
+                            <div class="flex items-end justify-between -mt-10 sm:-mt-12 mb-3 gap-2 relative z-10">
+                                <div id="prof-avatar" class="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-white p-1 border-4 border-white shrink-0 overflow-hidden shadow-sm">
+                                    <img id="prof-avatar-img" src="" alt="Profile picture" class="hidden w-full h-full rounded-full object-cover" />
+                                    <div id="prof-avatar-inner" class="w-full h-full rounded-full bg-[#0f1419] text-white font-extrabold text-xl sm:text-2xl flex items-center justify-center">
                                         SG
                                     </div>
                                 </div>
-                                <span id="prof-role-badge" class="px-3.5 py-1 rounded-full bg-[#0f1419] text-white text-xs font-extrabold">
-                                    Master Admin
-                                </span>
+                                <div class="flex items-center gap-2">
+                                    <span id="prof-role-badge" class="px-3 py-1 rounded-full bg-[#eff3f4] text-[#0f1419] text-xs font-extrabold">
+                                        Master Admin
+                                    </span>
+                                    <button type="button" id="btn-open-edit-profile" class="x-btn-outline !py-2 !px-4 !text-xs !font-extrabold">
+                                        Edit profile
+                                    </button>
+                                </div>
                             </div>
-                            <h3 id="prof-fullname" class="text-xl font-extrabold text-[#0f1419]">Sandaruwan Gunathilaka</h3>
-                            <div id="prof-username" class="text-sm font-mono-code text-[#536471]">@sandaru98j</div>
 
-                            <!-- Structured Account Details Grid -->
-                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
-                                <div class="erp-card !p-3.5">
-                                    <div class="text-[10px] font-bold uppercase tracking-wider text-[#536471]">Assigned Estate</div>
-                                    <div class="text-xs font-extrabold text-[#0f1419] mt-1 flex items-center gap-1.5">
-                                        <i data-lucide="map-pin" class="w-3.5 h-3.5 shrink-0"></i>
-                                        <span class="truncate">Uskvalley Estate, Baduraliya</span>
-                                    </div>
-                                </div>
-                                <div class="erp-card !p-3.5">
-                                    <div class="text-[10px] font-bold uppercase tracking-wider text-[#536471]">Authentication Mode</div>
-                                    <div class="text-xs font-extrabold text-[#0f1419] mt-1 flex items-center gap-1.5">
-                                        <i data-lucide="shield-check" class="w-3.5 h-3.5 shrink-0"></i>
-                                        <span class="truncate">Closed Corporate ERP</span>
-                                    </div>
-                                </div>
-                                <div class="erp-card !p-3.5">
-                                    <div class="text-[10px] font-bold uppercase tracking-wider text-[#536471]">Active Theme</div>
-                                    <div class="text-xs font-extrabold text-[#0f1419] mt-1 flex items-center justify-between gap-1.5">
-                                        <span id="prof-theme-label" class="truncate">Twitter / X (Default)</span>
-                                        <button type="button" data-nav="settings" class="text-[11px] underline font-bold">Change</button>
-                                    </div>
-                                </div>
+                            <!-- User Name & Handle Only (Clean Twitter/X Bio Block) -->
+                            <div class="space-y-0.5">
+                                <h3 id="prof-fullname" class="text-xl sm:text-2xl font-extrabold text-[#0f1419] leading-tight">Sandaruwan Gunathilaka</h3>
+                                <div id="prof-username" class="text-sm font-mono-code text-[#536471]">@sandaru98j</div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Standard Secure Change Password Form (No Hardcoded Password Mention) -->
-                    <div class="p-4 sm:p-6 w-full max-w-full box-border">
-                        <div class="erp-detail-card !p-5 sm:!p-6 max-w-lg space-y-4">
-                            <div class="flex items-start gap-3">
-                                <div class="w-9 h-9 rounded-full bg-[#f7f9f9] border border-[#cfd9de] flex items-center justify-center shrink-0">
-                                    <i data-lucide="lock" class="w-4 h-4 text-[#0f1419]"></i>
-                                </div>
-                                <div>
-                                    <h4 class="text-sm font-extrabold text-[#0f1419]">Change Password</h4>
-                                    <p class="text-xs text-[#536471] mt-0.5">Ensure your corporate ERP account stays protected by using a strong, unique password.</p>
-                                </div>
+                    <!-- User's Recent Activity Feed (Last 5 Harvests Logged) -->
+                    <div class="p-4 sm:p-6 w-full max-w-full box-border space-y-4">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="activity" class="w-4 h-4 text-[#0f1419]"></i>
+                                <h4 class="text-sm sm:text-base font-extrabold text-[#0f1419]">Recent Activity</h4>
+                                <span class="text-xs text-[#536471]">&bull; Last 5 Harvests Logged</span>
                             </div>
-
-                            <form id="form-profile-password" class="space-y-3.5 pt-1">
-                                <div>
-                                    <label for="prof-cur-password" class="text-[11px] font-bold text-[#536471] block mb-1">Current Password</label>
-                                    <div class="relative">
-                                        <input id="prof-cur-password" type="password" required autocomplete="current-password" placeholder="Enter current password" class="x-input !pr-10" />
-                                        <button type="button" data-toggle-pass="prof-cur-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-[#536471] hover:text-[#0f1419]">
-                                            <i data-lucide="eye" class="w-4 h-4"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label for="prof-new-password" class="text-[11px] font-bold text-[#536471] block mb-1">New Password</label>
-                                    <div class="relative">
-                                        <input id="prof-new-password" type="password" required minlength="6" autocomplete="new-password" placeholder="Enter new password (min. 6 characters)" class="x-input !pr-10" />
-                                        <button type="button" data-toggle-pass="prof-new-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-[#536471] hover:text-[#0f1419]">
-                                            <i data-lucide="eye" class="w-4 h-4"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label for="prof-confirm-password" class="text-[11px] font-bold text-[#536471] block mb-1">Confirm New Password</label>
-                                    <div class="relative">
-                                        <input id="prof-confirm-password" type="password" required minlength="6" autocomplete="new-password" placeholder="Re-enter new password" class="x-input !pr-10" />
-                                        <button type="button" data-toggle-pass="prof-confirm-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-[#536471] hover:text-[#0f1419]">
-                                            <i data-lucide="eye" class="w-4 h-4"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="pt-1">
-                                    <button type="submit" class="x-btn-primary">
-                                        <i data-lucide="key-round" class="w-4 h-4"></i>
-                                        <span>Update Password</span>
-                                    </button>
-                                </div>
-                            </form>
+                            <button type="button" data-nav="harvests" class="x-btn-outline !py-1 !px-3 !text-xs">
+                                <span>Log Harvest</span>
+                                <i data-lucide="arrow-up-right" class="w-3.5 h-3.5"></i>
+                            </button>
                         </div>
+
+                        <div id="prof-activity-list" class="space-y-3 w-full max-w-full box-border"></div>
                     </div>
                 </section>
 
                 <!-- ============================================================
-                     VIEW 6: SETTINGS (/settings Route & 4-Theme CSS Custom Property Engine)
+                     VIEW 6: SETTINGS (/settings Route: 4-Theme Engine + Password Management)
                      ============================================================ -->
                 <section id="page-settings" class="page-view hidden divide-y divide-[#eff3f4]">
                     <div class="p-4 sm:p-6 space-y-6 w-full max-w-full box-border">
@@ -855,7 +812,7 @@
                             <div>
                                 <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#f7f9f9] border border-[#cfd9de] text-[11px] font-mono-code font-bold text-[#0f1419] mb-2">
                                     <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-                                    <span>/settings &bull; Theme Engine</span>
+                                    <span>/settings &bull; Theme Engine &amp; Security</span>
                                 </div>
                                 <h3 class="text-lg sm:text-xl font-extrabold text-[#0f1419]">Appearance &amp; Interface Theme</h3>
                                 <p class="text-xs text-[#536471] mt-0.5">
@@ -955,29 +912,53 @@
                             </button>
                         </div>
 
-                        <!-- Workspace & Mobile Telemetry Preferences Card -->
+                        <!-- Password Management Section (Moved from Profile to /settings) -->
                         <div class="erp-detail-card !p-5 sm:!p-6 space-y-4">
-                            <div class="flex items-center justify-between">
+                            <div class="flex items-start gap-3">
+                                <div class="w-9 h-9 rounded-full bg-[#f7f9f9] border border-[#cfd9de] flex items-center justify-center shrink-0">
+                                    <i data-lucide="lock" class="w-4 h-4 text-[#0f1419]"></i>
+                                </div>
                                 <div>
-                                    <h4 class="text-sm font-extrabold text-[#0f1419]">Device &amp; Telemetry Diagnostics</h4>
-                                    <p class="text-xs text-[#536471] mt-0.5">Live status of your mobile/desktop ERP session and persisted configuration</p>
-                                </div>
-                                <i data-lucide="Sliders" class="w-4 h-4 text-[#536471]"></i>
-                            </div>
-                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                                <div class="erp-card !p-3.5">
-                                    <div class="text-[10px] font-bold uppercase text-[#536471]">Theme Persistence</div>
-                                    <div id="set-diag-storage" class="font-mono-code font-extrabold text-[#0f1419] mt-1">localStorage + Profile Sync</div>
-                                </div>
-                                <div class="erp-card !p-3.5">
-                                    <div class="text-[10px] font-bold uppercase text-[#536471]">GPS Compliance Radius</div>
-                                    <div id="set-diag-gps" class="font-mono-code font-extrabold text-[#0f1419] mt-1">20 meters</div>
-                                </div>
-                                <div class="erp-card !p-3.5">
-                                    <div class="text-[10px] font-bold uppercase text-[#536471]">Active Route</div>
-                                    <div id="set-diag-route" class="font-mono-code font-extrabold text-[#0f1419] mt-1">/settings</div>
+                                    <h4 class="text-sm sm:text-base font-extrabold text-[#0f1419]">Password &amp; Account Security</h4>
+                                    <p class="text-xs text-[#536471] mt-0.5">Update your corporate password. All fields are masked and validated before saving.</p>
                                 </div>
                             </div>
+
+                            <form id="form-profile-password" class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1 items-end">
+                                <div>
+                                    <label for="prof-cur-password" class="text-[11px] font-bold text-[#536471] block mb-1">Current Password</label>
+                                    <div class="relative">
+                                        <input id="prof-cur-password" type="password" required autocomplete="current-password" placeholder="Current password" class="x-input !pr-10" />
+                                        <button type="button" data-toggle-pass="prof-cur-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-[#536471] hover:text-[#0f1419]">
+                                            <i data-lucide="eye" class="w-4 h-4"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="prof-new-password" class="text-[11px] font-bold text-[#536471] block mb-1">New Password</label>
+                                    <div class="relative">
+                                        <input id="prof-new-password" type="password" required minlength="6" autocomplete="new-password" placeholder="New password (min. 6)" class="x-input !pr-10" />
+                                        <button type="button" data-toggle-pass="prof-new-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-[#536471] hover:text-[#0f1419]">
+                                            <i data-lucide="eye" class="w-4 h-4"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="prof-confirm-password" class="text-[11px] font-bold text-[#536471] block mb-1">Confirm New Password</label>
+                                    <div class="relative">
+                                        <input id="prof-confirm-password" type="password" required minlength="6" autocomplete="new-password" placeholder="Re-enter new password" class="x-input !pr-10" />
+                                        <button type="button" data-toggle-pass="prof-confirm-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-[#536471] hover:text-[#0f1419]">
+                                            <i data-lucide="eye" class="w-4 h-4"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="sm:col-span-3 pt-1">
+                                    <button type="submit" class="x-btn-primary">
+                                        <i data-lucide="key-round" class="w-4 h-4"></i>
+                                        <span>Update Password</span>
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </section>
@@ -1211,8 +1192,72 @@
     </div>
 
     <!-- ========================================================================
-         3. MODALS (Harvest Logger, Structured Item Detail, Force Password, New User, Mapper, CRUD)
+         3. MODALS (Edit Profile, Harvest Logger, Structured Item Detail, Force Password, New User, Mapper, CRUD)
          ======================================================================== -->
+
+    <!-- TWITTER / X STYLE EDIT PROFILE MODAL -->
+    <div id="modal-edit-profile" class="hidden fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="modal-sheet w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl border overflow-hidden max-h-[92vh] overflow-y-auto box-border">
+            <!-- Modal Top Bar (Close + Title + Save Pill) -->
+            <div class="px-4 py-3 border-b border-[#eff3f4] flex items-center justify-between gap-2 sticky top-0 bg-white z-20">
+                <div class="flex items-center gap-3">
+                    <button type="button" data-close-modal="modal-edit-profile" class="p-1.5 rounded-full text-[#0f1419] hover:bg-[#f7f9f9]">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                    <h4 class="text-base font-extrabold text-[#0f1419]">Edit profile</h4>
+                </div>
+                <button type="button" id="btn-ep-save-top" class="x-btn-primary !py-1.5 !px-4 !text-xs">
+                    Save
+                </button>
+            </div>
+
+            <!-- Interactive Cover Photo Banner -->
+            <div class="relative h-32 sm:h-40 bg-[#0f1419] overflow-hidden">
+                <img id="ep-cover-preview" src="" alt="Cover preview" class="hidden w-full h-full object-cover" />
+                <div class="absolute inset-0 bg-black/35 flex items-center justify-center gap-3">
+                    <button type="button" id="btn-ep-upload-cover" title="Upload Cover Photo" class="w-10 h-10 rounded-full bg-black/60 text-white hover:bg-black/80 flex items-center justify-center transition">
+                        <i data-lucide="camera" class="w-5 h-5"></i>
+                    </button>
+                    <button type="button" id="btn-ep-remove-cover" title="Remove Cover Photo" class="hidden w-10 h-10 rounded-full bg-black/60 text-white hover:bg-black/80 flex items-center justify-center transition">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <input id="ep-cover-input" type="file" accept="image/*" class="hidden" />
+            </div>
+
+            <!-- Interactive Avatar Upload + Form Fields -->
+            <form id="form-edit-profile" class="px-4 sm:px-6 pb-6 space-y-4">
+                <div class="flex items-end justify-between -mt-10 sm:-mt-12 mb-2 relative z-10">
+                    <div class="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-white p-1 border-4 border-white overflow-hidden shadow-sm">
+                        <img id="ep-avatar-preview" src="" alt="Avatar preview" class="hidden w-full h-full rounded-full object-cover" />
+                        <div id="ep-avatar-initials" class="w-full h-full rounded-full bg-[#0f1419] text-white font-extrabold text-xl flex items-center justify-center">
+                            SG
+                        </div>
+                        <button type="button" id="btn-ep-upload-avatar" title="Upload Profile Picture" class="absolute inset-0 rounded-full bg-black/40 text-white hover:bg-black/55 flex items-center justify-center transition">
+                            <i data-lucide="camera" class="w-5 h-5"></i>
+                        </button>
+                        <input id="ep-avatar-input" type="file" accept="image/*" class="hidden" />
+                    </div>
+                    <button type="button" id="btn-ep-remove-avatar" class="hidden text-xs font-bold text-[#f4212e] hover:underline">
+                        Remove avatar
+                    </button>
+                </div>
+
+                <div>
+                    <label for="ep-fullname" class="text-[11px] font-bold uppercase tracking-wider text-[#536471] block mb-1">Name</label>
+                    <input id="ep-fullname" type="text" required maxlength="80" placeholder="Your full name" class="x-input !py-2.5" />
+                </div>
+
+                <div>
+                    <label for="ep-username" class="text-[11px] font-bold uppercase tracking-wider text-[#536471] block mb-1">Username</label>
+                    <div class="relative">
+                        <i data-lucide="at-sign" class="w-4 h-4 text-[#536471] absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input id="ep-username" type="text" required maxlength="40" placeholder="username" class="x-input !pl-9 !py-2.5 font-mono-code" />
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <!-- STRUCTURED ITEM DETAIL MODAL -->
     <div id="modal-item-detail" class="hidden fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4">
