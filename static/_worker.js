@@ -259,6 +259,7 @@ function publicUser(u) {
         full_name: u.full_name,
         role,
         is_master: isMaster,
+        theme: u.theme || "twitter",
     };
 }
 
@@ -464,7 +465,10 @@ async function currentUser(request, db) {
     if (!token) return null;
     const user = await db
         .prepare(
-            `SELECT u.* FROM el_sessions s JOIN el_users u ON u.id = s.user_id
+            `SELECT u.*, COALESCE(st.value, 'twitter') AS theme
+             FROM el_sessions s
+             JOIN el_users u ON u.id = s.user_id
+             LEFT JOIN el_settings st ON st.key = ('user_theme_' || u.id)
              WHERE s.token = ? AND s.expires_at > ?`
         )
         .bind(token, nowIso())
@@ -495,7 +499,12 @@ async function handleLogin(db, body) {
     const username = str(body.username || body.identifier, 80).toLowerCase();
     if (!username) fail(400, "Enter your Username.");
     const user = await db
-        .prepare("SELECT * FROM el_users WHERE LOWER(username) = ? LIMIT 1")
+        .prepare(
+            `SELECT u.*, COALESCE(st.value, 'twitter') AS theme
+             FROM el_users u
+             LEFT JOIN el_settings st ON st.key = ('user_theme_' || u.id)
+             WHERE LOWER(u.username) = ? LIMIT 1`
+        )
         .bind(username)
         .first();
     const ok = user && (await verifyPassword(String(body.password || ""), user.pass_hash));
@@ -1209,6 +1218,15 @@ async function route(request, env, url) {
     if (method === "POST" && path === "/api/auth/change-password") {
         return json(await handleChangePassword(db, user, body));
     }
+    if (method === "POST" && path === "/api/settings/theme") {
+        const validThemes = ["twitter", "dracula-dark", "dracula-light", "nord"];
+        const nextTheme = validThemes.includes(body.theme) ? body.theme : "twitter";
+        await db
+            .prepare("INSERT OR REPLACE INTO el_settings (key, value) VALUES (?, ?)")
+            .bind(`user_theme_${user.id}`, nextTheme)
+            .run();
+        return json({ ok: true, theme: nextTheme });
+    }
 
     // Approved users
     if (method === "GET" && path === "/api/bootstrap") {
@@ -1268,7 +1286,11 @@ export default {
     async fetch(request, env) {
         const url = new URL(request.url);
         if (!url.pathname.startsWith("/api/")) {
-            return env.ASSETS.fetch(request);
+            const assetRes = await env.ASSETS.fetch(request);
+            if (assetRes.status === 404 && !url.pathname.includes(".")) {
+                return env.ASSETS.fetch(new Request(new URL("/index.html", url.origin), request));
+            }
+            return assetRes;
         }
         if (!env.DB) {
             return json({ error: "D1 binding 'DB' is missing in wrangler.toml." }, 500);

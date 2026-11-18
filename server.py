@@ -61,6 +61,7 @@ def format_user(row) -> dict:
         "full_name": d["full_name"],
         "role": role,
         "is_master": is_master,
+        "theme": d.get("theme") or "twitter",
         "assigned_estate_id": d.get("assigned_estate_id") or 1,
         "created_at": d.get("created_at"),
     }
@@ -613,6 +614,18 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             cur.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new_pw), user["id"]))
             conn.commit()
             return self._send_json({"ok": True, "message": "Password updated successfully."})
+
+        # 3b. User UI Theme Persistence (/settings Theme Engine)
+        if path == "/api/settings/theme":
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
+            theme = str(data.get("theme") or "twitter").strip().lower()
+            if theme not in ("twitter", "dracula-dark", "dracula-light", "nord"):
+                theme = "twitter"
+            cur.execute("UPDATE users SET theme = ? WHERE id = ?", (theme, user["id"]))
+            conn.commit()
+            return self._send_json({"ok": True, "theme": theme})
 
         # 4. Log Tree Harvest
         if path == "/api/harvest":

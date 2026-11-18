@@ -88,32 +88,33 @@ def seed_erp_users(cur):
     """
     cur.execute("DELETE FROM sessions")
     cur.execute("DELETE FROM users")
+    cur.execute("DELETE FROM sqlite_sequence WHERE name = 'users'")
 
     default_pwd_hash = hash_password(INITIAL_ERP_PASSWORD)
 
-    # (username, full_name, role, is_master, assigned_estate_id)
+    # (id, username, full_name, role, is_master, assigned_estate_id)
     erp_users = [
         # Master Admin
-        ("sandaru98j", "Sandaruwan Gunathilaka", "Master Admin", 1, 1),
+        (1, "sandaru98j", "Sandaruwan Gunathilaka", "Master Admin", 1, 1),
         # Admin (Manager)
-        ("sandun", "Sandun (Estate Manager)", "Admin", 0, 1),
+        (2, "sandun", "Sandun (Estate Manager)", "Admin", 0, 1),
         # Supervisors
-        ("raveendra", "Raveendra", "Supervisor", 0, 1),
-        ("pasindu", "Pasindu", "Supervisor", 0, 1),
-        ("kavindu", "Kavindu", "Supervisor", 0, 1),
-        ("muditha", "Muditha", "Supervisor", 0, 1),
-        ("rajasekaran", "Rajasekaran", "Supervisor", 0, 1),
+        (3, "raveendra", "Raveendra", "Supervisor", 0, 1),
+        (4, "pasindu", "Pasindu", "Supervisor", 0, 1),
+        (5, "kavindu", "Kavindu", "Supervisor", 0, 1),
+        (6, "muditha", "Muditha", "Supervisor", 0, 1),
+        (7, "rajasekaran", "Rajasekaran", "Supervisor", 0, 1),
         # Harvesters
-        ("ajith", "Ajith", "Harvester", 0, 1),
-        ("baba", "Baba", "Harvester", 0, 1),
+        (8, "ajith", "Ajith", "Harvester", 0, 1),
+        (9, "baba", "Baba", "Harvester", 0, 1),
     ]
 
     cur.executemany(
         """
-        INSERT INTO users (username, email, phone, full_name, role, is_master, assigned_estate_id, password_hash)
-        VALUES (?, '', '', ?, ?, ?, ?, ?)
+        INSERT INTO users (id, username, email, phone, full_name, role, is_master, assigned_estate_id, password_hash)
+        VALUES (?, ?, '', '', ?, ?, ?, ?, ?)
         """,
-        [(u, fn, r, m, est_id, default_pwd_hash) for (u, fn, r, m, est_id) in erp_users],
+        [(uid, u, fn, r, m, est_id, default_pwd_hash) for (uid, u, fn, r, m, est_id) in erp_users],
     )
 
 
@@ -156,6 +157,7 @@ def init_db(force_reseed_users: bool = False):
             role TEXT NOT NULL DEFAULT 'Harvester',
             is_master INTEGER NOT NULL DEFAULT 0,
             assigned_estate_id INTEGER DEFAULT 1,
+            theme TEXT DEFAULT 'twitter',
             password_hash TEXT NOT NULL,
             reset_token TEXT,
             reset_expires TEXT,
@@ -279,6 +281,12 @@ def init_db(force_reseed_users: bool = False):
 
     cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('gps_threshold_m', '20')")
     cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('season_start_month', '4')")
+
+    # Ensure theme column exists on existing SQLite databases
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'twitter'")
+    except Exception:
+        pass
 
     # Seed or refresh ERP users if empty, if force_reseed_users is True, or if master admin sandaru98j is missing
     cur.execute("SELECT COUNT(*) as cnt FROM users WHERE LOWER(username) = 'sandaru98j'")

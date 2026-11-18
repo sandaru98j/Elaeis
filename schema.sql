@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT NOT NULL DEFAULT 'Harvester',
     is_master INTEGER NOT NULL DEFAULT 0,
     assigned_estate_id INTEGER DEFAULT 1,
+    theme TEXT DEFAULT 'twitter',
     password_hash TEXT NOT NULL,
     reset_token TEXT,
     reset_expires TEXT,

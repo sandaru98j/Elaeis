@@ -1,6 +1,6 @@
 ﻿// ============================================================================
-// ELAEIS — Corporate ERP (Palm-based Crop Monitoring System)
-// Twitter / X 3-Column Frontend Controller
+// ELAEIS — Closed Corporate ERP (Uskvalley Estate)
+// Twitter / X 3-Column Frontend Controller + 4-Theme CSS Custom Property Engine
 // ============================================================================
 
 const ROLE_RANK = {
@@ -20,7 +20,31 @@ const PAGE_TITLES = {
     estates: "Estates",
     directory: "Directory",
     profile: "Profile",
+    settings: "Settings",
     info: "Info",
+};
+
+const THEME_REGISTRY = {
+    twitter: {
+        id: "twitter",
+        name: "Twitter / X (Default)",
+        short: "Twitter/X",
+    },
+    "dracula-dark": {
+        id: "dracula-dark",
+        name: "Dracula Dark",
+        short: "Dracula Dark",
+    },
+    "dracula-light": {
+        id: "dracula-light",
+        name: "Dracula Light",
+        short: "Dracula Light",
+    },
+    nord: {
+        id: "nord",
+        name: "Nord",
+        short: "Nord",
+    },
 };
 
 function normalizeRole(r) {
@@ -31,16 +55,24 @@ function normalizeRole(r) {
     return "Harvester";
 }
 
+function getInitialRouteFromLocation() {
+    const raw = (window.location.pathname || "/").replace(/^\/+|\/+$/g, "").toLowerCase();
+    if (PAGE_TITLES[raw]) return raw;
+    return "overview";
+}
+
 const state = {
     token: localStorage.getItem("el_token") || "",
+    theme: localStorage.getItem("elaeis_theme") || "twitter",
     user: null,
-    activePage: "overview",
+    activePage: getInitialRouteFromLocation(),
     harvestView: "trees",
     estatesTab: "hierarchy",
     gps: { lat: 6.14224, lng: 80.36518, acc: 4.2, live: false },
     hierarchy: { estates: [], divisions: [], fields: [], blocks: [] },
     settings: { gps_threshold_m: 20, season_start_month: 4 },
     dashTrees: [],
+    recentLogs: [],
     harvBlock: { block_id: null, trees: [], filter: "all", search: "" },
     dispatches: [],
     mapBlock: { block_id: null, trees: [] },
@@ -111,12 +143,75 @@ function toast(msg, type = "ok") {
             ? "bg-amber-500 text-[#0f1419] border-amber-600"
             : "bg-[#0f1419] text-white border-[#0f1419]";
     el.className = `pointer-events-auto px-4 py-3 rounded-full border shadow-md text-xs font-bold flex items-center justify-between gap-3 transition ${colors}`;
-    el.innerHTML = `<span>${esc(msg)}</span>`;
+    el.innerHTML = `<span class="truncate">${esc(msg)}</span>`;
     box.appendChild(el);
     setTimeout(() => {
         el.style.opacity = "0";
         setTimeout(() => el.remove(), 200);
     }, 3200);
+}
+
+// ----------------------------------------------------------------------------
+// 4-Theme CSS Custom Property Engine
+// ----------------------------------------------------------------------------
+function applyTheme(themeId, persistRemote = true) {
+    const validTheme = THEME_REGISTRY[themeId] ? themeId : "twitter";
+    state.theme = validTheme;
+
+    document.documentElement.setAttribute("data-theme", validTheme);
+    if (document.body) {
+        document.body.setAttribute("data-theme", validTheme);
+    }
+
+    try {
+        localStorage.setItem("elaeis_theme", validTheme);
+    } catch (_) {}
+
+    // Update Settings UI & Profile UI badges
+    const meta = THEME_REGISTRY[validTheme];
+    if ($("settings-active-theme-pill")) {
+        $("settings-active-theme-pill").textContent = `Active: ${meta.short}`;
+    }
+    if ($("prof-theme-label")) {
+        $("prof-theme-label").textContent = meta.name;
+    }
+
+    document.querySelectorAll("[data-theme-select]").forEach((card) => {
+        const isCurrent = card.getAttribute("data-theme-select") === validTheme;
+        card.classList.toggle("active-theme", isCurrent);
+    });
+
+    document.querySelectorAll("[data-theme-check]").forEach((badge) => {
+        const isCurrent = badge.getAttribute("data-theme-check") === validTheme;
+        badge.classList.toggle("hidden", !isCurrent);
+    });
+
+    if (persistRemote && state.token) {
+        api("/api/settings/theme", "POST", { theme: validTheme }).catch(() => {});
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Structured Item Detail Modal Helper
+// ----------------------------------------------------------------------------
+function openItemDetailModal({ badge, title, fields }) {
+    if ($("mid-badge")) $("mid-badge").textContent = badge || "Record Details";
+    if ($("mid-title")) $("mid-title").textContent = title || "Details";
+    if ($("mid-content")) {
+        $("mid-content").innerHTML = (fields || [])
+            .map(
+                (f) => `
+            <div class="erp-card !p-3.5 ${f.full ? "sm:col-span-2" : ""}">
+                <div class="text-[10px] font-bold uppercase tracking-wider text-[#536471]">${esc(f.label)}</div>
+                <div class="text-xs font-extrabold text-[#0f1419] mt-1 ${f.mono ? "font-mono-code" : ""} break-words">${esc(f.value)}</div>
+            </div>`
+            )
+            .join("");
+    }
+    if ($("modal-item-detail")) {
+        $("modal-item-detail").classList.remove("hidden");
+    }
+    refreshIcons();
 }
 
 // ----------------------------------------------------------------------------
@@ -197,7 +292,7 @@ function updateGpsHeader() {
     const dot = $("gps-dot");
     const lbl = $("gps-label");
     if (!dot || !lbl) return;
-    dot.className = `w-2 h-2 rounded-full ${state.gps.live ? "bg-[#00ba7c] animate-pulse" : "bg-[#00ba7c]"}`;
+    dot.className = `w-2 h-2 rounded-full shrink-0 ${state.gps.live ? "bg-[#00ba7c] animate-pulse" : "bg-[#00ba7c]"}`;
     lbl.textContent = `${state.gps.lat.toFixed(4)}, ${state.gps.lng.toFixed(4)}`;
 }
 
@@ -227,15 +322,15 @@ const LocalDB = {
         const defaultHash = encryptPassword("Uskvalley2026!");
 
         const users = [
-            { id: 1, username: "sandaru98j", email: "", phone: "", full_name: "Sandaruwan Gunathilaka", role: "Master Admin", is_master: true, pass_hash: defaultHash, created_at: now },
-            { id: 2, username: "sandun", email: "", phone: "", full_name: "Sandun (Estate Manager)", role: "Admin", is_master: false, pass_hash: defaultHash, created_at: now },
-            { id: 3, username: "raveendra", email: "", phone: "", full_name: "Raveendra", role: "Supervisor", is_master: false, pass_hash: defaultHash, created_at: now },
-            { id: 4, username: "pasindu", email: "", phone: "", full_name: "Pasindu", role: "Supervisor", is_master: false, pass_hash: defaultHash, created_at: now },
-            { id: 5, username: "kavindu", email: "", phone: "", full_name: "Kavindu", role: "Supervisor", is_master: false, pass_hash: defaultHash, created_at: now },
-            { id: 6, username: "muditha", email: "", phone: "", full_name: "Muditha", role: "Supervisor", is_master: false, pass_hash: defaultHash, created_at: now },
-            { id: 7, username: "rajasekaran", email: "", phone: "", full_name: "Rajasekaran", role: "Supervisor", is_master: false, pass_hash: defaultHash, created_at: now },
-            { id: 8, username: "ajith", email: "", phone: "", full_name: "Ajith", role: "Harvester", is_master: false, pass_hash: defaultHash, created_at: now },
-            { id: 9, username: "baba", email: "", phone: "", full_name: "Baba", role: "Harvester", is_master: false, pass_hash: defaultHash, created_at: now },
+            { id: 1, username: "sandaru98j", email: "", phone: "", full_name: "Sandaruwan Gunathilaka", role: "Master Admin", is_master: true, theme: "twitter", pass_hash: defaultHash, created_at: now },
+            { id: 2, username: "sandun", email: "", phone: "", full_name: "Sandun (Estate Manager)", role: "Admin", is_master: false, theme: "twitter", pass_hash: defaultHash, created_at: now },
+            { id: 3, username: "raveendra", email: "", phone: "", full_name: "Raveendra", role: "Supervisor", is_master: false, theme: "twitter", pass_hash: defaultHash, created_at: now },
+            { id: 4, username: "pasindu", email: "", phone: "", full_name: "Pasindu", role: "Supervisor", is_master: false, theme: "twitter", pass_hash: defaultHash, created_at: now },
+            { id: 5, username: "kavindu", email: "", phone: "", full_name: "Kavindu", role: "Supervisor", is_master: false, theme: "twitter", pass_hash: defaultHash, created_at: now },
+            { id: 6, username: "muditha", email: "", phone: "", full_name: "Muditha", role: "Supervisor", is_master: false, theme: "twitter", pass_hash: defaultHash, created_at: now },
+            { id: 7, username: "rajasekaran", email: "", phone: "", full_name: "Rajasekaran", role: "Supervisor", is_master: false, theme: "twitter", pass_hash: defaultHash, created_at: now },
+            { id: 8, username: "ajith", email: "", phone: "", full_name: "Ajith", role: "Harvester", is_master: false, theme: "twitter", pass_hash: defaultHash, created_at: now },
+            { id: 9, username: "baba", email: "", phone: "", full_name: "Baba", role: "Harvester", is_master: false, theme: "twitter", pass_hash: defaultHash, created_at: now },
         ];
 
         const estates = [{ id: 1, name: "Uskvalley Estate" }];
@@ -364,6 +459,14 @@ function localApiFallback(path, method, body) {
     }
     if (pathname === "/api/auth/logout") {
         return { ok: true };
+    }
+    if (pathname === "/api/settings/theme") {
+        const nextTheme = String(body?.theme || "twitter");
+        if (curUser) {
+            curUser.theme = nextTheme;
+            LocalDB.save(db);
+        }
+        return { ok: true, theme: nextTheme };
     }
     if (pathname === "/api/auth/change-password") {
         if (!verifyEncryptedPassword(body.current_password, curUser.pass_hash)) {
@@ -607,8 +710,9 @@ function localApiFallback(path, method, body) {
         const username = String(body.username || "").trim().toLowerCase();
         const full_name = String(body.full_name || "").trim();
         const role = normalizeRole(body.role || "Harvester");
-        const password = String(body.password || "Uskvalley2026!");
+        const password = String(body.password || "");
         if (!username || !full_name) throw new Error("Username and Full Name are required.");
+        if (password.length < 6) throw new Error("Initial password must be at least 6 characters.");
         if (db.users.some((u) => u.username.toLowerCase() === username)) {
             throw new Error(`Username '@${username}' already exists.`);
         }
@@ -621,6 +725,7 @@ function localApiFallback(path, method, body) {
             full_name,
             role,
             is_master: false,
+            theme: "twitter",
             pass_hash: encryptPassword(password),
             created_at: new Date().toISOString(),
         });
@@ -726,6 +831,9 @@ async function loginWithUsername(username, password) {
         state.token = res.token;
         state.user = res.user;
         localStorage.setItem("el_token", res.token);
+        if (res.user?.theme && THEME_REGISTRY[res.user.theme]) {
+            applyTheme(res.user.theme, false);
+        }
         toast(`Welcome back, @${res.user.username}`);
         await enterApplication();
     } catch (err) {
@@ -746,10 +854,15 @@ async function enterApplication() {
         }
     }
 
-    // Normalize user role & master flag
     const isMaster = Boolean(state.user.is_master) || String(state.user.username || "").toLowerCase() === "sandaru98j";
     state.user.is_master = isMaster;
     state.user.role = isMaster ? "Master Admin" : normalizeRole(state.user.role);
+
+    if (state.user.theme && THEME_REGISTRY[state.user.theme] && !localStorage.getItem("elaeis_theme")) {
+        applyTheme(state.user.theme, false);
+    } else {
+        applyTheme(state.theme, false);
+    }
 
     updateClockAndGreeting();
     syncUserIdentityUI();
@@ -759,7 +872,7 @@ async function enterApplication() {
     applyRbacNavigation();
     await loadBootstrap();
     captureDeviceGps();
-    switchPage(state.activePage);
+    switchPage(state.activePage, false);
 }
 
 function syncUserIdentityUI() {
@@ -777,10 +890,16 @@ function syncUserIdentityUI() {
     if ($("rail-user-handle")) $("rail-user-handle").textContent = `@${u.username}`;
     if ($("rail-user-role")) $("rail-user-role").textContent = u.role;
 
+    if ($("drawer-user-name")) $("drawer-user-name").textContent = u.full_name;
+    if ($("drawer-user-handle")) $("drawer-user-handle").textContent = `@${u.username} • ${u.role}`;
+
     if ($("prof-avatar-inner")) $("prof-avatar-inner").textContent = initials;
     if ($("prof-fullname")) $("prof-fullname").textContent = u.full_name;
     if ($("prof-username")) $("prof-username").textContent = `@${u.username}`;
     if ($("prof-role-badge")) $("prof-role-badge").textContent = u.role;
+    if ($("prof-theme-label")) {
+        $("prof-theme-label").textContent = THEME_REGISTRY[state.theme]?.name || "Twitter / X (Default)";
+    }
 }
 
 function applyRbacNavigation() {
@@ -796,6 +915,7 @@ function applyRbacNavigation() {
         estates: "Admin",
         directory: "Admin",
         profile: "Harvester",
+        settings: "Harvester",
         info: "Harvester",
     }[state.activePage];
     if (userRank < (ROLE_RANK[currentMin] || 1)) {
@@ -808,41 +928,66 @@ async function loadBootstrap() {
     state.hierarchy = data.hierarchy;
     state.settings = data.settings;
 
+    if ($("set-diag-gps")) {
+        $("set-diag-gps").textContent = `${state.settings.gps_threshold_m || 20} meters`;
+    }
+
     initDashboardFilters();
     initDivisionCascade("harv", () => loadHarvestBlock());
     initDivisionCascade("map", () => loadMapperBlock());
     initDispatchForm();
 }
 
-function switchPage(page) {
-    state.activePage = page;
+function closeMobileDrawer() {
+    if ($("mobile-drawer")) {
+        $("mobile-drawer").classList.add("hidden");
+    }
+}
+
+function switchPage(page, pushUrl = true) {
+    const target = PAGE_TITLES[page] ? page : "overview";
+    state.activePage = target;
+
+    if (pushUrl && window.history && typeof window.history.pushState === "function") {
+        const nextPath = target === "overview" ? "/" : `/${target}`;
+        if (window.location.pathname !== nextPath) {
+            window.history.pushState({ page: target }, "", nextPath);
+        }
+    }
+
     if ($("hdr-page-title")) {
-        $("hdr-page-title").textContent = PAGE_TITLES[page] || "Overview";
+        $("hdr-page-title").textContent = PAGE_TITLES[target] || "Overview";
+    }
+    if ($("set-diag-route")) {
+        $("set-diag-route").textContent = target === "overview" ? "/" : `/${target}`;
     }
 
     document.querySelectorAll(".page-view").forEach((sec) => {
-        sec.classList.toggle("hidden", sec.id !== `page-${page}`);
+        sec.classList.toggle("hidden", sec.id !== `page-${target}`);
     });
 
     document.querySelectorAll("[data-nav]").forEach((btn) => {
-        const active = btn.getAttribute("data-nav") === page;
-        if (btn.closest("#desktop-nav")) {
+        const active = btn.getAttribute("data-nav") === target;
+        if (btn.closest("#desktop-nav") || btn.closest("#drawer-nav")) {
             btn.classList.toggle("active", active);
-        } else {
-            btn.className = `nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition ${
-                active ? "text-[#0f1419]" : "text-[#536471]"
+        } else if (btn.closest("#mobile-nav")) {
+            btn.className = `nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold min-w-0 transition ${
+                active ? "text-[#0f1419] font-extrabold" : "text-[#536471]"
             }`;
         }
     });
 
-    if (page === "overview") refreshDashboard();
-    if (page === "harvests") {
+    closeMobileDrawer();
+
+    if (target === "overview") refreshDashboard();
+    if (target === "harvests") {
         if (state.harvestView === "trees") loadHarvestBlock();
         else loadDispatches();
     }
-    if (page === "estates") loadEstatesPage();
-    if (page === "directory") loadDirectoryPage();
-    if (page === "profile") syncUserIdentityUI();
+    if (target === "estates") loadEstatesPage();
+    if (target === "directory") loadDirectoryPage();
+    if (target === "profile") syncUserIdentityUI();
+    if (target === "settings") applyTheme(state.theme, false);
     refreshIcons();
 }
 
@@ -883,7 +1028,7 @@ function initDivisionCascade(prefix, onChange) {
 }
 
 // ----------------------------------------------------------------------------
-// VIEW 1: OVERVIEW (Unified Filters + 5 Core KPIs + Recent Feed)
+// VIEW 1: OVERVIEW (Unified Filters + 5 Core KPIs + Structured Activity Feed)
 // ----------------------------------------------------------------------------
 function initDashboardFilters() {
     const estFixed = $("flt-estate-fixed");
@@ -1029,6 +1174,7 @@ async function refreshDashboard() {
     const qs = getDashboardQuery();
     const rep = await api(`/api/report?${qs}`);
     const tot = rep.totals || {};
+    state.recentLogs = rep.recent_logs || [];
 
     const bunchesTxt = Number(tot.bunches || 0).toLocaleString();
     const frondsTxt = Number(tot.fronds || 0).toLocaleString();
@@ -1047,7 +1193,6 @@ async function refreshDashboard() {
     $("kpi-yph").textContent = yphTxt;
     $("kpi-area-ha").textContent = `Extent: ${haTxt}`;
 
-    // Update Right Supplementary Panel
     if ($("right-kpi-bunches")) $("right-kpi-bunches").textContent = bunchesTxt;
     if ($("right-kpi-fronds")) $("right-kpi-fronds").textContent = frondsTxt;
     if ($("right-kpi-dispatch")) $("right-kpi-dispatch").textContent = dispTxt;
@@ -1055,39 +1200,80 @@ async function refreshDashboard() {
     if ($("right-kpi-yph")) $("right-kpi-yph").textContent = yphTxt;
     if ($("right-extent-ha")) $("right-extent-ha").textContent = haTxt;
 
-    // Render Recent Feed
+    // Render Structured Recent Harvest Cards
     const feedEl = $("overview-feed-list");
     if (feedEl) {
-        const logs = rep.recent_logs || [];
+        const logs = state.recentLogs;
         if (!logs.length) {
-            feedEl.innerHTML = `<div class="p-6 text-center text-xs text-[#536471]">No harvest logs recorded in this filter window.</div>`;
+            feedEl.innerHTML = `<div class="erp-detail-card md:col-span-2 !p-6 text-center text-xs text-[#536471]">No harvest logs recorded in this filter window.</div>`;
         } else {
             feedEl.innerHTML = logs
                 .map(
-                    (l) => `
-                <div class="p-3.5 hover:bg-[#f7f9f9] flex items-center justify-between gap-3 text-xs transition">
-                    <div class="flex items-center gap-3 min-w-0">
-                        <div class="w-9 h-9 rounded-full bg-[#0f1419] text-white font-mono-code font-bold flex items-center justify-center shrink-0">
-                            #${l.tree_no || "-"}
+                    (l, idx) => `
+                <div data-feed-idx="${idx}" class="erp-detail-card cursor-pointer space-y-3">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <div class="w-9 h-9 rounded-full bg-[#0f1419] text-white font-mono-code font-extrabold text-xs flex items-center justify-center shrink-0">
+                                #${l.tree_no || "-"}
+                            </div>
+                            <div class="min-w-0">
+                                <div class="font-extrabold text-xs sm:text-sm text-[#0f1419] truncate">
+                                    Palm #${l.tree_no || "-"} &bull; ${esc(l.block_name || "Block")}
+                                </div>
+                                <div class="text-[11px] text-[#536471] truncate">
+                                    ${esc(l.division_name || "Uskvalley")} &rarr; ${esc(l.field_name || "Field")}
+                                </div>
+                            </div>
                         </div>
-                        <div class="min-w-0">
-                            <div class="font-extrabold text-[#0f1419] truncate">
-                                Palm #${l.tree_no || "-"} &bull; ${esc(l.block_name || "Block")} (${esc(l.field_name || "Field")})
-                            </div>
-                            <div class="text-[11px] text-[#536471] truncate">
-                                ${esc(l.division_name || "Uskvalley")} &bull; Logged by ${esc(l.recorded_by || "Harvester")}
-                            </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-[#0f1419] text-white font-mono-code font-bold text-[10px] shrink-0">
+                            Round ${l.round_no}
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2 pt-2 border-t border-[#eff3f4] text-center">
+                        <div class="p-2 rounded-xl bg-[#f7f9f9]">
+                            <div class="text-[10px] font-bold uppercase text-[#536471]">Bunches</div>
+                            <div class="text-xs font-mono-code font-extrabold text-[#0f1419] mt-0.5">${l.bunches}</div>
+                        </div>
+                        <div class="p-2 rounded-xl bg-[#f7f9f9]">
+                            <div class="text-[10px] font-bold uppercase text-[#536471]">Fronds</div>
+                            <div class="text-xs font-mono-code font-extrabold text-[#0f1419] mt-0.5">${l.fronds}</div>
+                        </div>
+                        <div class="p-2 rounded-xl bg-[#f7f9f9]">
+                            <div class="text-[10px] font-bold uppercase text-[#536471]">Date</div>
+                            <div class="text-[11px] font-mono-code font-bold text-[#0f1419] mt-0.5 truncate">${esc(l.harvest_date)}</div>
                         </div>
                     </div>
-                    <div class="text-right shrink-0">
-                        <div class="font-mono-code font-extrabold text-[#0f1419]">${l.bunches}B / ${l.fronds}F</div>
-                        <div class="text-[10px] font-mono-code text-[#536471]">R${l.round_no} &bull; ${esc(l.harvest_date)}</div>
+
+                    <div class="flex items-center justify-between text-[11px] text-[#536471]">
+                        <span>Harvester: <strong class="text-[#0f1419]">${esc(l.recorded_by || "Staff")}</strong></span>
+                        <span class="font-bold underline">Inspect &rarr;</span>
                     </div>
                 </div>`
                 )
                 .join("");
+
+            feedEl.querySelectorAll("[data-feed-idx]").forEach((card) => {
+                card.onclick = () => {
+                    const item = state.recentLogs[Number(card.getAttribute("data-feed-idx"))];
+                    if (!item) return;
+                    openItemDetailModal({
+                        badge: `Harvest Log #${item.id} • Round ${item.round_no}`,
+                        title: `Palm #${item.tree_no} — ${item.block_name}`,
+                        fields: [
+                            { label: "Division", value: item.division_name || "Uskvalley Division" },
+                            { label: "Field & Block", value: `${item.field_name} • ${item.block_name}` },
+                            { label: "Bunches Cut", value: `${item.bunches} Fresh Fruit Bunches`, mono: true },
+                            { label: "Fronds Cut", value: `${item.fronds} Pruned Fronds`, mono: true },
+                            { label: "Harvest Date", value: item.harvest_date, mono: true },
+                            { label: "Recorded By", value: item.recorded_by || "Field Harvester" },
+                        ],
+                    });
+                };
+            });
         }
     }
+    refreshIcons();
 }
 
 // ----------------------------------------------------------------------------
@@ -1131,14 +1317,14 @@ function renderHarvestGrid() {
                     : "";
             return `
             <div data-harv-tree="${t.id}" class="palm-card ${done ? "done-harvest" : ""}">
-                <div class="w-full flex items-center justify-between text-[10px] font-mono-code ${done ? "text-white/75" : "text-[#536471]"}">
+                <div class="w-full flex items-center justify-between text-[10px] font-mono-code ${done ? "opacity-80" : "text-[#536471]"}">
                     <span>#${t.tree_no}</span>
                     ${gpsBadge}
                 </div>
-                <div class="my-1 ${done ? "text-white" : "text-[#0f1419]"}">
+                <div class="my-1">
                     <i data-lucide="${done ? "check-circle-2" : "palmtree"}" class="w-5 h-5"></i>
                 </div>
-                <div class="text-[11px] font-mono-code font-extrabold ${done ? "text-white" : "text-[#536471]"}">
+                <div class="text-[11px] font-mono-code font-extrabold">
                     ${done ? `${t.rec.bunches}B / ${t.rec.fronds}F` : "Tap"}
                 </div>
             </div>`;
@@ -1189,7 +1375,7 @@ async function submitHarvestModal() {
         });
         $("modal-harvest").classList.add("hidden");
         const distMsg = res.distance_m !== null && res.distance_m !== undefined ? ` • ${res.distance_m}m` : "";
-        toast(`Harvest logged successfully (Palm #${tree.tree_no}: ${bunches}B / ${fronds}F${distMsg})`);
+        toast(`Harvest logged (Palm #${tree.tree_no}: ${bunches}B / ${fronds}F${distMsg})`);
         await loadHarvestBlock();
     } catch (err) {
         toast(err.message, "err");
@@ -1222,19 +1408,19 @@ async function loadDispatches() {
         .map(
             (d) => `
         <tr class="hover:bg-[#f7f9f9]">
-            <td class="py-3 px-4 font-mono-code text-[#0f1419]">${esc(d.dispatch_date)}</td>
-            <td class="py-3 px-4">
+            <td class="py-3.5 px-4 font-mono-code text-[#0f1419] whitespace-nowrap">${esc(d.dispatch_date)}</td>
+            <td class="py-3.5 px-4 whitespace-nowrap">
                 <span class="px-2.5 py-0.5 rounded-full bg-[#0f1419] text-white font-mono-code font-bold text-[11px]">
                     R${d.round_no}
                 </span>
             </td>
-            <td class="py-3 px-4 font-bold text-[#0f1419]">${esc(d.division_name)}</td>
-            <td class="py-3 px-4 font-mono-code font-extrabold text-[#0f1419]">${Number(d.weight_kg).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg</td>
-            <td class="py-3 px-4 text-[#536471]">${esc(d.recorded_by || "Staff")}</td>
-            <td class="py-3 px-4 text-right">
+            <td class="py-3.5 px-4 font-bold text-[#0f1419] whitespace-nowrap">${esc(d.division_name)}</td>
+            <td class="py-3.5 px-4 font-mono-code font-extrabold text-[#0f1419] whitespace-nowrap">${Number(d.weight_kg).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg</td>
+            <td class="py-3.5 px-4 text-[#536471] whitespace-nowrap">${esc(d.recorded_by || "Staff")}</td>
+            <td class="py-3.5 px-4 text-right whitespace-nowrap">
                 ${
                     canDelete
-                        ? `<button type="button" data-del-dispatch="${d.id}" class="p-1.5 rounded-full text-[#536471] hover:bg-red-50 hover:text-[#f4212e]">
+                        ? `<button type="button" data-del-dispatch="${d.id}" class="p-1.5 rounded-full text-[#536471] hover:text-[#f4212e]">
                                <i data-lucide="trash-2" class="w-4 h-4"></i>
                            </button>`
                         : ""
@@ -1391,7 +1577,7 @@ function renderComplianceTable() {
     }
 
     tbody.innerHTML = list
-        .map((r) => {
+        .map((r, idx) => {
             const isFar = r.status === "far";
             const badge = isFar
                 ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#f4212e] text-white font-mono-code font-bold text-[11px]">
@@ -1404,26 +1590,46 @@ function renderComplianceTable() {
                 : `<span class="px-2 py-0.5 rounded-full bg-[#f7f9f9] text-[#536471] font-mono-code text-[11px]">${esc(r.status)}</span>`;
 
             return `
-            <tr class="${isFar ? "row-flagged" : "hover:bg-[#f7f9f9]"}">
-                <td class="py-3 px-3">${badge}</td>
-                <td class="py-3 px-3">
+            <tr data-comp-idx="${idx}" class="cursor-pointer ${isFar ? "row-flagged" : "hover:bg-[#f7f9f9]"}">
+                <td class="py-3.5 px-4 whitespace-nowrap">${badge}</td>
+                <td class="py-3.5 px-4 whitespace-nowrap">
                     <div class="font-bold text-[#0f1419]">Palm #${r.tree_no} &bull; ${esc(r.block)}</div>
                     <div class="text-[11px] text-[#536471]">${esc(r.division)} &rarr; ${esc(r.field)}</div>
                 </td>
-                <td class="py-3 px-3">
+                <td class="py-3.5 px-4 whitespace-nowrap">
                     <div class="font-bold text-[#0f1419]">${esc(r.full_name)}</div>
                     <div class="text-[11px] font-mono-code text-[#536471]">${esc(r.detail)}</div>
                 </td>
-                <td class="py-3 px-3 font-mono-code text-[11px] text-[#536471]">
+                <td class="py-3.5 px-4 font-mono-code text-[11px] text-[#536471] whitespace-nowrap">
                     ${r.tree_lat !== null ? `${Number(r.tree_lat).toFixed(5)}, ${Number(r.tree_lng).toFixed(5)}` : "Unmapped"}
                 </td>
-                <td class="py-3 px-3 font-mono-code text-[11px] ${isFar ? "text-[#f4212e] font-bold" : "text-[#536471]"}">
+                <td class="py-3.5 px-4 font-mono-code text-[11px] whitespace-nowrap ${isFar ? "text-[#f4212e] font-bold" : "text-[#536471]"}">
                     ${r.user_lat !== null ? `${Number(r.user_lat).toFixed(5)}, ${Number(r.user_lng).toFixed(5)}` : "No GPS"}
                 </td>
-                <td class="py-3 px-3 font-mono-code text-[11px] text-[#536471]">${esc(r.work_date)}</td>
+                <td class="py-3.5 px-4 font-mono-code text-[11px] text-[#536471] whitespace-nowrap">${esc(r.work_date)}</td>
             </tr>`;
         })
         .join("");
+
+    tbody.querySelectorAll("[data-comp-idx]").forEach((rowEl) => {
+        rowEl.onclick = () => {
+            const r = list[Number(rowEl.getAttribute("data-comp-idx"))];
+            if (!r) return;
+            openItemDetailModal({
+                badge: r.status === "far" ? `FLAGGED (${r.distance_m}m > ${state.compliance.threshold_m}m)` : `VERIFIED (${r.distance_m ?? 0}m)`,
+                title: `Palm #${r.tree_no} GPS Compliance Audit`,
+                fields: [
+                    { label: "Location", value: `${r.division} → ${r.field} → ${r.block}`, full: true },
+                    { label: "Harvester", value: r.full_name },
+                    { label: "Work Date", value: r.work_date, mono: true },
+                    { label: "Harvest Output", value: r.detail, mono: true, full: true },
+                    { label: "Registered Palm GPS", value: r.tree_lat !== null ? `${r.tree_lat}, ${r.tree_lng}` : "Unmapped", mono: true },
+                    { label: "Harvester Device GPS", value: r.user_lat !== null ? `${r.user_lat}, ${r.user_lng}` : "No GPS", mono: true },
+                ],
+            });
+        };
+    });
+
     refreshIcons();
 }
 
@@ -1433,11 +1639,14 @@ function renderAdminHierarchy() {
     $("crud-estates").innerHTML = estates
         .map(
             (e) => `
-        <div class="p-2.5 rounded-xl bg-[#f7f9f9] border border-[#eff3f4] flex items-center justify-between text-xs">
-            <span class="font-bold text-[#0f1419]">${esc(e.name)}</span>
-            <div class="flex items-center gap-1">
-                <button type="button" data-edit-estate="${e.id}" class="p-1 text-[#536471] hover:text-[#0f1419]"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-                <button type="button" data-del-entity="estate:${e.id}" class="p-1 text-[#536471] hover:text-[#f4212e]"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+        <div class="p-3.5 rounded-xl bg-[#f7f9f9] border border-[#eff3f4] flex items-center justify-between gap-2 text-xs">
+            <div class="min-w-0">
+                <div class="font-extrabold text-[#0f1419] truncate">${esc(e.name)}</div>
+                <div class="text-[11px] font-mono-code text-[#536471]">Corporate Estate Root</div>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+                <button type="button" data-edit-estate="${e.id}" class="p-1.5 rounded-lg text-[#536471] hover:text-[#0f1419]"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                <button type="button" data-del-entity="estate:${e.id}" class="p-1.5 rounded-lg text-[#536471] hover:text-[#f4212e]"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
             </div>
         </div>`
         )
@@ -1447,14 +1656,14 @@ function renderAdminHierarchy() {
         .map((d) => {
             const est = estates.find((e) => e.id === d.estate_id);
             return `
-            <div class="p-2.5 rounded-xl bg-[#f7f9f9] border border-[#eff3f4] flex items-center justify-between text-xs">
-                <div>
-                    <div class="font-bold text-[#0f1419]">${esc(d.name)}</div>
-                    <div class="text-[10px] text-[#536471]">${esc(est?.name || "")}</div>
+            <div class="p-3.5 rounded-xl bg-[#f7f9f9] border border-[#eff3f4] flex items-center justify-between gap-2 text-xs">
+                <div class="min-w-0">
+                    <div class="font-extrabold text-[#0f1419] truncate">${esc(d.name)}</div>
+                    <div class="text-[11px] text-[#536471] truncate">${esc(est?.name || "Uskvalley Estate")}</div>
                 </div>
-                <div class="flex items-center gap-1">
-                    <button type="button" data-edit-division="${d.id}" class="p-1 text-[#536471] hover:text-[#0f1419]"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-                    <button type="button" data-del-entity="division:${d.id}" class="p-1 text-[#536471] hover:text-[#f4212e]"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                <div class="flex items-center gap-1 shrink-0">
+                    <button type="button" data-edit-division="${d.id}" class="p-1.5 rounded-lg text-[#536471] hover:text-[#0f1419]"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                    <button type="button" data-del-entity="division:${d.id}" class="p-1.5 rounded-lg text-[#536471] hover:text-[#f4212e]"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
                 </div>
             </div>`;
         })
@@ -1464,14 +1673,18 @@ function renderAdminHierarchy() {
         .map((f) => {
             const div = divisions.find((d) => d.id === f.division_id);
             return `
-            <div class="p-2.5 rounded-xl bg-[#f7f9f9] border border-[#eff3f4] flex items-center justify-between text-xs">
-                <div>
-                    <div class="font-bold text-[#0f1419]">${esc(f.name)} &bull; <span class="font-mono-code">${f.planting_year} - ${Number(f.area_ha).toFixed(2)} Ha</span></div>
-                    <div class="text-[10px] text-[#536471]">${esc(div?.name || "")}</div>
+            <div class="p-3.5 rounded-xl bg-[#f7f9f9] border border-[#eff3f4] flex items-center justify-between gap-2 text-xs">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <span class="font-extrabold text-[#0f1419]">${esc(f.name)}</span>
+                        <span class="px-2 py-0.5 rounded-md bg-white border border-[#cfd9de] font-mono-code text-[10px] font-bold">${f.planting_year}</span>
+                        <span class="px-2 py-0.5 rounded-md bg-white border border-[#cfd9de] font-mono-code text-[10px] font-bold">${Number(f.area_ha).toFixed(2)} Ha</span>
+                    </div>
+                    <div class="text-[11px] text-[#536471] mt-0.5 truncate">${esc(div?.name || "")}</div>
                 </div>
-                <div class="flex items-center gap-1">
-                    <button type="button" data-edit-field="${f.id}" class="p-1 text-[#536471] hover:text-[#0f1419]"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-                    <button type="button" data-del-entity="field:${f.id}" class="p-1 text-[#536471] hover:text-[#f4212e]"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                <div class="flex items-center gap-1 shrink-0">
+                    <button type="button" data-edit-field="${f.id}" class="p-1.5 rounded-lg text-[#536471] hover:text-[#0f1419]"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                    <button type="button" data-del-entity="field:${f.id}" class="p-1.5 rounded-lg text-[#536471] hover:text-[#f4212e]"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
                 </div>
             </div>`;
         })
@@ -1481,15 +1694,18 @@ function renderAdminHierarchy() {
         .map((b) => {
             const fld = fields.find((f) => f.id === b.field_id);
             return `
-            <div class="p-2.5 rounded-xl bg-[#f7f9f9] border border-[#eff3f4] flex items-center justify-between text-xs">
-                <div>
-                    <div class="font-bold text-[#0f1419]">${esc(b.name)} <span class="font-mono-code text-[11px] text-[#536471]">(${b.tree_total} palms)</span></div>
-                    <div class="text-[10px] text-[#536471]">${esc(fld ? `${fld.name} (${fld.planting_year})` : "")}</div>
+            <div class="p-3.5 rounded-xl bg-[#f7f9f9] border border-[#eff3f4] flex items-center justify-between gap-2 text-xs">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <span class="font-extrabold text-[#0f1419]">${esc(b.name)}</span>
+                        <span class="px-2 py-0.5 rounded-md bg-white border border-[#cfd9de] font-mono-code text-[10px] font-bold">${b.tree_total} palms</span>
+                    </div>
+                    <div class="text-[11px] text-[#536471] mt-0.5 truncate">${esc(fld ? `${fld.name} (${fld.planting_year})` : "")} ${b.boundary_note ? `• ${esc(b.boundary_note)}` : ""}</div>
                 </div>
-                <div class="flex items-center gap-1">
+                <div class="flex items-center gap-1 shrink-0">
                     <button type="button" data-batch-block="${b.id}" class="px-2.5 py-1 rounded-full bg-white border border-[#cfd9de] text-[#0f1419] font-mono-code text-[10px] font-bold">+Palms</button>
-                    <button type="button" data-edit-block="${b.id}" class="p-1 text-[#536471] hover:text-[#0f1419]"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-                    <button type="button" data-del-entity="block:${b.id}" class="p-1 text-[#536471] hover:text-[#f4212e]"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                    <button type="button" data-edit-block="${b.id}" class="p-1.5 rounded-lg text-[#536471] hover:text-[#0f1419]"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                    <button type="button" data-del-entity="block:${b.id}" class="p-1.5 rounded-lg text-[#536471] hover:text-[#f4212e]"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
                 </div>
             </div>`;
         })
@@ -1621,19 +1837,19 @@ function renderDirectoryUsers() {
                 .toUpperCase();
 
             return `
-            <div class="p-4 sm:px-5 hover:bg-[#f7f9f9] flex flex-wrap items-center justify-between gap-3 transition">
+            <div class="erp-detail-card !p-4 sm:!p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div class="flex items-center gap-3 min-w-0">
                     <div class="w-10 h-10 rounded-full ${uMaster ? "bg-[#0f1419] text-white" : "bg-[#eff3f4] text-[#0f1419]"} flex items-center justify-center font-extrabold text-xs shrink-0">
                         ${esc(initials)}
                     </div>
                     <div class="min-w-0">
-                        <div class="flex items-center gap-2">
+                        <div class="flex flex-wrap items-center gap-2">
                             <span class="text-sm font-extrabold text-[#0f1419] truncate">${esc(u.full_name)}</span>
                             <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                                 uMaster ? "bg-[#0f1419] text-white" : "bg-[#eff3f4] text-[#0f1419]"
                             }">${esc(uRole)}</span>
                         </div>
-                        <div class="text-xs font-mono-code text-[#536471]">@${esc(u.username)}</div>
+                        <div class="text-xs font-mono-code text-[#536471]">@${esc(u.username)} &bull; Uskvalley Estate</div>
                     </div>
                 </div>
 
@@ -1655,7 +1871,7 @@ function renderDirectoryUsers() {
                             <option value="Supervisor" ${uRole === "Supervisor" ? "selected" : ""}>Supervisor</option>
                             <option value="Admin" ${uRole === "Admin" ? "selected" : ""}>Admin</option>
                         </select>
-                        <button type="button" data-del-user="${u.id}" title="Remove User" class="p-2 rounded-full border border-[#cfd9de] hover:bg-red-50 hover:text-[#f4212e] text-[#536471]">
+                        <button type="button" data-del-user="${u.id}" title="Remove User" class="p-2 rounded-full border border-[#cfd9de] hover:text-[#f4212e] text-[#536471]">
                             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                         </button>`
                     }
@@ -1687,7 +1903,7 @@ function renderDirectoryUsers() {
             state.forcePwTarget = target;
             $("fp-title").textContent = `Force Reset Password • ${target.full_name}`;
             $("fp-subtitle").textContent = `@${target.username}`;
-            $("fp-new-password").value = "Uskvalley2026!";
+            $("fp-new-password").value = "";
             $("modal-force-password").classList.remove("hidden");
         };
     });
@@ -1709,6 +1925,9 @@ function renderDirectoryUsers() {
 // Event Listeners & Initialization
 // ----------------------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", () => {
+    // Initialize persisted theme immediately
+    applyTheme(state.theme, false);
+
     setInterval(updateClockAndGreeting, 1000);
     updateClockAndGreeting();
 
@@ -1719,12 +1938,48 @@ document.addEventListener("DOMContentLoaded", () => {
     if ($("disp-date")) $("disp-date").value = today;
     if ($("disp-round")) $("disp-round").value = String(round);
 
+    // Handle Browser Back/Forward Navigation (/settings, /overview, etc.)
+    window.addEventListener("popstate", () => {
+        const route = getInitialRouteFromLocation();
+        if (state.token) {
+            switchPage(route, false);
+        }
+    });
+
     document.querySelectorAll("[data-toggle-pass]").forEach((btn) => {
         btn.onclick = () => {
             const inp = $(btn.getAttribute("data-toggle-pass"));
             if (inp) inp.type = inp.type === "password" ? "text" : "password";
         };
     });
+
+    // Theme Engine Selection Cards
+    document.querySelectorAll("[data-theme-select]").forEach((card) => {
+        card.onclick = () => {
+            const chosen = card.getAttribute("data-theme-select");
+            applyTheme(chosen, true);
+            const label = THEME_REGISTRY[chosen]?.name || chosen;
+            toast(`Theme switched to ${label}`);
+        };
+    });
+
+    if ($("btn-theme-quick")) {
+        $("btn-theme-quick").onclick = () => switchPage("settings");
+    }
+
+    // Mobile Hamburger Drawer Controls
+    if ($("btn-mobile-menu")) {
+        $("btn-mobile-menu").onclick = () => {
+            $("mobile-drawer")?.classList.remove("hidden");
+            refreshIcons();
+        };
+    }
+    if ($("btn-close-mobile-drawer")) {
+        $("btn-close-mobile-drawer").onclick = closeMobileDrawer;
+    }
+    if ($("mobile-drawer-backdrop")) {
+        $("mobile-drawer-backdrop").onclick = closeMobileDrawer;
+    }
 
     // ERP Login Submit (Username + Password ONLY)
     $("form-login").onsubmit = async (e) => {
@@ -1750,6 +2005,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Logout
     if ($("btn-logout")) $("btn-logout").onclick = () => doLogout();
     if ($("btn-logout-mobile")) $("btn-logout-mobile").onclick = () => doLogout();
+    if ($("btn-logout-drawer")) $("btn-logout-drawer").onclick = () => doLogout();
 
     // Live GPS Ping
     $("btn-gps-ping").onclick = async () => {
@@ -1757,7 +2013,7 @@ document.addEventListener("DOMContentLoaded", () => {
         toast(`GPS: ${g.lat.toFixed(5)}, ${g.lng.toFixed(5)} (±${g.acc}m)`);
     };
 
-    // Primary Navigation Rail & Mobile Tab Bar
+    // Primary Navigation Rail, Mobile Drawer, and Mobile Bottom Bar
     document.querySelectorAll("[data-nav]").forEach((btn) => {
         btn.onclick = () => switchPage(btn.getAttribute("data-nav"));
     });
@@ -1789,7 +2045,7 @@ document.addEventListener("DOMContentLoaded", () => {
             state.harvestView = v;
             document.querySelectorAll("[data-harv-view]").forEach((b) => {
                 const on = b === btn;
-                b.className = `harv-view-tab py-3.5 text-xs ${
+                b.className = `harv-view-tab py-3.5 px-2 text-xs truncate ${
                     on ? "font-extrabold border-b-2 border-[#0f1419] text-[#0f1419]" : "font-semibold border-b-2 border-transparent text-[#536471]"
                 } hover:bg-[#f7f9f9] transition`;
             });
@@ -1858,7 +2114,7 @@ document.addEventListener("DOMContentLoaded", () => {
             state.estatesTab = tab;
             document.querySelectorAll("[data-est-tab]").forEach((b) => {
                 const on = b === btn;
-                b.className = `est-tab-btn py-3.5 text-xs ${
+                b.className = `est-tab-btn py-3.5 px-2 text-xs truncate ${
                     on ? "font-extrabold border-b-2 border-[#0f1419] text-[#0f1419]" : "font-semibold border-b-2 border-transparent text-[#536471]"
                 } hover:bg-[#f7f9f9] transition`;
             });
@@ -1919,7 +2175,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 gps_threshold_m: Number($("set-gps-thresh").value),
                 season_start_month: Number($("set-season-month").value),
             });
-            toast("Estate settings saved");
+            toast("Estate parameters saved");
             await loadEstatesPage();
         } catch (err) {
             toast(err.message, "err");
@@ -1938,7 +2194,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 password: $("cu-password").value,
             });
             $("form-create-user").reset();
-            $("cu-password").value = "Uskvalley2026!";
             $("modal-create-user").classList.add("hidden");
             toast(res.message || "ERP user created");
             await loadDirectoryPage();
@@ -1996,6 +2251,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 async function doLogout() {
+    closeMobileDrawer();
     try {
         await api("/api/auth/logout", "POST");
     } catch (_) {}
