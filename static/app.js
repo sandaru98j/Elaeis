@@ -295,7 +295,9 @@ function updateGpsHeader() {
     const lbl = $("gps-label");
     if (!dot || !lbl) return;
     dot.className = `w-2 h-2 rounded-full shrink-0 ${state.gps.live ? "bg-[#00ba7c] animate-pulse" : "bg-[#00ba7c]"}`;
-    lbl.textContent = `${state.gps.lat.toFixed(4)}, ${state.gps.lng.toFixed(4)}`;
+    const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+    const decimals = isMobile ? 3 : 4;
+    lbl.textContent = `${state.gps.lat.toFixed(decimals)}, ${state.gps.lng.toFixed(decimals)}`;
 }
 
 // ----------------------------------------------------------------------------
@@ -887,8 +889,10 @@ function updateClockAndGreeting() {
 
     const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const datePart = `${weekdays[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
-    const timePart = `${hrs12}:${mins}:${secs} ${ampm}`;
+    const isNarrowMobile = typeof window !== "undefined" && window.innerWidth < 600;
+    const clockDisplay = isNarrowMobile
+        ? `${months[now.getMonth()]} ${now.getDate()} • ${hrs12}:${mins} ${ampm}`
+        : `${weekdays[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()} • ${hrs12}:${mins}:${secs} ${ampm}`;
 
     const period = hrs24 < 12 ? "Good morning" : hrs24 < 17 ? "Good afternoon" : "Good evening";
     const name = state.user ? state.user.full_name.split(" ")[0] : "";
@@ -897,7 +901,7 @@ function updateClockAndGreeting() {
     const rEl = $("hdr-round-pill");
     const rRight = $("right-active-round");
     if (gEl) gEl.textContent = name ? `${period}, ${name}` : period;
-    if (cEl) cEl.textContent = `${datePart} • ${timePart}`;
+    if (cEl) cEl.textContent = clockDisplay;
     const { round, rangeLabel } = roundOfDate(todayStr());
     if (rEl) rEl.textContent = `R${round} (${rangeLabel})`;
     if (rRight) rRight.textContent = `Round ${round} (${rangeLabel})`;
@@ -2420,6 +2424,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     setInterval(updateClockAndGreeting, 1000);
     updateClockAndGreeting();
+    updateGpsHeader();
+
+    window.addEventListener("resize", () => {
+        updateClockAndGreeting();
+        updateGpsHeader();
+    });
 
     const today = todayStr();
     const { round } = roundOfDate(today);
