@@ -21,14 +21,14 @@ const PAGE_TITLES = {
     directory: "Directory",
     profile: "Profile",
     settings: "Settings",
-    info: "Info",
+    info: "About Us",
 };
 
 const THEME_REGISTRY = {
     twitter: {
         id: "twitter",
-        name: "Twitter / X (Default)",
-        short: "Twitter/X",
+        name: "Default",
+        short: "Default",
     },
     "dracula-dark": {
         id: "dracula-dark",
@@ -1034,7 +1034,7 @@ function renderProfileActivity() {
     if (!logs.length) {
         listEl.innerHTML = `
             <div class="erp-detail-card !p-6 text-center text-xs text-[#536471]">
-                No harvest activity logged under your account yet. Use <strong>Log Harvest</strong> to record palm yields.
+                No recent harvest activity.
             </div>`;
         return;
     }
@@ -1955,7 +1955,6 @@ function renderAdminHierarchy() {
         <div class="p-3.5 rounded-xl bg-[#f7f9f9] border border-[#eff3f4] flex items-center justify-between gap-2 text-xs">
             <div class="min-w-0">
                 <div class="font-extrabold text-[#0f1419] truncate">${esc(e.name)}</div>
-                <div class="text-[11px] font-mono-code text-[#536471]">Corporate Estate Root</div>
             </div>
             <div class="flex items-center gap-1 shrink-0">
                 <button type="button" data-edit-estate="${e.id}" class="p-1.5 rounded-lg text-[#536471] hover:text-[#0f1419]"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
@@ -2162,7 +2161,7 @@ function renderDirectoryUsers() {
                                 uMaster ? "bg-[#0f1419] text-white" : "bg-[#eff3f4] text-[#0f1419]"
                             }">${esc(uRole)}</span>
                         </div>
-                        <div class="text-xs font-mono-code text-[#536471]">@${esc(u.username)} &bull; Uskvalley Estate</div>
+                        <div class="text-xs font-mono-code text-[#536471]">@${esc(u.username)}</div>
                     </div>
                 </div>
 

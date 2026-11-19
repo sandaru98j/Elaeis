@@ -588,16 +588,17 @@ body {
     border-left: 3px solid var(--danger) !important;
 }
 
-/* Theme Swatch Selector Card */
+/* Theme Swatch Selector Card (Compact X-Style Display Card) */
 .theme-option-card {
     border: 2px solid var(--border-color);
     background-color: var(--bg-elevated);
-    border-radius: 1rem;
-    padding: 1.25rem;
+    border-radius: 0.875rem;
+    padding: 0.875rem 1rem;
     cursor: pointer;
     transition: border-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
     text-align: left;
     width: 100%;
+    box-sizing: border-box;
 }
 
 .theme-option-card:hover {
