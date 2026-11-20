@@ -25,6 +25,8 @@
     --danger-soft: rgba(244, 33, 46, 0.1);
     --success: #00ba7c;
     --shadow-card: 0 1px 3px rgba(15, 20, 25, 0.04);
+    --map-palm-harvested: #00BA7C;
+    --map-palm-unharvested: #536471;
 
     /* Legacy variable aliases */
     --x-black: var(--text-primary);
@@ -59,6 +61,8 @@
     --danger-soft: rgba(255, 85, 85, 0.16);
     --success: #50fa7b;
     --shadow-card: 0 4px 14px rgba(0, 0, 0, 0.25);
+    --map-palm-harvested: #50FA7B;
+    --map-palm-unharvested: #6272A4;
 
     --x-black: var(--text-primary);
     --x-black-hover: var(--btn-bg-hover);
@@ -92,6 +96,8 @@
     --danger-soft: rgba(225, 29, 72, 0.1);
     --success: #16a34a;
     --shadow-card: 0 2px 8px rgba(124, 58, 237, 0.06);
+    --map-palm-harvested: #14710A;
+    --map-palm-unharvested: #6C664B;
 
     --x-black: var(--text-primary);
     --x-black-hover: var(--btn-bg-hover);
@@ -125,6 +131,8 @@
     --danger-soft: rgba(191, 97, 106, 0.2);
     --success: #a3be8c;
     --shadow-card: 0 4px 14px rgba(0, 0, 0, 0.22);
+    --map-palm-harvested: #A3BE8C;
+    --map-palm-unharvested: #4C566A;
 
     --x-black: var(--text-primary);
     --x-black-hover: var(--btn-bg-hover);
@@ -586,6 +594,157 @@ body {
 .palm-card.selected-palm {
     border-color: var(--accent-primary) !important;
     box-shadow: 0 0 0 2px var(--accent-primary);
+}
+
+/* ============================================================================
+   FULL-SCREEN GIS SATELLITE MAP PAGE (11,000+ Trees 60fps Canvas & Boundaries)
+   ============================================================================ */
+.gis-map-viewport {
+    position: relative;
+    width: 100%;
+    height: calc(100vh - 176px);
+    min-height: 480px;
+    background-color: #0d1512;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+    .gis-map-viewport {
+        height: calc(100vh - 220px);
+        min-height: 420px;
+    }
+}
+
+#gis-map-canvas {
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    background-color: #0d1512;
+}
+
+.gis-ctrl-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 9999px;
+    border: 1px solid var(--border-strong);
+    background-color: var(--bg-elevated);
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+
+.gis-ctrl-pill:hover {
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+}
+
+.gis-ctrl-pill.active {
+    background-color: var(--btn-bg);
+    border-color: var(--btn-bg);
+    color: var(--btn-text);
+}
+
+.gis-boundary-label-icon {
+    background: transparent !important;
+    border: none !important;
+    pointer-events: none !important;
+}
+
+.gis-boundary-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transform: translate(-50%, -50%);
+    padding: 2px 8px;
+    border-radius: 9999px;
+    background-color: rgba(15, 20, 25, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    color: #ffffff;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+}
+
+.gis-boundary-label.lbl-estate {
+    font-size: 12px;
+    padding: 3px 11px;
+    border-width: 1.5px;
+    border-color: rgba(255, 255, 255, 0.75);
+}
+
+.gis-boundary-label.lbl-division {
+    font-size: 11px;
+    padding: 2.5px 9px;
+}
+
+.gis-legend-overlay {
+    position: absolute;
+    bottom: 14px;
+    left: 14px;
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 13px;
+    border-radius: 9999px;
+    background-color: var(--bg-header);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--border-strong);
+    color: var(--text-primary);
+    font-size: 11px;
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    pointer-events: auto;
+}
+
+.gis-palm-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 9999px;
+    border: 1px solid #0f1419;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.gis-palm-swatch.harvested {
+    background-color: var(--map-palm-harvested);
+}
+
+.gis-palm-swatch.unharvested {
+    background-color: var(--map-palm-unharvested);
+}
+
+/* Leaflet Popup Theme Styling */
+.leaflet-popup-content-wrapper {
+    background-color: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-strong);
+    border-radius: 0.875rem !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25) !important;
+    padding: 2px !important;
+}
+
+.leaflet-popup-tip {
+    background-color: var(--bg-elevated) !important;
+}
+
+.leaflet-popup-content {
+    margin: 10px 12px !important;
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    line-height: 1.35 !important;
 }
 
 /* Theme Swatch Selector Card (Compact X-Style Display Card) */

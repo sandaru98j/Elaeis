@@ -2,6 +2,7 @@
 import hashlib
 import secrets
 import json
+import math
 import os
 from datetime import datetime, date
 
@@ -312,9 +313,225 @@ def init_db(force_reseed_users: bool = False):
         cur.execute("DELETE FROM divisions")
         cur.execute("DELETE FROM estates")
         seed_plantation_data(cur)
+    else:
+        ensure_full_estate_gis_trees(cur)
 
     conn.commit()
     conn.close()
+
+
+BLOCK_STAND_COUNTS = [
+    560, 540, 580, 550, 590, 565, 545, 535, 520, 515,
+    575, 545, 550, 565, 540, 530, 570, 545, 560, 540,
+]
+
+
+def compute_palm_coordinates(block_id: int, tree_no: int) -> tuple[float, float]:
+    """
+    Deterministic natural hillside contour coordinate generator for Uskvalley Estate
+    (Baduraliya, Sri Lanka ~ 6.1420 N, 80.3650 E).
+    Separates the 3 Divisions, 10 Fields, and 20 Blocks with natural farm road & stream
+    corridors while curving palm rows along hillside contours.
+    """
+    b_idx = max(0, int(block_id) - 1)
+    field_idx = b_idx // 2
+    block_in_field = b_idx % 2
+
+    if field_idx <= 5:
+        # Division 1 (Uskvalley Division): Fields 1..6 (2 cols x 3 rows)
+        f_col = field_idx % 2
+        f_row = field_idx // 2
+        field_base_lat = 6.1420 + f_row * 0.00255
+        field_base_lng = 80.3650 + f_col * 0.00485
+    elif field_idx <= 7:
+        # Division 2 (Trafalgar Division): Fields 7..8 (Northeast sector)
+        f_row = field_idx - 6
+        field_base_lat = 6.1452 + f_row * 0.00255
+        field_base_lng = 80.3756
+    elif field_idx <= 9:
+        # Division 3 (Morawaka Division): Fields 9..10 (Southeast sector)
+        f_row = field_idx - 8
+        field_base_lat = 6.14175 - f_row * 0.00255
+        field_base_lng = 80.3756
+    else:
+        extra = field_idx - 10
+        field_base_lat = 6.1392 - ((extra // 2) + 1) * 0.00255
+        field_base_lng = 80.3650 + (extra % 2) * 0.00485
+
+    block_base_lat = field_base_lat
+    block_base_lng = field_base_lng + block_in_field * 0.00235
+
+    cols = 23
+    idx = max(0, int(tree_no) - 1)
+    row = idx // cols
+    col = idx % cols
+
+    # Triangular oil palm spacing offset on odd rows
+    stag_lng = 0.000040 if (row % 2 == 1) else 0.0
+
+    # Smooth natural contour wave (anchored at 0 for tree #1 at row=0, col=0)
+    u = (col / 22.0) * math.pi
+    v = (row / 24.0) * math.pi
+    phase = b_idx * 0.65
+    curve_lat = math.sin(u + phase) * 0.00011 - math.sin(phase) * 0.00011
+    curve_lng = math.sin(v + phase * 0.7) * 0.00011 - math.sin(phase * 0.7) * 0.00011
+    arch_lat = math.sin(u) * (0.00008 if block_in_field == 0 else -0.00008)
+
+    lat = round(block_base_lat + row * 0.000075 + curve_lat + arch_lat, 6)
+    lng = round(block_base_lng + col * 0.000078 + stag_lng + curve_lng, 6)
+    return lat, lng
+
+
+def ensure_full_estate_gis_trees(cur):
+    """
+    Upgrades existing SQLite databases so all 20 blocks across the 3 Divisions and 10 Fields
+    contain the full 11,020 geo-tagged oil palm stand with natural contoured coordinates.
+    """
+    cur.execute("SELECT COUNT(*) AS cnt FROM trees WHERE latitude IS NOT NULL AND longitude IS NOT NULL")
+    mapped_cnt = cur.fetchone()["cnt"]
+    if mapped_cnt >= 11000:
+        return
+
+    now_str = datetime.now().isoformat()
+    today_str = date.today().strftime("%Y-%m-%d")
+    ym = today_str[:7]
+    cur_round = compute_harvest_round(today_str)["round_number"]
+
+    cur.execute("SELECT b.id, b.field_id, f.planting_year FROM blocks b JOIN fields f ON f.id = b.field_id ORDER BY b.id")
+    blocks_list = [dict(r) for r in cur.fetchall()]
+
+    for b in blocks_list:
+        bid = b["id"]
+        pyear = b["planting_year"] or 2011
+        target_count = BLOCK_STAND_COUNTS[bid - 1] if 1 <= bid <= len(BLOCK_STAND_COUNTS) else 540
+        cur.execute("UPDATE blocks SET target_stands = ? WHERE id = ?", (target_count, bid))
+
+        cur.execute("SELECT id, tree_number FROM trees WHERE block_id = ? ORDER BY tree_number", (bid,))
+        existing_rows = cur.fetchall()
+        existing_nos = set()
+        update_batch = []
+        for r in existing_rows:
+            tno = r["tree_number"]
+            existing_nos.add(tno)
+            lat, lng = compute_palm_coordinates(bid, tno)
+            row_no = ((tno - 1) // 23) + 1
+            update_batch.append((lat, lng, 3.8, row_no, now_str, r["id"]))
+
+        if update_batch:
+            cur.executemany(
+                "UPDATE trees SET latitude = ?, longitude = ?, gps_acc = COALESCE(gps_acc, ?), row_number = ?, mapped_at = COALESCE(mapped_at, ?) WHERE id = ?",
+                update_batch,
+            )
+
+        new_rows = []
+        for tno in range(1, target_count + 1):
+            if tno in existing_nos:
+                continue
+            lat, lng = compute_palm_coordinates(bid, tno)
+            row_no = ((tno - 1) // 23) + 1
+            new_rows.append((bid, tno, f"T-{tno:03d}", row_no, lat, lng, 3.8, pyear, "active", now_str))
+
+        if new_rows:
+            cur.executemany(
+                """
+                INSERT OR IGNORE INTO trees (
+                    block_id, tree_number, tree_code, row_number,
+                    latitude, longitude, gps_acc, planting_year, status, mapped_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                new_rows,
+            )
+
+    # Seed realistic harvest distribution across all 20 blocks if only initial demo logs exist
+    cur.execute("SELECT COUNT(*) AS hcnt FROM harvest_logs")
+    if cur.fetchone()["hcnt"] < 100:
+        seed_sample_estate_harvests(cur, today_str, ym, cur_round)
+
+
+def seed_sample_estate_harvests(cur, today_str: str, ym: str, cur_round: int):
+    harvesters = [
+        (8, "Ajith"),
+        (9, "Baba"),
+        (3, "Raveendra"),
+        (4, "Pasindu"),
+        (5, "Kavindu"),
+    ]
+    dom = int(today_str[8:10])
+    batch_logs = []
+    div_bunches = {1: {1: 0, cur_round: 0}, 2: {1: 0, cur_round: 0}, 3: {1: 0, cur_round: 0}}
+
+    cur.execute(
+        """
+        SELECT t.id, t.block_id, t.tree_number, t.latitude, t.longitude, f.division_id
+        FROM trees t
+        JOIN blocks b ON b.id = t.block_id
+        JOIN fields f ON f.id = b.field_id
+        ORDER BY t.block_id, t.tree_number
+        """
+    )
+    for r in cur.fetchall():
+        tid = r["id"]
+        bid = r["block_id"]
+        tno = r["tree_number"]
+        did = r["division_id"]
+        # Deterministic realistic harvest pattern (~32% of palms harvested across the estate)
+        if (tno + bid * 3) % 3 == 0:
+            uid, uname = harvesters[(tid + bid) % len(harvesters)]
+            bunches = 2 + ((tno * 7 + bid) % 5)
+            fronds = 2 + ((tno * 3 + bid) % 4)
+            is_r1 = (tno + bid) % 2 == 0
+            rnd = 1 if is_r1 else cur_round
+            hdate = f"{ym}-05" if is_r1 else today_str
+            hdom = 5 if is_r1 else dom
+            batch_logs.append(
+                (
+                    tid,
+                    bid,
+                    hdate,
+                    ym,
+                    hdom,
+                    rnd,
+                    bunches,
+                    fronds,
+                    round(bunches * 18.5, 1),
+                    r["latitude"],
+                    r["longitude"],
+                    3.9,
+                    uid,
+                    uname,
+                )
+            )
+            div_bunches[did][rnd] = div_bunches.get(did, {}).get(rnd, 0) + bunches
+
+    if batch_logs:
+        cur.executemany(
+            """
+            INSERT OR IGNORE INTO harvest_logs (
+                tree_id, block_id, harvest_date, year_month, day_of_month, round_number,
+                bunches_cut, fronds_cut, bunch_weight_kg, latitude, longitude, gps_acc,
+                recorded_by_id, recorded_by_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            batch_logs,
+        )
+
+        # Keep mill dispatch weights aligned with harvested bunches (~18.5 kg ABW)
+        cur.execute("DELETE FROM dispatch_logs")
+        disp_rows = []
+        for did, rmap in div_bunches.items():
+            sup_id, sup_name = (3, "Raveendra") if did == 1 else (4, "Pasindu") if did == 2 else (5, "Kavindu")
+            for rnd, b_cnt in rmap.items():
+                if b_cnt > 0:
+                    ddate = f"{ym}-05" if rnd == 1 else today_str
+                    disp_rows.append((did, ddate, ym, rnd, round(b_cnt * 18.4, 1), sup_id, sup_name))
+        if disp_rows:
+            cur.executemany(
+                """
+                INSERT INTO dispatch_logs (division_id, dispatch_date, year_month, round_number, weight_kg, recorded_by_id, recorded_by_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                disp_rows,
+            )
 
 
 def seed_plantation_data(cur):
@@ -355,11 +572,8 @@ def seed_plantation_data(cur):
         fields,
     )
 
-    # Level 4 & 5: Blocks & Palm Trees
-    block_counts = [
-        285, 268, 312, 294, 320, 305, 290, 264, 248, 240,
-        308, 282, 274, 296, 265, 258, 301, 277, 289, 252,
-    ]
+    # Level 4 & 5: Blocks & Palm Trees (11,020 Geo-Tagged Oil Palms across 20 Blocks)
+    block_counts = BLOCK_STAND_COUNTS
     block_id = 0
     now_str = datetime.now().isoformat()
     today_str = date.today().strftime("%Y-%m-%d")
@@ -383,14 +597,10 @@ def seed_plantation_data(cur):
 
             tree_rows = []
             for tno in range(1, palm_count + 1):
-                row_no = ((tno - 1) // 10) + 1
-                is_mapped = block_id == 1 and tno <= 150
-                lat = round(6.1420 + ((tno - 1) // 10) * 0.00008, 6) if is_mapped else None
-                lng = round(80.3650 + ((tno - 1) % 10) * 0.00008, 6) if is_mapped else None
-                acc = 3.8 if is_mapped else None
-                mapped_at = now_str if is_mapped else None
+                row_no = ((tno - 1) // 23) + 1
+                lat, lng = compute_palm_coordinates(block_id, tno)
                 tree_rows.append(
-                    (block_id, tno, f"T-{tno:03d}", row_no, lat, lng, acc, pyear, "active", mapped_at)
+                    (block_id, tno, f"T-{tno:03d}", row_no, lat, lng, 3.8, pyear, "active", now_str)
                 )
 
             cur.executemany(
@@ -403,63 +613,7 @@ def seed_plantation_data(cur):
                 tree_rows,
             )
 
-    # Seed initial harvest logs on Block 1 across Rounds 1, 2, and 3
-    sample_harvest = [
-        (1, f"{ym}-04", ym, 4, 1, 12, 8, 8, "Ajith", 0.00002, 0.00001, 4.1),
-        (1, f"{ym}-14", ym, 14, 2, 11, 7, 1, "Sandaruwan Gunathilaka", 0.00001, 0.00002, 3.8),
-        (2, f"{ym}-04", ym, 4, 1, 10, 7, 8, "Ajith", 0.00003, -0.00002, 3.9),
-        (2, f"{ym}-22", ym, 22, 3, 9, 6, 1, "Sandaruwan Gunathilaka", 0.00002, -0.00001, 3.9),
-        (3, f"{ym}-05", ym, 5, 1, 14, 9, 9, "Baba", 0.00042, 0.00035, 6.2),
-        (4, f"{ym}-05", ym, 5, 1, 11, 8, 3, "Raveendra", 0.00001, 0.00002, 3.5),
-        (5, today_str, ym, int(today_str[8:10]), cur_round, 15, 10, 8, "Ajith", 0.00002, 0.00002, 4.0),
-        (6, today_str, ym, int(today_str[8:10]), cur_round, 9, 6, 9, "Baba", 0.00075, -0.00048, 8.0),
-        (7, today_str, ym, int(today_str[8:10]), cur_round, 13, 8, 1, "Sandaruwan Gunathilaka", 0.00001, -0.00001, 3.7),
-        (8, today_str, ym, int(today_str[8:10]), cur_round, 11, 7, 3, "Raveendra", 0.00002, 0.00001, 4.2),
-    ]
-    for tno, hdate, ymo, dom, rnd, bunches, fronds, uid, uname, dlat, dlng, acc in sample_harvest:
-        base_lat = 6.1420 + ((tno - 1) // 10) * 0.00008
-        base_lng = 80.3650 + ((tno - 1) % 10) * 0.00008
-        cur.execute("SELECT id FROM trees WHERE block_id = 1 AND tree_number = ?", (tno,))
-        t_row = cur.fetchone()
-        if t_row:
-            cur.execute(
-                """
-                INSERT OR IGNORE INTO harvest_logs (
-                    tree_id, block_id, harvest_date, year_month, day_of_month, round_number,
-                    bunches_cut, fronds_cut, bunch_weight_kg, latitude, longitude, gps_acc,
-                    recorded_by_id, recorded_by_name
-                ) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    t_row["id"],
-                    hdate,
-                    ymo,
-                    dom,
-                    rnd,
-                    bunches,
-                    fronds,
-                    round(bunches * 18.5, 1),
-                    round(base_lat + dlat, 6),
-                    round(base_lng + dlng, 6),
-                    acc,
-                    uid,
-                    uname,
-                ),
-            )
-
-    # Seed initial Mill Dispatch Crop Weights
-    sample_dispatches = [
-        (1, f"{ym}-05", ym, 1, 895.0, 3, "Raveendra"),
-        (1, today_str, ym, cur_round, 1480.0, 3, "Raveendra"),
-        (2, today_str, ym, cur_round, 640.0, 4, "Pasindu"),
-    ]
-    cur.executemany(
-        """
-        INSERT INTO dispatch_logs (division_id, dispatch_date, year_month, round_number, weight_kg, recorded_by_id, recorded_by_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        sample_dispatches,
-    )
+    seed_sample_estate_harvests(cur, today_str, ym, cur_round)
 
 
 if __name__ == "__main__":

@@ -248,6 +248,51 @@ function distanceM(lat1, lng1, lat2, lng2) {
     return 2 * R * Math.asin(Math.sqrt(a));
 }
 
+function computePalmCoordinates(blockId, treeNo) {
+    const bIdx = Math.max(0, (Number(blockId) || 1) - 1);
+    const fieldIdx = Math.floor(bIdx / 2);
+    const blockInField = bIdx % 2;
+
+    let fieldBaseLat = 6.142;
+    let fieldBaseLng = 80.365;
+    if (fieldIdx <= 5) {
+        const fCol = fieldIdx % 2;
+        const fRow = Math.floor(fieldIdx / 2);
+        fieldBaseLat = 6.142 + fRow * 0.00255;
+        fieldBaseLng = 80.365 + fCol * 0.00485;
+    } else if (fieldIdx <= 7) {
+        const fRow = fieldIdx - 6;
+        fieldBaseLat = 6.1452 + fRow * 0.00255;
+        fieldBaseLng = 80.3756;
+    } else if (fieldIdx <= 9) {
+        const fRow = fieldIdx - 8;
+        fieldBaseLat = 6.14175 - fRow * 0.00255;
+        fieldBaseLng = 80.3756;
+    } else {
+        const extra = fieldIdx - 10;
+        fieldBaseLat = 6.1392 - (Math.floor(extra / 2) + 1) * 0.00255;
+        fieldBaseLng = 80.365 + (extra % 2) * 0.00485;
+    }
+
+    const blockBaseLat = fieldBaseLat;
+    const blockBaseLng = fieldBaseLng + blockInField * 0.00235;
+    const cols = 23;
+    const idx = Math.max(0, (Number(treeNo) || 1) - 1);
+    const row = Math.floor(idx / cols);
+    const col = idx % cols;
+    const stagLng = row % 2 === 1 ? 0.00004 : 0.0;
+    const u = (col / 22.0) * Math.PI;
+    const v = (row / 24.0) * Math.PI;
+    const phase = bIdx * 0.65;
+    const curveLat = Math.sin(u + phase) * 0.00011 - Math.sin(phase) * 0.00011;
+    const curveLng = Math.sin(v + phase * 0.7) * 0.00011 - Math.sin(phase * 0.7) * 0.00011;
+    const archLat = Math.sin(u) * (blockInField === 0 ? 0.00008 : -0.00008);
+
+    const lat = Number((blockBaseLat + row * 0.000075 + curveLat + archLat).toFixed(6));
+    const lng = Number((blockBaseLng + col * 0.000078 + stagLng + curveLng).toFixed(6));
+    return { lat, lng };
+}
+
 function publicUser(u) {
     const isMaster = Boolean(u.is_master) || String(u.username || "").toLowerCase() === "sandaru98j";
     const role = isMaster ? "Master Admin" : normalizeRole(u.role);
@@ -1474,6 +1519,116 @@ async function handleNearestTree(db, params) {
     return { tree: null, distance_m: bestDist };
 }
 
+async function handleMapTrees(db, params) {
+    const from = validDate(params.from) ? params.from : "1900-01-01";
+    const to = validDate(params.to) ? params.to : "2999-12-31";
+    const roundNo = toInt(params.round_no);
+    const estateId = toInt(params.estate_id);
+    const divisionId = toInt(params.division_id);
+    const fieldId = toInt(params.field_id);
+    const blockId = toInt(params.block_id);
+    const isolate = ["1", "true", "yes"].includes(String(params.isolate || "0").toLowerCase());
+
+    const hConds = ["h.harvest_date BETWEEN ? AND ?"];
+    const hBinds = [from, to];
+    if (roundNo === 1 || roundNo === 2 || roundNo === 3) {
+        hConds.push("h.round_no = ?");
+        hBinds.push(roundNo);
+    }
+
+    const tConds = ["t.status = 'active'"];
+    const tBinds = [];
+    if (estateId) {
+        tConds.push("e.id = ?");
+        tBinds.push(estateId);
+    }
+    if (isolate) {
+        if (blockId) {
+            tConds.push("b.id = ?");
+            tBinds.push(blockId);
+        } else if (fieldId) {
+            tConds.push("f.id = ?");
+            tBinds.push(fieldId);
+        } else if (divisionId) {
+            tConds.push("d.id = ?");
+            tBinds.push(divisionId);
+        }
+    }
+
+    const sql = `
+        SELECT
+            t.id,
+            t.tree_no,
+            t.lat,
+            t.lng,
+            b.id AS block_id,
+            b.name AS block_name,
+            f.id AS field_id,
+            f.name AS field_name,
+            d.id AS division_id,
+            d.name AS division_name,
+            e.id AS estate_id,
+            e.name AS estate_name,
+            COALESCE(h_agg.bunches, 0) AS bunches,
+            COALESCE(h_agg.fronds, 0) AS fronds
+        FROM el_trees t
+        JOIN el_blocks b ON b.id = t.block_id
+        JOIN el_fields f ON f.id = b.field_id
+        JOIN el_divisions d ON d.id = f.division_id
+        JOIN el_estates e ON e.id = d.estate_id
+        LEFT JOIN (
+            SELECT tree_id, SUM(bunches) AS bunches, SUM(fronds) AS fronds
+            FROM el_harvest h
+            WHERE ${hConds.join(" AND ")}
+            GROUP BY tree_id
+        ) h_agg ON h_agg.tree_id = t.id
+        WHERE ${tConds.join(" AND ")}
+        ORDER BY d.id ASC, f.id ASC, b.id ASC, t.tree_no ASC
+    `;
+    const { results } = await db.prepare(sql).bind(...hBinds, ...tBinds).all();
+    let harvestedCount = 0;
+    const trees = (results || []).map((r) => {
+        let lat = r.lat;
+        let lng = r.lng;
+        if (lat === null || lat === undefined || lng === null || lng === undefined) {
+            const c = computePalmCoordinates(r.block_id, r.tree_no);
+            lat = c.lat;
+            lng = c.lng;
+        }
+        const bunches = Number(r.bunches || 0);
+        const fronds = Number(r.fronds || 0);
+        const harvested = bunches > 0;
+        if (harvested) harvestedCount++;
+        return {
+            id: r.id,
+            tree_no: r.tree_no,
+            tree_code: `T-${String(r.tree_no).padStart(3, "0")}`,
+            lat,
+            lng,
+            block_id: r.block_id,
+            block_name: r.block_name,
+            field_id: r.field_id,
+            field_name: r.field_name,
+            division_id: r.division_id,
+            division_name: r.division_name,
+            estate_id: r.estate_id,
+            estate_name: r.estate_name,
+            harvested,
+            bunches,
+            fronds,
+        };
+    });
+
+    return {
+        from,
+        to,
+        round_no: roundNo,
+        total_trees: trees.length,
+        harvested_trees: harvestedCount,
+        trees,
+    };
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -1568,6 +1723,10 @@ async function route(request, env, url) {
     if (method === "GET" && path === "/api/trees/nearest") {
         requireRole(user, "Harvester");
         return json(await handleNearestTree(db, params));
+    }
+    if (method === "GET" && path === "/api/map/trees") {
+        requireRole(user, "Harvester");
+        return json(await handleMapTrees(db, params));
     }
     if (method === "POST" && path === "/api/tree/calibrate") {
         return json(await handleCalibrateTree(db, user, body));

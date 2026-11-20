@@ -24,6 +24,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Lucide Vector Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Leaflet.js GIS Map Engine + Turf.js Spatial Analysis -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js" crossorigin=""></script>
 
     <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -123,8 +127,12 @@
                             <i data-lucide="scissors" class="w-5 h-5 shrink-0"></i>
                             <span class="hidden lg:inline">Harvests</span>
                         </button>
-                        <button type="button" data-nav="estates" data-min-role="Admin" class="x-nav-item">
+                        <button type="button" data-nav="map" data-min-role="Harvester" class="x-nav-item">
                             <i data-lucide="map" class="w-5 h-5 shrink-0"></i>
+                            <span class="hidden lg:inline">Map</span>
+                        </button>
+                        <button type="button" data-nav="estates" data-min-role="Admin" class="x-nav-item">
+                            <i data-lucide="layers" class="w-5 h-5 shrink-0"></i>
                             <span class="hidden lg:inline">Estates</span>
                         </button>
                         <button type="button" data-nav="directory" data-min-role="Admin" class="x-nav-item">
@@ -586,6 +594,139 @@
                 </section>
 
                 <!-- ============================================================
+                     VIEW 2C: DEDICATED FULL-SCREEN GIS SATELLITE MAP (11,000+ Palms)
+                     ============================================================ -->
+                <section id="page-map" class="page-view hidden divide-y divide-[#eff3f4]">
+                    <!-- Compact Responsive GIS Filter & Control Toolbar -->
+                    <div class="p-3 sm:px-4 sm:py-3 space-y-2.5 bg-white w-full max-w-full box-border no-print">
+                        <!-- Row 1: Area Selection (Division, Field, Block, Full Map, Isolate) + Map Controls & Download -->
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex flex-wrap items-center gap-1.5 flex-1 min-w-[260px]">
+                                <select id="mapview-division" class="x-input !w-auto !py-1.5 !px-2.5 text-xs">
+                                    <option value="">All Divisions</option>
+                                </select>
+                                <select id="mapview-field" class="x-input !w-auto !py-1.5 !px-2.5 text-xs">
+                                    <option value="">All Fields</option>
+                                </select>
+                                <select id="mapview-block" class="x-input !w-auto !py-1.5 !px-2.5 text-xs">
+                                    <option value="">All Blocks</option>
+                                </select>
+                                <button type="button" id="btn-mapview-full" class="gis-ctrl-pill" title="Reset to Full Estate Map">
+                                    <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
+                                    <span>Full Map</span>
+                                </button>
+                                <button type="button" id="btn-mapview-isolate" class="gis-ctrl-pill" title="Isolate selected Division, Field, or Block">
+                                    <i data-lucide="focus" class="w-3.5 h-3.5"></i>
+                                    <span id="lbl-mapview-isolate">Isolate: Off</span>
+                                </button>
+                            </div>
+
+                            <!-- Map Display Toggles & Download Dropdown -->
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                <button type="button" id="btn-mapview-basemap" class="gis-ctrl-pill active" title="Toggle Satellite vs. Clean Map">
+                                    <i data-lucide="satellite" class="w-3.5 h-3.5"></i>
+                                    <span id="lbl-mapview-basemap">Satellite</span>
+                                </button>
+                                <button type="button" id="btn-mapview-boundaries" class="gis-ctrl-pill active" title="Toggle 10m Curved Boundaries">
+                                    <i data-lucide="pentagon" class="w-3.5 h-3.5"></i>
+                                    <span>Boundaries</span>
+                                </button>
+                                <button type="button" id="btn-mapview-labels" class="gis-ctrl-pill active" title="Toggle Smart Zoom Labels">
+                                    <i data-lucide="tag" class="w-3.5 h-3.5"></i>
+                                    <span>Labels</span>
+                                </button>
+
+                                <!-- Download Dropdown (.png & .kml) -->
+                                <div class="relative" id="mapview-download-wrap">
+                                    <button type="button" id="btn-mapview-download" class="x-btn-primary !py-1.5 !px-3 !text-xs">
+                                        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                                        <span>Download</span>
+                                        <i data-lucide="chevron-down" class="w-3 h-3"></i>
+                                    </button>
+                                    <div id="mapview-download-menu" class="hidden absolute right-0 mt-1.5 w-56 rounded-2xl bg-white border border-[#cfd9de] shadow-lg py-1.5 z-50">
+                                        <button type="button" id="btn-mapview-dl-png" class="w-full px-3.5 py-2 text-left text-xs font-bold text-[#0f1419] hover:bg-[#f7f9f9] flex items-center gap-2.5">
+                                            <i data-lucide="image" class="w-4 h-4 text-[#536471] shrink-0"></i>
+                                            <div>
+                                                <div>Download Map Image (.png)</div>
+                                                <div class="text-[10px] font-normal text-[#536471]">Satellite, boundaries &amp; legend</div>
+                                            </div>
+                                        </button>
+                                        <button type="button" id="btn-mapview-dl-kml" class="w-full px-3.5 py-2 text-left text-xs font-bold text-[#0f1419] hover:bg-[#f7f9f9] flex items-center gap-2.5">
+                                            <i data-lucide="globe" class="w-4 h-4 text-[#536471] shrink-0"></i>
+                                            <div>
+                                                <div>Export Google Earth (.kml)</div>
+                                                <div class="text-[10px] font-normal text-[#536471]">Palms + 10m boundary polygons</div>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Row 2: Compact Time Period Filters (Season, Year, Month, Round, Custom Range) -->
+                        <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#eff3f4]">
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                <select id="mapview-time-mode" class="x-input !w-auto !py-1.5 !px-2.5 text-xs">
+                                    <option value="month">Month</option>
+                                    <option value="season">Season</option>
+                                    <option value="year">Year</option>
+                                    <option value="custom">Custom Range</option>
+                                </select>
+
+                                <select id="mapview-season" class="hidden x-input !w-auto !py-1.5 !px-2.5 text-xs font-mono-code">
+                                    <option value="2026">Season 2026/27</option>
+                                    <option value="2025">Season 2025/26</option>
+                                    <option value="2024">Season 2024/25</option>
+                                </select>
+
+                                <select id="mapview-year" class="hidden x-input !w-auto !py-1.5 !px-2.5 text-xs font-mono-code">
+                                    <option value="2026">Year 2026</option>
+                                    <option value="2025">Year 2025</option>
+                                    <option value="2024">Year 2024</option>
+                                </select>
+
+                                <input id="mapview-month" type="month" class="x-input !w-auto !py-1.5 !px-2.5 text-xs font-mono-code" />
+
+                                <div id="mapview-custom-dates" class="hidden inline-flex items-center gap-1.5">
+                                    <input id="mapview-from" type="date" class="x-input !w-auto !py-1.5 !px-2 text-xs font-mono-code" />
+                                    <span class="text-xs text-[#536471]">&ndash;</span>
+                                    <input id="mapview-to" type="date" class="x-input !w-auto !py-1.5 !px-2 text-xs font-mono-code" />
+                                </div>
+
+                                <select id="mapview-round" class="x-input !w-auto !py-1.5 !px-2.5 text-xs font-mono-code">
+                                    <option value="">Entire Month</option>
+                                    <option value="1">R1 (Days 1-10)</option>
+                                    <option value="2">R2 (Days 11-20)</option>
+                                    <option value="3">R3 (Days 21-End)</option>
+                                </select>
+                            </div>
+
+                            <div id="mapview-summary-badge" class="text-[11px] font-mono-code font-bold text-[#536471] truncate">
+                                Full Estate &bull; 0 / 0 Harvested
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Full-Height Satellite & 60fps Canvas Map Viewport -->
+                    <div class="gis-map-viewport">
+                        <div id="gis-map-canvas"></div>
+
+                        <!-- Minimal 2-Color Floating Legend -->
+                        <div class="gis-legend-overlay no-print">
+                            <span class="inline-flex items-center gap-1.5">
+                                <span class="gis-palm-swatch harvested"></span>
+                                <span>Harvested (<span id="gis-leg-harvested" class="font-mono-code">0</span>)</span>
+                            </span>
+                            <span class="inline-flex items-center gap-1.5">
+                                <span class="gis-palm-swatch unharvested"></span>
+                                <span>Not Harvested (<span id="gis-leg-unharvested" class="font-mono-code">0</span>)</span>
+                            </span>
+                            <span class="text-[#536471] font-mono-code text-[10px]" id="gis-leg-scope">10m Buffer</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ============================================================
                      VIEW 3: ESTATES (Hierarchy + GPS Mapper)
                      ============================================================ -->
                 <section id="page-estates" class="page-view hidden divide-y divide-[#eff3f4]">
@@ -990,8 +1131,12 @@
                             <i data-lucide="scissors" class="w-5 h-5 shrink-0"></i>
                             <span>Harvests</span>
                         </button>
-                        <button type="button" data-nav="estates" data-min-role="Admin" class="x-nav-item">
+                        <button type="button" data-nav="map" data-min-role="Harvester" class="x-nav-item">
                             <i data-lucide="map" class="w-5 h-5 shrink-0"></i>
+                            <span>Map</span>
+                        </button>
+                        <button type="button" data-nav="estates" data-min-role="Admin" class="x-nav-item">
+                            <i data-lucide="layers" class="w-5 h-5 shrink-0"></i>
                             <span>Estates</span>
                         </button>
                         <button type="button" data-nav="directory" data-min-role="Admin" class="x-nav-item">
@@ -1042,8 +1187,12 @@
                     <i data-lucide="scissors" class="w-4 h-4 shrink-0"></i>
                     <span class="truncate max-w-full">Harvests</span>
                 </button>
-                <button type="button" data-nav="estates" data-min-role="Admin" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold min-w-0">
+                <button type="button" data-nav="map" data-min-role="Harvester" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold min-w-0">
                     <i data-lucide="map" class="w-4 h-4 shrink-0"></i>
+                    <span class="truncate max-w-full">Map</span>
+                </button>
+                <button type="button" data-nav="estates" data-min-role="Admin" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold min-w-0">
+                    <i data-lucide="layers" class="w-4 h-4 shrink-0"></i>
                     <span class="truncate max-w-full">Estates</span>
                 </button>
                 <button type="button" data-nav="directory" data-min-role="Admin" class="nav-btn flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold min-w-0">

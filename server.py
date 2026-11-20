@@ -19,6 +19,7 @@ from database import (
     hash_password,
     verify_password,
     compute_harvest_round,
+    compute_palm_coordinates,
     ROLE_RANK,
 )
 
@@ -833,6 +834,120 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                 return self._send_json({"tree": best_tree, "distance_m": best_dist})
             return self._send_json({"tree": None, "distance_m": best_dist})
 
+        if path == "/api/map/trees":
+            user = self._require_role(conn, "Harvester", params=params)
+            if not user:
+                return
+            from_d = params.get("from") or "1900-01-01"
+            to_d = params.get("to") or "2999-12-31"
+            round_no = safe_int(params.get("round_no"), min_val=1, max_val=3)
+            estate_id = safe_int(params.get("estate_id"), min_val=1)
+            division_id = safe_int(params.get("division_id"), min_val=1)
+            field_id = safe_int(params.get("field_id"), min_val=1)
+            block_id = safe_int(params.get("block_id"), min_val=1)
+            isolate = str(params.get("isolate") or "0").lower() in ("1", "true", "yes")
+
+            h_conds = ["h.harvest_date >= ?", "h.harvest_date <= ?"]
+            h_args = [from_d, to_d]
+            if round_no in (1, 2, 3):
+                h_conds.append("h.round_number = ?")
+                h_args.append(round_no)
+
+            t_conds = ["t.status = 'active'"]
+            t_args = []
+            if estate_id:
+                t_conds.append("e.id = ?")
+                t_args.append(estate_id)
+            if isolate:
+                if block_id:
+                    t_conds.append("b.id = ?")
+                    t_args.append(block_id)
+                elif field_id:
+                    t_conds.append("f.id = ?")
+                    t_args.append(field_id)
+                elif division_id:
+                    t_conds.append("d.id = ?")
+                    t_args.append(division_id)
+
+            sql = f"""
+                SELECT
+                    t.id,
+                    t.tree_number AS tree_no,
+                    t.tree_code,
+                    t.latitude AS lat,
+                    t.longitude AS lng,
+                    b.id AS block_id,
+                    b.name AS block_name,
+                    f.id AS field_id,
+                    f.name AS field_name,
+                    d.id AS division_id,
+                    d.name AS division_name,
+                    e.id AS estate_id,
+                    e.name AS estate_name,
+                    COALESCE(h_agg.bunches, 0) AS bunches,
+                    COALESCE(h_agg.fronds, 0) AS fronds
+                FROM trees t
+                JOIN blocks b ON b.id = t.block_id
+                JOIN fields f ON f.id = b.field_id
+                JOIN divisions d ON d.id = f.division_id
+                JOIN estates e ON e.id = d.estate_id
+                LEFT JOIN (
+                    SELECT tree_id,
+                           SUM(bunches_cut) AS bunches,
+                           SUM(fronds_cut) AS fronds
+                    FROM harvest_logs h
+                    WHERE {' AND '.join(h_conds)}
+                    GROUP BY tree_id
+                ) h_agg ON h_agg.tree_id = t.id
+                WHERE {' AND '.join(t_conds)}
+                ORDER BY d.id ASC, f.id ASC, b.id ASC, t.tree_number ASC
+            """
+            cur.execute(sql, h_args + t_args)
+
+            trees_out = []
+            harvested_count = 0
+            for r in cur.fetchall():
+                lat = r["lat"]
+                lng = r["lng"]
+                if lat is None or lng is None:
+                    lat, lng = compute_palm_coordinates(r["block_id"], r["tree_no"])
+                bunches = int(r["bunches"] or 0)
+                fronds = int(r["fronds"] or 0)
+                is_harv = bunches > 0
+                if is_harv:
+                    harvested_count += 1
+                trees_out.append(
+                    {
+                        "id": r["id"],
+                        "tree_no": r["tree_no"],
+                        "tree_code": r["tree_code"] or f"T-{int(r['tree_no']):03d}",
+                        "lat": lat,
+                        "lng": lng,
+                        "block_id": r["block_id"],
+                        "block_name": r["block_name"],
+                        "field_id": r["field_id"],
+                        "field_name": r["field_name"],
+                        "division_id": r["division_id"],
+                        "division_name": r["division_name"],
+                        "estate_id": r["estate_id"],
+                        "estate_name": r["estate_name"],
+                        "harvested": is_harv,
+                        "bunches": bunches,
+                        "fronds": fronds,
+                    }
+                )
+
+            return self._send_json(
+                {
+                    "from": from_d,
+                    "to": to_d,
+                    "round_no": round_no,
+                    "total_trees": len(trees_out),
+                    "harvested_trees": harvested_count,
+                    "trees": trees_out,
+                }
+            )
+
         if path == "/api/block":
             user = self._require_role(conn, "Harvester")
             if not user:
@@ -1447,12 +1562,13 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                 return self._send_json({"error": "Select a valid block and palm count."}, status=400)
             cur.execute("SELECT COALESCE(MAX(tree_number), 0) AS mx FROM trees WHERE block_id = ?", (block_id,))
             start_no = int(cur.fetchone()["mx"] or 0) + 1
-            rows = [
-                (block_id, n, f"T-{n:03d}", ((n - 1) // 10) + 1, "active")
-                for n in range(start_no, start_no + count)
-            ]
+            now_s = datetime.utcnow().isoformat()
+            rows = []
+            for n in range(start_no, start_no + count):
+                lat, lng = compute_palm_coordinates(block_id, n)
+                rows.append((block_id, n, f"T-{n:03d}", ((n - 1) // 23) + 1, lat, lng, 3.8, "active", now_s))
             cur.executemany(
-                "INSERT OR IGNORE INTO trees (block_id, tree_number, tree_code, row_number, status) VALUES (?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO trees (block_id, tree_number, tree_code, row_number, latitude, longitude, gps_acc, status, mapped_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 rows,
             )
             conn.commit()
