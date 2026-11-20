@@ -281,7 +281,6 @@ def init_db(force_reseed_users: bool = False):
         """
     )
 
-    cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('gps_threshold_m', '20')")
     cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('season_start_month', '4')")
 
     # Ensure theme, profile_pic, and cover_photo columns exist on existing SQLite databases

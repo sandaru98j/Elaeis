@@ -582,10 +582,10 @@ body {
     border-color: var(--accent-primary);
 }
 
-/* Compliance red-flagged row */
-.row-flagged {
-    background-color: var(--danger-soft) !important;
-    border-left: 3px solid var(--danger) !important;
+/* Selected / Auto-detected palm highlight on 2D grid */
+.palm-card.selected-palm {
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 0 2px var(--accent-primary);
 }
 
 /* Theme Swatch Selector Card (Compact X-Style Display Card) */

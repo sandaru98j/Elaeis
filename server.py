@@ -758,9 +758,18 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             cur.execute("SELECT key, value FROM settings")
             s_map = {r["key"]: r["value"] for r in cur.fetchall()}
             settings = {
-                "gps_threshold_m": int(s_map.get("gps_threshold_m", 20)),
                 "season_start_month": int(s_map.get("season_start_month", 4)),
             }
+
+            cur.execute(
+                """
+                SELECT id, block_id, tree_number AS tree_no, latitude AS lat, longitude AS lng, gps_acc
+                FROM trees
+                WHERE status = 'active' AND latitude IS NOT NULL AND longitude IS NOT NULL
+                ORDER BY block_id ASC, tree_number ASC
+                """
+            )
+            mapped_trees = [dict(r) for r in cur.fetchall()]
 
             return self._send_json(
                 {
@@ -771,8 +780,58 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                         "blocks": blocks,
                     },
                     "settings": settings,
+                    "mapped_trees": mapped_trees,
                 }
             )
+
+        if path == "/api/trees/mapped":
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
+            cur.execute(
+                """
+                SELECT id, block_id, tree_number AS tree_no, latitude AS lat, longitude AS lng, gps_acc
+                FROM trees
+                WHERE status = 'active' AND latitude IS NOT NULL AND longitude IS NOT NULL
+                ORDER BY block_id ASC, tree_number ASC
+                """
+            )
+            return self._send_json({"trees": [dict(r) for r in cur.fetchall()]})
+
+        if path == "/api/trees/nearest":
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
+            u_lat = safe_float(params.get("lat"))
+            u_lng = safe_float(params.get("lng"))
+            max_radius_m = safe_float(params.get("max_radius_m"), default=100.0, min_val=1.0, max_val=5000.0)
+            block_id = safe_int(params.get("block_id"), min_val=1)
+            if u_lat is None or u_lng is None:
+                return self._send_json({"tree": None})
+
+            cur.execute(
+                """
+                SELECT t.id, t.block_id, t.tree_number AS tree_no, t.latitude AS lat, t.longitude AS lng,
+                       t.gps_acc, b.field_id, f.division_id
+                FROM trees t
+                JOIN blocks b ON b.id = t.block_id
+                JOIN fields f ON f.id = b.field_id
+                WHERE t.status = 'active' AND t.latitude IS NOT NULL AND t.longitude IS NOT NULL
+                """
+            )
+            best_tree = None
+            best_dist = None
+            for r in cur.fetchall():
+                d = distance_m(u_lat, u_lng, r["lat"], r["lng"])
+                if d is None:
+                    continue
+                if best_dist is None or d < best_dist or (d == best_dist and block_id and r["block_id"] == block_id):
+                    best_dist = d
+                    best_tree = {**dict(r), "distance_m": d}
+
+            if best_tree and best_dist is not None and best_dist <= max_radius_m:
+                return self._send_json({"tree": best_tree, "distance_m": best_dist})
+            return self._send_json({"tree": None, "distance_m": best_dist})
 
         if path == "/api/block":
             user = self._require_role(conn, "Harvester")
@@ -1022,62 +1081,6 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             users = [format_user(r) for r in cur.fetchall()]
             return self._send_json({"users": users})
 
-        if path == "/api/admin/compliance":
-            user = self._require_role(conn, "Admin")
-            if not user:
-                return
-            cur.execute("SELECT value FROM settings WHERE key = 'gps_threshold_m'")
-            r_th = cur.fetchone()
-            threshold_m = float(r_th["value"]) if r_th else 20.0
-
-            cur.execute(
-                """
-                SELECT h.id, h.harvest_date AS work_date, h.created_at AS recorded_at,
-                       h.latitude AS user_lat, h.longitude AS user_lng, h.gps_acc AS user_acc,
-                       h.bunches_cut, h.fronds_cut, h.round_number,
-                       h.recorded_by_name AS full_name,
-                       t.tree_number AS tree_no, t.latitude AS tree_lat, t.longitude AS tree_lng,
-                       b.name AS block, f.name AS field, d.name AS division
-                FROM harvest_logs h
-                JOIN trees t ON t.id = h.tree_id
-                JOIN blocks b ON b.id = t.block_id
-                JOIN fields f ON f.id = b.field_id
-                JOIN divisions d ON d.id = f.division_id
-                ORDER BY h.id DESC
-                LIMIT 200
-                """
-            )
-            rows = []
-            for r in cur.fetchall():
-                dist = distance_m(r["tree_lat"], r["tree_lng"], r["user_lat"], r["user_lng"])
-                if r["user_lat"] is None:
-                    status = "no_gps"
-                elif r["tree_lat"] is None:
-                    status = "unmapped"
-                else:
-                    status = "far" if dist > threshold_m else "ok"
-                rows.append(
-                    {
-                        "id": r["id"],
-                        "work_date": r["work_date"],
-                        "recorded_at": r["recorded_at"],
-                        "user_lat": r["user_lat"],
-                        "user_lng": r["user_lng"],
-                        "user_acc": r["user_acc"],
-                        "full_name": r["full_name"],
-                        "tree_no": r["tree_no"],
-                        "tree_lat": r["tree_lat"],
-                        "tree_lng": r["tree_lng"],
-                        "block": r["block"],
-                        "field": r["field"],
-                        "division": r["division"],
-                        "detail": f"{r['bunches_cut']} Bunches / {r['fronds_cut']} Fronds (R{r['round_number']})",
-                        "distance_m": dist,
-                        "status": status,
-                    }
-                )
-            return self._send_json({"threshold_m": threshold_m, "rows": rows})
-
         return self._send_json({"error": f"Unknown endpoint {path}"}, status=404)
 
     # -------------------------------------------------------------------------
@@ -1201,7 +1204,7 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             conn.commit()
             return self._send_json({"ok": True, "theme": theme})
 
-        # 4. Log Tree Harvest
+        # 4. Log Tree Harvest (No GPS compliance blocking; fallback to tree's saved coordinates when device GPS is weak/unavailable)
         if path == "/api/harvest":
             user = self._require_role(conn, "Harvester")
             if not user:
@@ -1211,14 +1214,20 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             round_no = int(data.get("round_no") or compute_harvest_round(date_str)["round_number"])
             bunches = max(0, int(data.get("bunches") or 0))
             fronds = max(0, int(data.get("fronds") or 0))
-            lat = data.get("lat")
-            lng = data.get("lng")
-            acc = data.get("acc")
+            lat = safe_float(data.get("lat"))
+            lng = safe_float(data.get("lng"))
+            acc = safe_float(data.get("acc"))
 
             cur.execute("SELECT * FROM trees WHERE id = ?", (tree_id,))
             tree = cur.fetchone()
             if not tree:
                 return self._send_json({"error": "Palm tree not found."}, status=404)
+
+            if lat is None or lng is None or abs(lat) > 90 or abs(lng) > 180:
+                lat = tree["latitude"]
+                lng = tree["longitude"]
+                if acc is None:
+                    acc = tree["gps_acc"]
 
             r_info = compute_harvest_round(date_str, round_no)
             cur.execute(
@@ -1258,8 +1267,7 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                 ),
             )
             conn.commit()
-            dist = distance_m(tree["latitude"], tree["longitude"], lat, lng)
-            return self._send_json({"ok": True, "round": r_info["round_number"], "distance_m": dist})
+            return self._send_json({"ok": True, "round": r_info["round_number"], "lat": lat, "lng": lng})
 
         # 5. Mill Dispatch Weight Logging
         if path == "/api/dispatch":
@@ -1400,12 +1408,34 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             user = self._require_role(conn, "Admin")
             if not user:
                 return
-            gps_th = int(data.get("gps_threshold_m") or 20)
-            season_m = int(data.get("season_start_month") or 4)
-            cur.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('gps_threshold_m', ?)", (str(gps_th),))
+            season_m = safe_int(data.get("season_start_month"), default=4, min_val=1, max_val=12)
             cur.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('season_start_month', ?)", (str(season_m),))
             conn.commit()
             return self._send_json({"ok": True})
+
+        if path == "/api/tree/calibrate":
+            user = self._require_role(conn, "Supervisor")
+            if not user:
+                return
+            tree_id = safe_int(data.get("id") or data.get("tree_id"), default=0)
+            lat = safe_float(data.get("lat"))
+            lng = safe_float(data.get("lng"))
+            acc = safe_float(data.get("acc"), default=4.0)
+            if not tree_id:
+                return self._send_json({"error": "Select a valid tree to calibrate."}, status=400)
+            if lat is None or lng is None or abs(lat) > 90 or abs(lng) > 180:
+                return self._send_json({"error": "Enter valid Latitude and Longitude coordinates."}, status=400)
+            now_s = datetime.utcnow().isoformat()
+            cur.execute(
+                """
+                UPDATE trees
+                SET latitude = ?, longitude = ?, gps_acc = ?, mapped_by = ?, mapped_at = ?
+                WHERE id = ?
+                """,
+                (round(lat, 6), round(lng, 6), acc, user["id"], now_s, tree_id),
+            )
+            conn.commit()
+            return self._send_json({"ok": True, "lat": round(lat, 6), "lng": round(lng, 6)})
 
         if path == "/api/admin/trees/batch":
             user = self._require_role(conn, "Admin")
@@ -1429,11 +1459,12 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             return self._send_json({"ok": True, "from": start_no, "to": start_no + count - 1})
 
         if path.startswith("/api/admin/") and path.endswith(("/save", "/delete")):
-            user = self._require_role(conn, "Admin")
-            if not user:
-                return
             parts = path.strip("/").split("/")
             entity, action = parts[2], parts[3]
+            required_role = "Supervisor" if (entity == "tree" and action == "save") else "Admin"
+            user = self._require_role(conn, required_role)
+            if not user:
+                return
             item_id = int(data.get("id") or 0)
 
             if action == "delete":

@@ -348,7 +348,6 @@ async function seed(env) {
             .bind(id, uname, fname, role, isMaster, erpHash, now)
     );
     stmts.push(
-        db.prepare("INSERT OR IGNORE INTO el_settings (key, value) VALUES ('gps_threshold_m', '20')"),
         db.prepare("INSERT OR IGNORE INTO el_settings (key, value) VALUES ('season_start_month', '4')"),
         db.prepare("INSERT OR IGNORE INTO el_estates (id, name) VALUES (1, 'Uskvalley Estate')"),
         db.prepare("INSERT OR IGNORE INTO el_divisions (id, estate_id, name) VALUES (1, 1, 'Uskvalley Division')"),
@@ -396,10 +395,10 @@ async function seed(env) {
         // [tree_no, date, ym, round, bunches, fronds, user_id, dLat, dLng, acc]
         [1, `${ym}-04`, ym, 1, 12, 8, 3, 0.00002, 0.00001, 4.1],
         [2, `${ym}-04`, ym, 1, 10, 7, 3, 0.00003, -0.00002, 3.9],
-        [3, `${ym}-05`, ym, 1, 14, 9, 3, 0.00042, 0.00035, 6.2], // >20m violation
+        [3, `${ym}-05`, ym, 1, 14, 9, 3, 0.00042, 0.00035, 6.2],
         [4, `${ym}-05`, ym, 1, 11, 8, 2, 0.00001, 0.00002, 3.5],
         [5, today, ym, curRound, 15, 10, 3, 0.00002, 0.00002, 4.0],
-        [6, today, ym, curRound, 9, 6, 3, 0.00075, -0.00048, 8.0], // >20m violation
+        [6, today, ym, curRound, 9, 6, 3, 0.00075, -0.00048, 8.0],
         [7, today, ym, curRound, 13, 8, 3, 0.00001, -0.00001, 3.7],
         [8, today, ym, curRound, 11, 7, 2, 0.00002, 0.00001, 4.2],
         [12, today, ym, curRound, 14, 9, 3, 0.00003, 0.00001, 4.4],
@@ -453,9 +452,20 @@ async function getSettings(db) {
     const { results } = await db.prepare("SELECT key, value FROM el_settings").all();
     const map = Object.fromEntries(results.map((r) => [r.key, r.value]));
     return {
-        gps_threshold_m: Number(map.gps_threshold_m || 20),
         season_start_month: Number(map.season_start_month || 4),
     };
+}
+
+async function getMappedTrees(db) {
+    const { results } = await db
+        .prepare(
+            `SELECT id, block_id, tree_no, lat, lng, gps_acc
+             FROM el_trees
+             WHERE status = 'active' AND lat IS NOT NULL AND lng IS NOT NULL
+             ORDER BY block_id ASC, tree_no ASC`
+        )
+        .all();
+    return results || [];
 }
 
 // ---------------------------------------------------------------------------
@@ -631,6 +641,9 @@ async function handleHarvest(db, user, body) {
     if (bunches === null || bunches < 0 || bunches > 60) fail(400, "Bunches must be 0-60.");
     if (fronds === null || fronds < 0 || fronds > 60) fail(400, "Fronds must be 0-60.");
     const gps = readGps(body);
+    const finalLat = gps.lat !== null ? gps.lat : (tree.lat ?? null);
+    const finalLng = gps.lng !== null ? gps.lng : (tree.lng ?? null);
+    const finalAcc = gps.acc !== null ? gps.acc : (tree.gps_acc ?? null);
 
     await db
         .prepare(
@@ -642,10 +655,10 @@ async function handleHarvest(db, user, body) {
                user_id = excluded.user_id, user_lat = excluded.user_lat, user_lng = excluded.user_lng,
                user_acc = excluded.user_acc, recorded_at = excluded.recorded_at`
         )
-        .bind(tree.id, date, yearMonth, round, bunches, fronds, user.id, gps.lat, gps.lng, gps.acc, nowIso())
+        .bind(tree.id, date, yearMonth, round, bunches, fronds, user.id, finalLat, finalLng, finalAcc, nowIso())
         .run();
 
-    return { ok: true, round, distance_m: distanceInfo(tree, gps) };
+    return { ok: true, round, lat: finalLat, lng: finalLng };
 }
 
 // ---------------------------------------------------------------------------
@@ -1154,42 +1167,6 @@ async function getReportXlsx(db, params) {
 }
 
 // ---------------------------------------------------------------------------
-// Admin: GPS Compliance Log (Harvest Only)
-// ---------------------------------------------------------------------------
-async function getCompliance(db, params) {
-    const from = validDate(params.from) ? params.from : "1900-01-01";
-    const to = validDate(params.to) ? params.to : "2999-12-31";
-    const settings = await getSettings(db);
-
-    const { results } = await db
-        .prepare(
-            `SELECT 'harvest' AS activity, x.id, x.recorded_at, x.harvest_date AS work_date,
-                    x.round_no, x.user_lat, x.user_lng, x.user_acc, u.full_name, u.role,
-                    t.tree_no, t.lat AS tree_lat, t.lng AS tree_lng,
-                    b.name AS block, f.name AS field, d.name AS division,
-                    x.bunches || ' Bunches / ' || x.fronds || ' Fronds (R' || x.round_no || ')' AS detail
-             FROM el_harvest x ${JOINS} JOIN el_users u ON u.id = x.user_id
-             WHERE x.harvest_date BETWEEN ? AND ?
-             ORDER BY x.recorded_at DESC LIMIT 1000`
-        )
-        .bind(from, to)
-        .all();
-
-    const rows = results.map((r) => {
-        let distance = null;
-        let status;
-        if (r.user_lat === null) status = "no_gps";
-        else if (r.tree_lat === null) status = "unmapped";
-        else {
-            distance = Math.round(distanceM(r.tree_lat, r.tree_lng, r.user_lat, r.user_lng) * 10) / 10;
-            status = distance > settings.gps_threshold_m ? "far" : "ok";
-        }
-        return { ...r, distance_m: distance, status };
-    });
-    return { threshold_m: settings.gps_threshold_m, rows };
-}
-
-// ---------------------------------------------------------------------------
 // Admin: Users
 // ---------------------------------------------------------------------------
 async function adminUsers(db) {
@@ -1441,15 +1418,60 @@ async function adminBatchTrees(db, body) {
 }
 
 async function adminSaveSettings(db, body) {
-    const threshold = toNum(body.gps_threshold_m);
-    const seasonStart = toInt(body.season_start_month);
-    if (threshold === null || threshold < 1 || threshold > 1000) fail(400, "GPS threshold must be 1-1000 m.");
-    if (!seasonStart || seasonStart < 1 || seasonStart > 12) fail(400, "Season start month must be 1-12.");
-    await db.batch([
-        db.prepare("INSERT OR REPLACE INTO el_settings (key, value) VALUES ('gps_threshold_m', ?)").bind(String(threshold)),
-        db.prepare("INSERT OR REPLACE INTO el_settings (key, value) VALUES ('season_start_month', ?)").bind(String(seasonStart)),
-    ]);
+    const seasonStart = toInt(body.season_start_month) || 4;
+    if (seasonStart < 1 || seasonStart > 12) fail(400, "Season start month must be 1-12.");
+    await db
+        .prepare("INSERT OR REPLACE INTO el_settings (key, value) VALUES ('season_start_month', ?)")
+        .bind(String(seasonStart))
+        .run();
     return { ok: true };
+}
+
+async function handleCalibrateTree(db, user, body) {
+    requireRole(user, "Supervisor");
+    const treeId = toInt(body.id || body.tree_id);
+    const lat = toNum(body.lat);
+    const lng = toNum(body.lng);
+    const acc = toNum(body.acc) ?? 4.0;
+    if (!treeId) fail(400, "Select a valid tree to calibrate.");
+    if (lat === null || lng === null || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        fail(400, "Enter valid Latitude and Longitude coordinates.");
+    }
+    await db
+        .prepare("UPDATE el_trees SET lat = ?, lng = ?, gps_acc = ?, mapped_by = ?, mapped_at = ? WHERE id = ?")
+        .bind(Number(lat.toFixed(6)), Number(lng.toFixed(6)), acc, user.id, nowIso(), treeId)
+        .run();
+    return { ok: true, lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
+}
+
+async function handleNearestTree(db, params) {
+    const uLat = toNum(params.lat);
+    const uLng = toNum(params.lng);
+    const maxRadiusM = toNum(params.max_radius_m) ?? 100;
+    const blockId = toInt(params.block_id);
+    if (uLat === null || uLng === null) return { tree: null };
+    const { results } = await db
+        .prepare(
+            `SELECT t.id, t.block_id, t.tree_no, t.lat, t.lng, t.gps_acc, b.field_id, f.division_id
+             FROM el_trees t
+             JOIN el_blocks b ON b.id = t.block_id
+             JOIN el_fields f ON f.id = b.field_id
+             WHERE t.status = 'active' AND t.lat IS NOT NULL AND t.lng IS NOT NULL`
+        )
+        .all();
+    let bestTree = null;
+    let bestDist = null;
+    for (const r of results || []) {
+        const d = Math.round(distanceM(uLat, uLng, r.lat, r.lng) * 10) / 10;
+        if (bestDist === null || d < bestDist || (d === bestDist && blockId && r.block_id === blockId)) {
+            bestDist = d;
+            bestTree = { ...r, distance_m: d };
+        }
+    }
+    if (bestTree && bestDist !== null && bestDist <= maxRadiusM) {
+        return { tree: bestTree, distance_m: bestDist };
+    }
+    return { tree: null, distance_m: bestDist };
 }
 
 // ---------------------------------------------------------------------------
@@ -1536,8 +1558,19 @@ async function route(request, env, url) {
     // Approved users
     if (method === "GET" && path === "/api/bootstrap") {
         requireRole(user, "Harvester");
-        const [hierarchy, settings] = await Promise.all([getHierarchy(db), getSettings(db)]);
-        return json({ hierarchy, settings });
+        const [hierarchy, settings, mapped_trees] = await Promise.all([getHierarchy(db), getSettings(db), getMappedTrees(db)]);
+        return json({ hierarchy, settings, mapped_trees });
+    }
+    if (method === "GET" && path === "/api/trees/mapped") {
+        requireRole(user, "Harvester");
+        return json({ trees: await getMappedTrees(db) });
+    }
+    if (method === "GET" && path === "/api/trees/nearest") {
+        requireRole(user, "Harvester");
+        return json(await handleNearestTree(db, params));
+    }
+    if (method === "POST" && path === "/api/tree/calibrate") {
+        return json(await handleCalibrateTree(db, user, body));
     }
     if (method === "GET" && path === "/api/block") {
         requireRole(user, "Harvester");
@@ -1573,11 +1606,14 @@ async function route(request, env, url) {
         return json(await handleDeleteDispatch(db, user, body));
     }
 
-    // Admin & Master Admin only
+    // Admin & Master Admin (Supervisor allowed for tree pin save/calibration)
     if (path.startsWith("/api/admin/")) {
+        if (method === "POST" && path === "/api/admin/tree/save") {
+            requireRole(user, "Supervisor");
+            return json(await adminSave(db, user, "tree", body));
+        }
         requireRole(user, "Admin");
         if (method === "GET" && path === "/api/admin/users") return json(await adminUsers(db));
-        if (method === "GET" && path === "/api/admin/compliance") return json(await getCompliance(db, params));
         if (method === "POST" && path === "/api/admin/users/create") return json(await adminCreateUser(db, user, body));
         if (method === "POST" && path === "/api/admin/users/role") return json(await adminSetRole(db, user, body));
         if (method === "POST" && (path === "/api/admin/users/force-password" || path === "/api/admin/users/password")) {

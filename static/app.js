@@ -68,15 +68,16 @@ const state = {
     activePage: getInitialRouteFromLocation(),
     harvestView: "trees",
     estatesTab: "hierarchy",
-    gps: { lat: 6.14224, lng: 80.36518, acc: 4.2, live: false },
+    gps: { lat: 6.14224, lng: 80.36518, acc: null, live: false, timestamp: 0 },
+    autoDetectGps: localStorage.getItem("elaeis_autodetect_gps") === "1",
     hierarchy: { estates: [], divisions: [], fields: [], blocks: [] },
-    settings: { gps_threshold_m: 20, season_start_month: 4 },
+    mappedTrees: [],
+    settings: { season_start_month: 4 },
     dashTrees: [],
     recentLogs: [],
-    harvBlock: { block_id: null, trees: [], filter: "all", search: "" },
+    harvBlock: { block_id: null, trees: [], filter: "all", search: "", selectedTreeId: null, manualOverride: false },
     dispatches: [],
     mapBlock: { block_id: null, trees: [] },
-    compliance: { threshold_m: 20, rows: [], filter: "all" },
     adminUsers: { users: [] },
     profileActivity: [],
     editProfileDraft: { profile_pic: "", cover_photo: "" },
@@ -118,14 +119,17 @@ function roundOfDate(dateStr, explicitRound = null) {
 }
 
 function distanceMeters(lat1, lng1, lat2, lng2) {
+    if ([lat1, lng1, lat2, lng2].some((v) => v === null || v === undefined || v === "" || !Number.isFinite(Number(v)))) {
+        return Infinity;
+    }
     const R = 6371000;
-    const rad = (x) => (x * Math.PI) / 180;
-    const dLat = rad(lat2 - lat1);
-    const dLng = rad(lng2 - lng1);
+    const rad = (x) => (Number(x) * Math.PI) / 180;
+    const dLat = rad(Number(lat2) - Number(lat1));
+    const dLng = rad(Number(lng2) - Number(lng1));
     const a =
         Math.sin(dLat / 2) ** 2 +
         Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLng / 2) ** 2;
-    return Math.round(2 * R * Math.asin(Math.sqrt(a)) * 10) / 10;
+    return Math.round(2 * R * Math.asin(Math.min(1, Math.sqrt(a))) * 10) / 10;
 }
 
 function refreshIcons() {
@@ -244,60 +248,95 @@ function verifyEncryptedPassword(plain, storedHash) {
 }
 
 // ----------------------------------------------------------------------------
-// Silent Background Phone GPS Capture
+// Browser Geolocation API (GPS Assist — Non-Blocking)
 // ----------------------------------------------------------------------------
-function captureDeviceGps(targetTree = null) {
+function requestBrowserGps(timeoutMs = 5000) {
     return new Promise((resolve) => {
         if (!navigator.geolocation) {
-            resolve(fallbackGps(targetTree));
+            state.gps.live = false;
+            updateGpsHeader();
+            updateGpsAccuracyPills();
+            resolve({ ok: false, lat: null, lng: null, acc: null, live: false });
             return;
         }
         navigator.geolocation.getCurrentPosition(
             (pos) => {
+                const lat = Number(pos.coords.latitude.toFixed(6));
+                const lng = Number(pos.coords.longitude.toFixed(6));
+                const acc = Math.max(1, Math.round(pos.coords.accuracy || 14));
                 state.gps = {
-                    lat: Number(pos.coords.latitude.toFixed(6)),
-                    lng: Number(pos.coords.longitude.toFixed(6)),
-                    acc: Math.round((pos.coords.accuracy || 5) * 10) / 10,
+                    lat,
+                    lng,
+                    acc,
                     live: true,
+                    timestamp: Date.now(),
                 };
                 updateGpsHeader();
-                resolve(state.gps);
+                updateGpsAccuracyPills();
+                resolve({ ok: true, ...state.gps });
             },
             () => {
-                resolve(fallbackGps(targetTree));
+                state.gps.live = false;
+                updateGpsHeader();
+                updateGpsAccuracyPills();
+                resolve({ ok: false, lat: null, lng: null, acc: null, live: false });
             },
-            { enableHighAccuracy: true, timeout: 3500, maximumAge: 15000 }
+            { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 0 }
         );
     });
 }
 
+function captureDeviceGps(targetTree = null) {
+    return requestBrowserGps(3500).then((res) => {
+        if (res.ok && res.lat !== null && res.lng !== null) {
+            return res;
+        }
+        return fallbackGps(targetTree);
+    });
+}
+
 function fallbackGps(targetTree = null) {
-    if (targetTree && targetTree.lat !== null && targetTree.lng !== null) {
-        const jitterLat = (Math.random() - 0.5) * 0.00004;
-        const jitterLng = (Math.random() - 0.5) * 0.00004;
+    if (targetTree && targetTree.lat !== null && targetTree.lat !== undefined && targetTree.lng !== null && targetTree.lng !== undefined) {
         return {
-            lat: Number((Number(targetTree.lat) + jitterLat).toFixed(6)),
-            lng: Number((Number(targetTree.lng) + jitterLng).toFixed(6)),
-            acc: 4.5,
+            lat: Number(Number(targetTree.lat).toFixed(6)),
+            lng: Number(Number(targetTree.lng).toFixed(6)),
+            acc: targetTree.gps_acc || null,
             live: false,
         };
     }
     return {
-        lat: Number((state.gps.lat + (Math.random() - 0.5) * 0.00005).toFixed(6)),
-        lng: Number((state.gps.lng + (Math.random() - 0.5) * 0.00005).toFixed(6)),
-        acc: 4.8,
+        lat: state.gps.lat ? Number(Number(state.gps.lat).toFixed(6)) : null,
+        lng: state.gps.lng ? Number(Number(state.gps.lng).toFixed(6)) : null,
+        acc: state.gps.acc || null,
         live: false,
     };
+}
+
+function updateGpsAccuracyPills(customText = null) {
+    const text =
+        customText ||
+        (state.gps.live && state.gps.acc !== null ? `GPS ±${Math.round(state.gps.acc)}m` : "GPS ±--m");
+    const isStrong = state.gps.live && state.gps.acc !== null && state.gps.acc <= 50;
+    ["harv-gps-pill", "mh-gps-pill", "mp-gps-pill"].forEach((id) => {
+        const el = $(id);
+        if (!el) return;
+        el.textContent = text;
+        el.className = `x-status-pill font-mono-code text-[11px] ${
+            isStrong ? "text-[#00ba7c] border-[#00ba7c]" : "text-[#536471]"
+        }`;
+    });
 }
 
 function updateGpsHeader() {
     const dot = $("gps-dot");
     const lbl = $("gps-label");
     if (!dot || !lbl) return;
-    dot.className = `w-2 h-2 rounded-full shrink-0 ${state.gps.live ? "bg-[#00ba7c] animate-pulse" : "bg-[#00ba7c]"}`;
+    dot.className = `w-2 h-2 rounded-full shrink-0 ${state.gps.live ? "bg-[#00ba7c] animate-pulse" : "bg-[#536471]"}`;
     const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
     const decimals = isMobile ? 3 : 4;
-    lbl.textContent = `${state.gps.lat.toFixed(decimals)}, ${state.gps.lng.toFixed(decimals)}`;
+    const lat = Number(state.gps.lat || 6.14224);
+    const lng = Number(state.gps.lng || 80.36518);
+    lbl.textContent = `${lat.toFixed(decimals)}, ${lng.toFixed(decimals)}`;
 }
 
 // ----------------------------------------------------------------------------
@@ -404,7 +443,7 @@ const LocalDB = {
             trees,
             harvest,
             dispatch,
-            settings: { gps_threshold_m: 20, season_start_month: 4 },
+            settings: { season_start_month: 4 },
         };
     },
 };
@@ -554,10 +593,59 @@ function localApiFallback(path, method, body) {
                 tree_mapped: bt.filter((t) => t.lat !== null).length,
             };
         });
+        const mapped_trees = db.trees
+            .filter((t) => t.status === "active" && t.lat !== null && t.lng !== null)
+            .map((t) => ({ id: t.id, block_id: t.block_id, tree_no: t.tree_no, lat: t.lat, lng: t.lng, gps_acc: t.gps_acc }));
         return {
             hierarchy: { estates: db.estates, divisions: db.divisions, fields: db.fields, blocks },
             settings: db.settings,
+            mapped_trees,
         };
+    }
+    if (pathname === "/api/trees/mapped") {
+        const trees = db.trees
+            .filter((t) => t.status === "active" && t.lat !== null && t.lng !== null)
+            .map((t) => ({ id: t.id, block_id: t.block_id, tree_no: t.tree_no, lat: t.lat, lng: t.lng, gps_acc: t.gps_acc }));
+        return { trees };
+    }
+    if (pathname === "/api/trees/nearest") {
+        const uLat = Number(params.lat);
+        const uLng = Number(params.lng);
+        const maxRadiusM = Number(params.max_radius_m || 100);
+        const prefBlockId = params.block_id ? Number(params.block_id) : null;
+        if (!Number.isFinite(uLat) || !Number.isFinite(uLng)) return { tree: null };
+        let bestTree = null;
+        let bestDist = Infinity;
+        for (const t of db.trees) {
+            if (t.status !== "active" || t.lat === null || t.lng === null) continue;
+            const d = distanceMeters(uLat, uLng, t.lat, t.lng);
+            if (d < bestDist || (d === bestDist && prefBlockId && t.block_id === prefBlockId)) {
+                bestDist = d;
+                const b = db.blocks.find((x) => x.id === t.block_id) || {};
+                const f = db.fields.find((x) => x.id === b.field_id) || {};
+                bestTree = { ...t, field_id: b.field_id, division_id: f.division_id, distance_m: d };
+            }
+        }
+        if (bestTree && bestDist <= maxRadiusM) {
+            return { tree: bestTree, distance_m: bestDist };
+        }
+        return { tree: null, distance_m: Number.isFinite(bestDist) ? bestDist : null };
+    }
+    if (pathname === "/api/tree/calibrate" && method === "POST") {
+        const tid = Number(body.id || body.tree_id);
+        const t = db.trees.find((x) => x.id === tid);
+        if (!t) throw new Error("Tree not found.");
+        const lat = Number(body.lat);
+        const lng = Number(body.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+            throw new Error("Enter valid Latitude and Longitude coordinates.");
+        }
+        t.lat = Number(lat.toFixed(6));
+        t.lng = Number(lng.toFixed(6));
+        t.gps_acc = Number(body.acc) || 4.0;
+        t.mapped_at = new Date().toISOString();
+        LocalDB.save(db);
+        return { ok: true, lat: t.lat, lng: t.lng };
     }
     if (pathname === "/api/block") {
         const bid = Number(params.block_id);
@@ -578,8 +666,19 @@ function localApiFallback(path, method, body) {
     }
     if (pathname === "/api/harvest" && method === "POST") {
         const t = db.trees.find((x) => x.id === Number(body.tree_id));
+        if (!t) throw new Error("Palm tree not found.");
         const { yearMonth, round } = roundOfDate(body.date, body.round_no);
         const idx = db.harvest.findIndex((h) => h.tree_id === t.id && h.year_month === yearMonth && h.round_no === round);
+        const hasValidGps =
+            body.lat !== null &&
+            body.lat !== undefined &&
+            body.lng !== null &&
+            body.lng !== undefined &&
+            Number.isFinite(Number(body.lat)) &&
+            Number.isFinite(Number(body.lng));
+        const finalLat = hasValidGps ? Number(body.lat) : (t.lat ?? null);
+        const finalLng = hasValidGps ? Number(body.lng) : (t.lng ?? null);
+        const finalAcc = hasValidGps && body.acc !== null && body.acc !== undefined ? Number(body.acc) : (t.gps_acc ?? null);
         const row = {
             id: idx >= 0 ? db.harvest[idx].id : db.harvest.length + 1,
             tree_id: t.id,
@@ -589,16 +688,15 @@ function localApiFallback(path, method, body) {
             bunches: Number(body.bunches),
             fronds: Number(body.fronds),
             user_id: curUser.id,
-            user_lat: body.lat,
-            user_lng: body.lng,
-            user_acc: body.acc,
+            user_lat: finalLat,
+            user_lng: finalLng,
+            user_acc: finalAcc,
             recorded_at: new Date().toISOString(),
         };
         if (idx >= 0) db.harvest[idx] = row;
         else db.harvest.push(row);
         LocalDB.save(db);
-        const dist = t.lat !== null && body.lat !== null ? distanceMeters(t.lat, t.lng, body.lat, body.lng) : null;
-        return { ok: true, round, distance_m: dist };
+        return { ok: true, round, lat: finalLat, lng: finalLng };
     }
     if (pathname === "/api/dispatch" && method === "GET") {
         const list = (db.dispatch || []).map((x) => {
@@ -732,42 +830,6 @@ function localApiFallback(path, method, body) {
             recent_logs,
         };
     }
-    if (pathname === "/api/admin/compliance") {
-        const rows = [];
-        db.harvest.forEach((r) => {
-            const t = db.trees.find((x) => x.id === r.tree_id) || {};
-            const b = db.blocks.find((x) => x.id === t.block_id) || {};
-            const f = db.fields.find((x) => x.id === b.field_id) || {};
-            const d = db.divisions.find((x) => x.id === f.division_id) || {};
-            const u = db.users.find((x) => x.id === r.user_id) || { full_name: "Staff", role: "Harvester" };
-            let distance_m = null;
-            let status = "ok";
-            if (r.user_lat === null) status = "no_gps";
-            else if (t.lat === null) status = "unmapped";
-            else {
-                distance_m = distanceMeters(t.lat, t.lng, r.user_lat, r.user_lng);
-                status = distance_m > db.settings.gps_threshold_m ? "far" : "ok";
-            }
-            rows.push({
-                id: r.id,
-                work_date: r.harvest_date,
-                user_lat: r.user_lat,
-                user_lng: r.user_lng,
-                user_acc: r.user_acc,
-                full_name: u.full_name,
-                tree_no: t.tree_no,
-                tree_lat: t.lat,
-                tree_lng: t.lng,
-                block: b.name,
-                field: f.name,
-                division: d.name,
-                detail: `${r.bunches} Bunches / ${r.fronds} Fronds (R${r.round_no})`,
-                distance_m,
-                status,
-            });
-        });
-        return { threshold_m: db.settings.gps_threshold_m, rows: rows.reverse() };
-    }
     if (pathname === "/api/admin/users") {
         return { users: db.users };
     }
@@ -834,7 +896,6 @@ function localApiFallback(path, method, body) {
         return { ok: true, from: maxNo + 1, to: maxNo + count };
     }
     if (pathname === "/api/admin/settings") {
-        db.settings.gps_threshold_m = Number(body.gps_threshold_m) || 20;
         db.settings.season_start_month = Number(body.season_start_month) || 4;
         LocalDB.save(db);
         return { ok: true };
@@ -1226,10 +1287,15 @@ function applyRbacNavigation() {
 async function loadBootstrap() {
     const data = await api("/api/bootstrap");
     state.hierarchy = data.hierarchy;
-    state.settings = data.settings;
-
-    if ($("set-diag-gps")) {
-        $("set-diag-gps").textContent = `${state.settings.gps_threshold_m || 20} meters`;
+    state.settings = data.settings || { season_start_month: 4 };
+    if (Array.isArray(data.mapped_trees)) {
+        state.mappedTrees = data.mapped_trees;
+    } else {
+        api("/api/trees/mapped")
+            .then((r) => {
+                if (Array.isArray(r?.trees)) state.mappedTrees = r.trees;
+            })
+            .catch(() => {});
     }
 
     initDashboardFilters();
@@ -1590,10 +1656,101 @@ async function refreshDashboard() {
 }
 
 // ----------------------------------------------------------------------------
-// VIEW 2: HARVESTS (Palm Harvest Logger + Mill Dispatch Weight)
+// VIEW 2: HARVESTS (Palm Harvest Logger + GPS Assist + Mill Dispatch Weight)
 // ----------------------------------------------------------------------------
-async function loadHarvestBlock() {
-    const bid = Number($("harv-block")?.value);
+function syncMappedTreeInCache(treeObj) {
+    if (!treeObj || !treeObj.id) return;
+    const idx = state.mappedTrees.findIndex((t) => t.id === treeObj.id);
+    if (treeObj.lat !== null && treeObj.lat !== undefined && treeObj.lng !== null && treeObj.lng !== undefined) {
+        const entry = {
+            id: treeObj.id,
+            block_id: treeObj.block_id || state.harvBlock.block_id || state.mapBlock.block_id,
+            tree_no: treeObj.tree_no,
+            lat: Number(treeObj.lat),
+            lng: Number(treeObj.lng),
+            gps_acc: treeObj.gps_acc || 4.0,
+        };
+        if (idx >= 0) state.mappedTrees[idx] = entry;
+        else state.mappedTrees.push(entry);
+    } else if (idx >= 0) {
+        state.mappedTrees.splice(idx, 1);
+    }
+}
+
+function populateHarvestTreeDropdowns(selectedTreeId = null) {
+    const trees = state.harvBlock.trees || [];
+    const curId = selectedTreeId || state.harvBlock.selectedTreeId || trees[0]?.id || "";
+    state.harvBlock.selectedTreeId = curId ? Number(curId) : null;
+
+    const harvSel = $("harv-tree-select");
+    if (harvSel) {
+        harvSel.innerHTML =
+            `<option value="">Select Palm (${trees.length})...</option>` +
+            trees
+                .map((t) => {
+                    const statusTxt = t.rec ? ` • ${t.rec.bunches}B/${t.rec.fronds}F` : "";
+                    return `<option value="${t.id}" ${Number(curId) === t.id ? "selected" : ""}>Palm #${t.tree_no}${statusTxt}</option>`;
+                })
+                .join("");
+    }
+
+    const mhBlockSel = $("mh-block");
+    if (mhBlockSel && state.hierarchy.blocks?.length) {
+        const { fields, blocks } = state.hierarchy;
+        mhBlockSel.innerHTML = blocks
+            .map((b) => {
+                const fld = fields.find((f) => f.id === b.field_id);
+                const label = fld ? `${fld.name} • ${b.name}` : b.name;
+                return `<option value="${b.id}" ${b.id === state.harvBlock.block_id ? "selected" : ""}>${esc(label)}</option>`;
+            })
+            .join("");
+    }
+
+    const mhTreeSel = $("mh-tree-select");
+    if (mhTreeSel) {
+        mhTreeSel.innerHTML = trees
+            .map((t) => {
+                const statusTxt = t.rec ? ` (${t.rec.bunches}B/${t.rec.fronds}F)` : "";
+                return `<option value="${t.id}" ${Number(curId) === t.id ? "selected" : ""}>Palm #${t.tree_no}${statusTxt}</option>`;
+            })
+            .join("");
+    }
+}
+
+async function selectHarvestBlockCascade(blockId) {
+    const bid = Number(blockId);
+    if (!bid) return;
+    const { fields, blocks } = state.hierarchy;
+    const blk = blocks.find((b) => b.id === bid);
+    if (!blk) return;
+    const fld = fields.find((f) => f.id === blk.field_id);
+    const divEl = $("harv-division");
+    const fldEl = $("harv-field");
+    const blkEl = $("harv-block");
+    if (divEl && fld && Number(divEl.value) !== fld.division_id) {
+        divEl.value = String(fld.division_id);
+        const fList = fields.filter((f) => f.division_id === fld.division_id);
+        if (fldEl) {
+            fldEl.innerHTML = fList
+                .map((f) => `<option value="${f.id}">${esc(f.name)} (${f.planting_year} - ${Number(f.area_ha).toFixed(2)} Ha)</option>`)
+                .join("");
+        }
+    }
+    if (fldEl && fld && Number(fldEl.value) !== fld.id) {
+        fldEl.value = String(fld.id);
+    }
+    if (blkEl && fld) {
+        const bList = blocks.filter((b) => b.field_id === fld.id);
+        blkEl.innerHTML = bList
+            .map((b) => `<option value="${b.id}">${esc(b.name)} (${b.tree_total} palms)</option>`)
+            .join("");
+        blkEl.value = String(bid);
+    }
+    await loadHarvestBlock(bid);
+}
+
+async function loadHarvestBlock(explicitBlockId = null) {
+    const bid = Number(explicitBlockId || $("harv-block")?.value);
     if (!bid) return;
     const date = $("harv-date").value || todayStr();
     const roundNo = Number($("harv-round").value) || roundOfDate(date).round;
@@ -1603,6 +1760,8 @@ async function loadHarvestBlock() {
     const data = await api(`/api/block?block_id=${bid}&mode=harvest&date=${date}&round_no=${roundNo}`);
     state.harvBlock.block_id = bid;
     state.harvBlock.trees = data.trees || [];
+    state.harvBlock.trees.forEach((t) => syncMappedTreeInCache({ ...t, block_id: bid }));
+    populateHarvestTreeDropdowns(state.harvBlock.selectedTreeId);
     renderHarvestGrid();
 }
 
@@ -1624,12 +1783,13 @@ function renderHarvestGrid() {
     grid.innerHTML = filtered
         .map((t) => {
             const done = Boolean(t.rec);
+            const isSelected = state.harvBlock.selectedTreeId === t.id;
             const gpsBadge =
                 t.lat !== null
                     ? `<span class="w-1.5 h-1.5 rounded-full ${done ? "bg-[#00ba7c]" : "bg-[#0f1419]"}" title="GPS Mapped"></span>`
                     : "";
             return `
-            <div data-harv-tree="${t.id}" class="palm-card ${done ? "done-harvest" : ""}">
+            <div data-harv-tree="${t.id}" class="palm-card ${done ? "done-harvest" : ""} ${isSelected ? "selected-palm" : ""}">
                 <div class="w-full flex items-center justify-between text-[10px] font-mono-code ${done ? "opacity-80" : "text-[#536471]"}">
                     <span>#${t.tree_no}</span>
                     ${gpsBadge}
@@ -1645,24 +1805,197 @@ function renderHarvestGrid() {
         .join("");
 
     grid.querySelectorAll("[data-harv-tree]").forEach((card) => {
-        card.onclick = () => openHarvestModal(Number(card.getAttribute("data-harv-tree")));
+        card.onclick = () => {
+            state.harvBlock.manualOverride = true;
+            openHarvestModal(Number(card.getAttribute("data-harv-tree")));
+        };
     });
     refreshIcons();
 }
 
-function openHarvestModal(treeId) {
-    const tree = state.harvBlock.trees.find((t) => t.id === treeId);
+function populateHarvestModalFields(tree) {
     if (!tree) return;
     state.modalTree = tree;
+    state.harvBlock.selectedTreeId = tree.id;
+
     const date = $("harv-date").value || todayStr();
     const roundNo = Number($("harv-round").value) || roundOfDate(date).round;
     const { rangeLabel } = roundOfDate(date, roundNo);
+    const blk = state.hierarchy.blocks.find((b) => b.id === (tree.block_id || state.harvBlock.block_id));
+
     $("mh-tree-badge").textContent = `#${tree.tree_no}`;
-    $("mh-title").textContent = `Palm #${tree.tree_no}`;
+    $("mh-title").textContent = `Palm #${tree.tree_no}${blk ? ` • ${blk.name}` : ""}`;
     $("mh-sub").textContent = `Round ${roundNo} (${rangeLabel}) • ${date}`;
     $("mh-bunches").value = tree.rec ? tree.rec.bunches : 0;
     $("mh-fronds").value = tree.rec ? tree.rec.fronds : 0;
+
+    if ($("mh-block")) $("mh-block").value = String(tree.block_id || state.harvBlock.block_id || "");
+    if ($("mh-tree-select")) $("mh-tree-select").value = String(tree.id);
+    if ($("mh-tree-no")) $("mh-tree-no").value = String(tree.tree_no);
+    if ($("harv-tree-select")) $("harv-tree-select").value = String(tree.id);
+
+    const canCalibrate = (ROLE_RANK[state.user?.role] || 1) >= ROLE_RANK.Supervisor;
+    const calSec = $("mh-calibration-section");
+    if (calSec) {
+        calSec.classList.toggle("hidden", !canCalibrate);
+        if ($("mh-cal-lat")) $("mh-cal-lat").value = tree.lat !== null && tree.lat !== undefined ? tree.lat : "";
+        if ($("mh-cal-lng")) $("mh-cal-lng").value = tree.lng !== null && tree.lng !== undefined ? tree.lng : "";
+    }
+
+    updateGpsAccuracyPills();
+    renderHarvestGrid();
+}
+
+function openHarvestModal(treeId = null, { fromAutoDetect = false } = {}) {
+    const trees = state.harvBlock.trees || [];
+    const tree = (treeId ? trees.find((t) => t.id === Number(treeId)) : null) || trees.find((t) => t.id === state.harvBlock.selectedTreeId) || trees[0];
+    if (!tree) return;
+    if (!fromAutoDetect) {
+        state.harvBlock.manualOverride = true;
+    }
+    populateHarvestTreeDropdowns(tree.id);
+    populateHarvestModalFields(tree);
     $("modal-harvest").classList.remove("hidden");
+    refreshIcons();
+
+    if (!fromAutoDetect && state.autoDetectGps && !treeId) {
+        autoDetectNearestTree({ openModal: true });
+    }
+}
+
+async function autoDetectNearestTree({ openModal = true } = {}) {
+    const btn1 = $("btn-harv-autodetect");
+    const btn2 = $("btn-mh-autodetect");
+    if (btn1) btn1.disabled = true;
+    if (btn2) btn2.disabled = true;
+    updateGpsAccuracyPills("GPS...");
+
+    try {
+        const gpsRes = await requestBrowserGps(5500);
+        if (!gpsRes.ok || gpsRes.lat === null || gpsRes.lng === null) {
+            updateGpsAccuracyPills();
+            toast("GPS weak — select tree manually");
+            return null;
+        }
+
+        // Combine all geo-tagged trees in the database and current block
+        const candidateMap = new Map();
+        for (const t of state.mappedTrees || []) {
+            if (t.lat !== null && t.lat !== undefined && t.lng !== null && t.lng !== undefined) {
+                candidateMap.set(t.id, t);
+            }
+        }
+        for (const t of state.harvBlock.trees || []) {
+            if (t.lat !== null && t.lat !== undefined && t.lng !== null && t.lng !== undefined) {
+                candidateMap.set(t.id, { ...t, block_id: t.block_id || state.harvBlock.block_id });
+            }
+        }
+
+        let nearest = null;
+        let minDist = Infinity;
+        const curBlockId = state.harvBlock.block_id;
+
+        for (const t of candidateMap.values()) {
+            const dist = distanceMeters(gpsRes.lat, gpsRes.lng, t.lat, t.lng);
+            if (dist < minDist || (dist === minDist && curBlockId && t.block_id === curBlockId)) {
+                minDist = dist;
+                nearest = t;
+            }
+        }
+
+        // Reasonable radius: 100 meters
+        if (!nearest || !Number.isFinite(minDist) || minDist > 100) {
+            toast("GPS weak — select tree manually");
+            return null;
+        }
+
+        state.harvBlock.manualOverride = false;
+        if (nearest.block_id && nearest.block_id !== state.harvBlock.block_id) {
+            await selectHarvestBlockCascade(nearest.block_id);
+        }
+
+        const matchedTree =
+            state.harvBlock.trees.find((t) => t.id === nearest.id || t.tree_no === nearest.tree_no) || nearest;
+        state.harvBlock.selectedTreeId = matchedTree.id;
+        state.harvBlock.search = "";
+        if ($("harv-search")) $("harv-search").value = String(matchedTree.tree_no);
+
+        populateHarvestTreeDropdowns(matchedTree.id);
+        populateHarvestModalFields(matchedTree);
+
+        if (openModal) {
+            $("modal-harvest").classList.remove("hidden");
+            refreshIcons();
+        }
+
+        const cardEl = document.querySelector(`[data-harv-tree="${matchedTree.id}"]`);
+        if (cardEl && typeof cardEl.scrollIntoView === "function") {
+            cardEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+
+        toast(`Palm #${matchedTree.tree_no} auto-detected (${Math.round(minDist)}m • GPS ±${Math.round(gpsRes.acc)}m)`);
+        return matchedTree;
+    } finally {
+        if (btn1) btn1.disabled = false;
+        if (btn2) btn2.disabled = false;
+    }
+}
+
+async function syncCalibrationInputsToMyLocation(latInputId, lngInputId) {
+    const latEl = $(latInputId);
+    const lngEl = $(lngInputId);
+    if (!latEl || !lngEl) return;
+
+    updateGpsAccuracyPills("GPS...");
+    const gpsRes = await requestBrowserGps(5500);
+    if (gpsRes.ok && gpsRes.lat !== null && gpsRes.lng !== null) {
+        latEl.value = gpsRes.lat;
+        lngEl.value = gpsRes.lng;
+        toast(`Synced to your location (${gpsRes.lat.toFixed(5)}, ${gpsRes.lng.toFixed(5)} • ±${Math.round(gpsRes.acc)}m)`);
+    } else {
+        if (state.gps.lat && state.gps.lng) {
+            latEl.value = Number(state.gps.lat).toFixed(6);
+            lngEl.value = Number(state.gps.lng).toFixed(6);
+        }
+        toast("GPS weak — adjust coordinates manually");
+    }
+}
+
+async function saveHarvestModalPinCalibration(silent = false) {
+    const tree = state.modalTree;
+    if (!tree) return false;
+    const canCalibrate = (ROLE_RANK[state.user?.role] || 1) >= ROLE_RANK.Supervisor;
+    if (!canCalibrate) return false;
+
+    const rawLat = $("mh-cal-lat")?.value;
+    const rawLng = $("mh-cal-lng")?.value;
+    if (rawLat === "" || rawLng === "" || rawLat === undefined || rawLng === undefined) return false;
+
+    const nextLat = Number(rawLat);
+    const nextLng = Number(rawLng);
+    if (!Number.isFinite(nextLat) || !Number.isFinite(nextLng) || Math.abs(nextLat) > 90 || Math.abs(nextLng) > 180) {
+        if (!silent) toast("Enter valid Latitude and Longitude coordinates.", "err");
+        return false;
+    }
+
+    const changed = Number(tree.lat) !== Number(nextLat.toFixed(6)) || Number(tree.lng) !== Number(nextLng.toFixed(6));
+    if (!changed && silent) return false;
+
+    await api("/api/tree/calibrate", "POST", {
+        id: tree.id,
+        tree_id: tree.id,
+        lat: Number(nextLat.toFixed(6)),
+        lng: Number(nextLng.toFixed(6)),
+        acc: state.gps.acc || 4.0,
+    });
+    tree.lat = Number(nextLat.toFixed(6));
+    tree.lng = Number(nextLng.toFixed(6));
+    syncMappedTreeInCache({ ...tree, block_id: tree.block_id || state.harvBlock.block_id });
+    if (!silent) {
+        toast(`Palm #${tree.tree_no} GPS pin calibrated`);
+        renderHarvestGrid();
+    }
+    return true;
 }
 
 async function submitHarvestModal() {
@@ -1671,24 +2004,62 @@ async function submitHarvestModal() {
     const btn = $("btn-submit-harvest");
     btn.disabled = true;
     try {
-        const gps = await captureDeviceGps(tree);
+        // Persist supervisor/admin pin calibration if modified
+        await saveHarvestModalPinCalibration(true).catch(() => {});
+
+        // Manual GPS Fallback on Save:
+        // If user manually picked a tree and device GPS is weak or unavailable,
+        // default the log's latitude & longitude to the tree's saved coordinates.
+        let logLat = null;
+        let logLng = null;
+        let logAcc = null;
+
+        const hasTreeCoords = tree.lat !== null && tree.lat !== undefined && tree.lng !== null && tree.lng !== undefined;
+        const gpsIsFreshAndStrong =
+            state.gps.live &&
+            state.gps.lat !== null &&
+            state.gps.lng !== null &&
+            (state.gps.acc === null || state.gps.acc <= 50);
+
+        if (state.harvBlock.manualOverride) {
+            if (
+                gpsIsFreshAndStrong &&
+                (!hasTreeCoords || distanceMeters(state.gps.lat, state.gps.lng, tree.lat, tree.lng) <= 100)
+            ) {
+                logLat = state.gps.lat;
+                logLng = state.gps.lng;
+                logAcc = state.gps.acc;
+            } else if (hasTreeCoords) {
+                logLat = Number(tree.lat);
+                logLng = Number(tree.lng);
+                logAcc = tree.gps_acc || null;
+            }
+        } else if (gpsIsFreshAndStrong) {
+            logLat = state.gps.lat;
+            logLng = state.gps.lng;
+            logAcc = state.gps.acc;
+        } else if (hasTreeCoords) {
+            logLat = Number(tree.lat);
+            logLng = Number(tree.lng);
+            logAcc = tree.gps_acc || null;
+        }
+
         const date = $("harv-date").value || todayStr();
         const round_no = Number($("harv-round").value) || roundOfDate(date).round;
         const bunches = Number($("mh-bunches").value) || 0;
         const fronds = Number($("mh-fronds").value) || 0;
-        const res = await api("/api/harvest", "POST", {
+        await api("/api/harvest", "POST", {
             tree_id: tree.id,
             round_no,
             date,
             bunches,
             fronds,
-            lat: gps.lat,
-            lng: gps.lng,
-            acc: gps.acc,
+            lat: logLat,
+            lng: logLng,
+            acc: logAcc,
         });
         $("modal-harvest").classList.add("hidden");
-        const distMsg = res.distance_m !== null && res.distance_m !== undefined ? ` • ${res.distance_m}m` : "";
-        toast(`Harvest logged (Palm #${tree.tree_no}: ${bunches}B / ${fronds}F${distMsg})`);
+        toast(`Harvest logged (Palm #${tree.tree_no}: ${bunches}B / ${fronds}F)`);
         await loadHarvestBlock();
     } catch (err) {
         toast(err.message, "err");
@@ -1758,19 +2129,22 @@ async function loadDispatches() {
 }
 
 // ----------------------------------------------------------------------------
-// VIEW 3: ESTATES (5-Tier Plantation Hierarchy + GPS Mapper + GPS Compliance)
+// VIEW 3: ESTATES (5-Tier Plantation Hierarchy + GPS Mapper)
 // ----------------------------------------------------------------------------
 async function loadEstatesPage() {
     const boot = await api("/api/bootstrap");
     state.hierarchy = boot.hierarchy;
-    state.settings = boot.settings;
+    state.settings = boot.settings || { season_start_month: 4 };
+    if (Array.isArray(boot.mapped_trees)) {
+        state.mappedTrees = boot.mapped_trees;
+    }
 
-    $("set-gps-thresh").value = state.settings.gps_threshold_m || 20;
-    $("set-season-month").value = state.settings.season_start_month || 4;
+    if ($("set-season-month")) {
+        $("set-season-month").value = state.settings.season_start_month || 4;
+    }
 
     renderAdminHierarchy();
     if (state.estatesTab === "mapper") await loadMapperBlock();
-    if (state.estatesTab === "compliance") await loadCompliance();
     refreshIcons();
 }
 
@@ -1780,6 +2154,7 @@ async function loadMapperBlock() {
     const data = await api(`/api/block?block_id=${bid}&mode=map`);
     state.mapBlock.block_id = bid;
     state.mapBlock.trees = data.trees || [];
+    state.mapBlock.trees.forEach((t) => syncMappedTreeInCache({ ...t, block_id: bid }));
     const mapped = state.mapBlock.trees.filter((t) => t.lat !== null).length;
     $("map-stats-label").textContent = `${mapped} / ${state.mapBlock.trees.length} GPS Mapped`;
 
@@ -1815,31 +2190,39 @@ async function openMapperModal(treeId = null) {
     $("mp-title").textContent = existing ? `Edit Palm #${existing.tree_no} GPS` : "Map New Palm (Live GPS)";
     $("mp-tree-no").value = existing ? existing.tree_no : nextNo;
     $("btn-mp-delete").classList.toggle("hidden", !existing);
+    updateGpsAccuracyPills();
 
     if (existing && existing.lat !== null) {
         $("mp-lat").value = existing.lat;
         $("mp-lng").value = existing.lng;
     } else {
         const gps = await captureDeviceGps();
-        $("mp-lat").value = gps.lat;
-        $("mp-lng").value = gps.lng;
+        $("mp-lat").value = gps.lat || "";
+        $("mp-lng").value = gps.lng || "";
     }
     $("modal-mapper").classList.remove("hidden");
+    refreshIcons();
 }
 
 async function saveMapperModal() {
     const bid = state.mapBlock.block_id;
     if (!bid) return;
     try {
+        const treeNo = Number($("mp-tree-no").value);
+        const lat = Number($("mp-lat").value);
+        const lng = Number($("mp-lng").value);
         await api("/api/admin/tree/save", "POST", {
             id: state.modalTree?.id || null,
             block_id: bid,
-            tree_no: Number($("mp-tree-no").value),
-            lat: Number($("mp-lat").value),
-            lng: Number($("mp-lng").value),
+            tree_no: treeNo,
+            lat,
+            lng,
             acc: state.gps.acc || 4.0,
             status: "active",
         });
+        if (state.modalTree?.id) {
+            syncMappedTreeInCache({ id: state.modalTree.id, block_id: bid, tree_no: treeNo, lat, lng, gps_acc: state.gps.acc || 4.0 });
+        }
         $("modal-mapper").classList.add("hidden");
         toast("Palm GPS coordinates saved");
         await loadMapperBlock();
@@ -1852,98 +2235,13 @@ async function deleteMapperTree() {
     if (!state.modalTree) return;
     try {
         await api("/api/admin/tree/delete", "POST", { id: state.modalTree.id });
+        syncMappedTreeInCache({ id: state.modalTree.id, lat: null, lng: null });
         $("modal-mapper").classList.add("hidden");
         toast(`Deleted Palm #${state.modalTree.tree_no}`);
         await loadMapperBlock();
     } catch (err) {
         toast(err.message, "err");
     }
-}
-
-async function loadCompliance() {
-    const data = await api("/api/admin/compliance");
-    state.compliance.threshold_m = data.threshold_m || 20;
-    state.compliance.rows = data.rows || [];
-    $("comp-thresh-label").textContent = `${state.compliance.threshold_m}m`;
-    renderComplianceTable();
-}
-
-function renderComplianceTable() {
-    const rows = state.compliance.rows;
-    const okCount = rows.filter((r) => r.status === "ok").length;
-    const farCount = rows.filter((r) => r.status === "far").length;
-    $("comp-count-all").textContent = rows.length;
-    $("comp-count-ok").textContent = okCount;
-    $("comp-count-far").textContent = farCount;
-
-    const flt = state.compliance.filter;
-    const list = rows.filter((r) => {
-        if (flt === "far") return r.status === "far";
-        if (flt === "ok") return r.status === "ok";
-        return true;
-    });
-
-    const tbody = $("comp-tbody");
-    if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-[#536471]">No GPS compliance logs match filter</td></tr>`;
-        return;
-    }
-
-    tbody.innerHTML = list
-        .map((r, idx) => {
-            const isFar = r.status === "far";
-            const badge = isFar
-                ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#f4212e] text-white font-mono-code font-bold text-[11px]">
-                       <i data-lucide="alert-triangle" class="w-3 h-3"></i> ${r.distance_m}m
-                   </span>`
-                : r.status === "ok"
-                ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#0f1419] text-white font-mono-code font-bold text-[11px]">
-                       <i data-lucide="check" class="w-3 h-3"></i> ${r.distance_m}m
-                   </span>`
-                : `<span class="px-2 py-0.5 rounded-full bg-[#f7f9f9] text-[#536471] font-mono-code text-[11px]">${esc(r.status)}</span>`;
-
-            return `
-            <tr data-comp-idx="${idx}" class="cursor-pointer ${isFar ? "row-flagged" : "hover:bg-[#f7f9f9]"}">
-                <td class="py-3.5 px-4 whitespace-nowrap">${badge}</td>
-                <td class="py-3.5 px-4 whitespace-nowrap">
-                    <div class="font-bold text-[#0f1419]">Palm #${r.tree_no} &bull; ${esc(r.block)}</div>
-                    <div class="text-[11px] text-[#536471]">${esc(r.division)} &rarr; ${esc(r.field)}</div>
-                </td>
-                <td class="py-3.5 px-4 whitespace-nowrap">
-                    <div class="font-bold text-[#0f1419]">${esc(r.full_name)}</div>
-                    <div class="text-[11px] font-mono-code text-[#536471]">${esc(r.detail)}</div>
-                </td>
-                <td class="py-3.5 px-4 font-mono-code text-[11px] text-[#536471] whitespace-nowrap">
-                    ${r.tree_lat !== null ? `${Number(r.tree_lat).toFixed(5)}, ${Number(r.tree_lng).toFixed(5)}` : "Unmapped"}
-                </td>
-                <td class="py-3.5 px-4 font-mono-code text-[11px] whitespace-nowrap ${isFar ? "text-[#f4212e] font-bold" : "text-[#536471]"}">
-                    ${r.user_lat !== null ? `${Number(r.user_lat).toFixed(5)}, ${Number(r.user_lng).toFixed(5)}` : "No GPS"}
-                </td>
-                <td class="py-3.5 px-4 font-mono-code text-[11px] text-[#536471] whitespace-nowrap">${esc(r.work_date)}</td>
-            </tr>`;
-        })
-        .join("");
-
-    tbody.querySelectorAll("[data-comp-idx]").forEach((rowEl) => {
-        rowEl.onclick = () => {
-            const r = list[Number(rowEl.getAttribute("data-comp-idx"))];
-            if (!r) return;
-            openItemDetailModal({
-                badge: r.status === "far" ? `FLAGGED (${r.distance_m}m > ${state.compliance.threshold_m}m)` : `VERIFIED (${r.distance_m ?? 0}m)`,
-                title: `Palm #${r.tree_no} GPS Compliance Audit`,
-                fields: [
-                    { label: "Location", value: `${r.division} → ${r.field} → ${r.block}`, full: true },
-                    { label: "Harvester", value: r.full_name },
-                    { label: "Work Date", value: r.work_date, mono: true },
-                    { label: "Harvest Output", value: r.detail, mono: true, full: true },
-                    { label: "Registered Palm GPS", value: r.tree_lat !== null ? `${r.tree_lat}, ${r.tree_lng}` : "Unmapped", mono: true },
-                    { label: "Harvester Device GPS", value: r.user_lat !== null ? `${r.user_lat}, ${r.user_lng}` : "No GPS", mono: true },
-                ],
-            });
-        };
-    });
-
-    refreshIcons();
 }
 
 function renderAdminHierarchy() {
@@ -2508,8 +2806,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Live GPS Ping
     $("btn-gps-ping").onclick = async () => {
-        const g = await captureDeviceGps();
-        toast(`GPS: ${g.lat.toFixed(5)}, ${g.lng.toFixed(5)} (±${g.acc}m)`);
+        const g = await requestBrowserGps(5000);
+        if (g.ok && g.lat !== null && g.lng !== null) {
+            toast(`GPS: ${g.lat.toFixed(5)}, ${g.lng.toFixed(5)} (±${Math.round(g.acc)}m)`);
+        } else {
+            toast("GPS weak — select tree manually");
+        }
     };
 
     // Primary Navigation Rail, Mobile Drawer, and Mobile Bottom Bar
@@ -2629,13 +2931,126 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     });
 
-    // Harvest Controls
+    // Harvest Controls & Smart GPS Auto-Detect
     $("harv-round").onchange = () => loadHarvestBlock();
     $("harv-date").onchange = () => loadHarvestBlock();
+
+    if ($("harv-autodetect-toggle")) {
+        $("harv-autodetect-toggle").checked = Boolean(state.autoDetectGps);
+        $("harv-autodetect-toggle").onchange = (e) => {
+            state.autoDetectGps = Boolean(e.target.checked);
+            try {
+                localStorage.setItem("elaeis_autodetect_gps", state.autoDetectGps ? "1" : "0");
+            } catch (_) {}
+            if (state.autoDetectGps) {
+                autoDetectNearestTree({ openModal: false });
+            }
+        };
+    }
+
+    if ($("btn-harv-autodetect")) {
+        $("btn-harv-autodetect").onclick = () => autoDetectNearestTree({ openModal: true });
+    }
+    if ($("btn-mh-autodetect")) {
+        $("btn-mh-autodetect").onclick = () => autoDetectNearestTree({ openModal: true });
+    }
+
+    if ($("harv-tree-select")) {
+        $("harv-tree-select").onchange = (e) => {
+            const tid = Number(e.target.value);
+            if (!tid) return;
+            state.harvBlock.manualOverride = true;
+            state.harvBlock.selectedTreeId = tid;
+            openHarvestModal(tid);
+        };
+    }
+
+    const openTypedTreeForHarvest = () => {
+        const rawNo = ($("harv-search")?.value || "").trim();
+        const trees = state.harvBlock.trees || [];
+        if (rawNo) {
+            const match = trees.find((t) => t.tree_no === Number(rawNo));
+            if (!match) {
+                return toast(`Palm #${rawNo} not found in current block.`, "err");
+            }
+            state.harvBlock.manualOverride = true;
+            state.harvBlock.selectedTreeId = match.id;
+            openHarvestModal(match.id);
+        } else if (state.harvBlock.selectedTreeId) {
+            state.harvBlock.manualOverride = true;
+            openHarvestModal(state.harvBlock.selectedTreeId);
+        } else if (trees[0]) {
+            openHarvestModal(trees[0].id);
+        }
+    };
+
     $("harv-search").oninput = (e) => {
         state.harvBlock.search = e.target.value;
+        const typedNo = Number(e.target.value);
+        if (typedNo) {
+            const match = (state.harvBlock.trees || []).find((t) => t.tree_no === typedNo);
+            if (match) {
+                state.harvBlock.manualOverride = true;
+                state.harvBlock.selectedTreeId = match.id;
+                if ($("harv-tree-select")) $("harv-tree-select").value = String(match.id);
+            }
+        }
         renderHarvestGrid();
     };
+    $("harv-search").onkeydown = (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            openTypedTreeForHarvest();
+        }
+    };
+    if ($("btn-harv-log-typed")) {
+        $("btn-harv-log-typed").onclick = openTypedTreeForHarvest;
+    }
+
+    // Manual Override controls inside Log Harvest Modal
+    if ($("mh-block")) {
+        $("mh-block").onchange = async (e) => {
+            const nextBid = Number(e.target.value);
+            if (!nextBid) return;
+            state.harvBlock.manualOverride = true;
+            const prevTreeNo = Number($("mh-tree-no")?.value) || 1;
+            await selectHarvestBlockCascade(nextBid);
+            const target =
+                state.harvBlock.trees.find((t) => t.tree_no === prevTreeNo) || state.harvBlock.trees[0];
+            if (target) {
+                populateHarvestTreeDropdowns(target.id);
+                populateHarvestModalFields(target);
+            }
+        };
+    }
+    if ($("mh-tree-select")) {
+        $("mh-tree-select").onchange = (e) => {
+            const tid = Number(e.target.value);
+            const target = (state.harvBlock.trees || []).find((t) => t.id === tid);
+            if (target) {
+                state.harvBlock.manualOverride = true;
+                populateHarvestModalFields(target);
+            }
+        };
+    }
+    if ($("mh-tree-no")) {
+        $("mh-tree-no").oninput = (e) => {
+            const tno = Number(e.target.value);
+            if (!tno) return;
+            const target = (state.harvBlock.trees || []).find((t) => t.tree_no === tno);
+            if (target) {
+                state.harvBlock.manualOverride = true;
+                populateHarvestModalFields(target);
+            }
+        };
+    }
+    if ($("btn-mh-sync-gps")) {
+        $("btn-mh-sync-gps").onclick = () => syncCalibrationInputsToMyLocation("mh-cal-lat", "mh-cal-lng");
+    }
+    if ($("btn-mh-save-pin")) {
+        $("btn-mh-save-pin").onclick = () => saveHarvestModalPinCalibration(false);
+    }
+
     document.querySelectorAll(".harv-flt-btn").forEach((btn) => {
         btn.onclick = () => {
             state.harvBlock.filter = btn.getAttribute("data-harv-filter");
@@ -2680,7 +3095,7 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     });
 
-    // Estates Sub-Tabs (5-Tier Hierarchy, GPS Tree Mapper, GPS Compliance)
+    // Estates Sub-Tabs (5-Tier Hierarchy & GPS Tree Mapper)
     document.querySelectorAll("[data-est-tab]").forEach((btn) => {
         btn.onclick = () => {
             const tab = btn.getAttribute("data-est-tab");
@@ -2693,35 +3108,15 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             $("est-panel-hierarchy").classList.toggle("hidden", tab !== "hierarchy");
             $("est-panel-mapper").classList.toggle("hidden", tab !== "mapper");
-            $("est-panel-compliance").classList.toggle("hidden", tab !== "compliance");
             if (tab === "mapper") loadMapperBlock();
-            if (tab === "compliance") loadCompliance();
         };
     });
 
-    // Mapper Controls
+    // Mapper Controls ("Sync to My Location" & Save Coordinates)
     $("btn-mapper-add-tree").onclick = () => openMapperModal(null);
-    $("btn-mp-capture").onclick = async () => {
-        const g = await captureDeviceGps();
-        $("mp-lat").value = g.lat;
-        $("mp-lng").value = g.lng;
-        toast(`Captured GPS: ${g.lat.toFixed(5)}, ${g.lng.toFixed(5)}`);
-    };
+    $("btn-mp-capture").onclick = () => syncCalibrationInputsToMyLocation("mp-lat", "mp-lng");
     $("btn-mp-save").onclick = () => saveMapperModal();
     $("btn-mp-delete").onclick = () => deleteMapperTree();
-
-    // Compliance Filter Pills
-    document.querySelectorAll(".comp-flt-btn").forEach((btn) => {
-        btn.onclick = () => {
-            state.compliance.filter = btn.getAttribute("data-comp-filter");
-            document.querySelectorAll(".comp-flt-btn").forEach((b) => {
-                b.className = `comp-flt-btn px-3 py-1 rounded-full ${
-                    b === btn ? "bg-[#0f1419] text-white" : "text-[#536471]"
-                }`;
-            });
-            renderComplianceTable();
-        };
-    });
 
     // Estates Hierarchy CRUD
     $("btn-add-estate").onclick = () => openCrudModal("estate");
@@ -2745,7 +3140,6 @@ document.addEventListener("DOMContentLoaded", () => {
     $("btn-save-settings").onclick = async () => {
         try {
             await api("/api/admin/settings", "POST", {
-                gps_threshold_m: Number($("set-gps-thresh").value),
                 season_start_month: Number($("set-season-month").value),
             });
             toast("Estate parameters saved");
