@@ -29,8 +29,8 @@ CREATE TABLE IF NOT EXISTS estates (
     code TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
     crop_type TEXT NOT NULL DEFAULT 'Oil Palm (Elaeis guineensis)',
-    location_region TEXT DEFAULT 'Baduraliya, Sri Lanka',
-    total_area_ha REAL DEFAULT 147.25,
+    location_region TEXT DEFAULT '',
+    total_area_ha REAL DEFAULT 0.0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -48,8 +48,8 @@ CREATE TABLE IF NOT EXISTS fields (
     division_id INTEGER NOT NULL,
     code TEXT NOT NULL,
     name TEXT NOT NULL,
-    planting_year INTEGER DEFAULT 2011,
-    area_ha REAL DEFAULT 11.0,
+    planting_year INTEGER DEFAULT 2015,
+    area_ha REAL DEFAULT 10.0,
     UNIQUE(division_id, code)
 );
 
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS blocks (
     name TEXT NOT NULL,
     boundary_note TEXT DEFAULT '',
     palm_variety TEXT DEFAULT 'DxP Tenera',
-    area_ha REAL DEFAULT 5.5,
+    area_ha REAL DEFAULT 5.0,
     target_stands INTEGER DEFAULT 285,
     UNIQUE(field_id, code)
 );
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS trees (
     latitude REAL,
     longitude REAL,
     gps_acc REAL DEFAULT 4.0,
-    planting_year INTEGER DEFAULT 2011,
+    planting_year INTEGER DEFAULT 2015,
     status TEXT DEFAULT 'active',
     health_status TEXT DEFAULT 'Healthy',
     mapped_by INTEGER,
@@ -98,6 +98,8 @@ CREATE TABLE IF NOT EXISTS harvest_logs (
     latitude REAL,
     longitude REAL,
     gps_acc REAL DEFAULT 4.2,
+    health_status TEXT DEFAULT 'Healthy',
+    loose_fruit INTEGER DEFAULT 1,
     recorded_by_id INTEGER,
     recorded_by_name TEXT DEFAULT 'System',
     remarks TEXT DEFAULT '',
@@ -112,6 +114,7 @@ CREATE TABLE IF NOT EXISTS dispatch_logs (
     year_month TEXT NOT NULL,
     round_number INTEGER NOT NULL,
     weight_kg REAL NOT NULL,
+    client_id TEXT,
     recorded_by_id INTEGER,
     recorded_by_name TEXT DEFAULT 'System',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -121,3 +124,10 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_trees_block ON trees (block_id);
+CREATE INDEX IF NOT EXISTS idx_trees_coords ON trees (latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_harvest_date ON harvest_logs (harvest_date);
+CREATE INDEX IF NOT EXISTS idx_harvest_ym_round ON harvest_logs (year_month, round_number);
+CREATE INDEX IF NOT EXISTS idx_dispatch_date ON dispatch_logs (dispatch_date);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_client_id ON dispatch_logs (client_id) WHERE client_id IS NOT NULL;

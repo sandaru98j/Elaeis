@@ -1,5 +1,5 @@
 /* ============================================================================
-   ELAEIS — Closed Corporate ERP (Uskvalley Estate)
+   ELAEIS — Closed Corporate Plantation ERP
    Twitter / X Minimalist Architecture + 4-Theme CSS Custom Property Engine
    ============================================================================ */
 
@@ -594,6 +594,12 @@ body {
 .palm-card.selected-palm {
     border-color: var(--accent-primary) !important;
     box-shadow: 0 0 0 2px var(--accent-primary);
+}
+
+/* Queued offline sync visual highlight on palm cards */
+.palm-card.pending-sync-palm {
+    border-style: dashed;
+    border-color: #f59e0b !important;
 }
 
 /* ============================================================================

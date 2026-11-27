@@ -1,15 +1,24 @@
 ﻿// ============================================================================
-// ELAEIS — Palm-based Crop Monitoring System
-// Cloudflare Worker API + D1 (SQLite)
+// ELAEIS — Palm-based Crop Monitoring & Plantation ERP
+// Cloudflare Worker / Pages Function API + D1 (SQLite)
 //
 // Hierarchy : Estate > Division > Field (year, ha) > Block > Tree
-// Scope     : Harvest (Bunches & Fronds) + Mill Dispatch Weight (kg)
-// Analytics : Total Bunches, Total Fronds, Dispatch Weight, ABW, YPH
+// Scope     : Harvest (Bunches, Fronds, Health, Loose Fruit) + Mill Dispatch (kg)
+// Analytics : Total Bunches, Total Fronds, Dispatch Weight, ABW, YPH, FBR, Coverage
+// Offline   : Idempotent Sync Batch API (/api/sync/batch) + client_id dedupe
 // ============================================================================
 
 const PBKDF2_ITER = 20000;
 const SESSION_DAYS = 30;
-const RESET_MINUTES = 30;
+const MAX_D1_IMAGE_CHARS = 700000; // ~500 KB base64 safe limit for Cloudflare D1 rows
+const VALID_HEALTH_STATUSES = [
+    "Healthy",
+    "Ganoderma / Disease",
+    "Nutrient Deficient",
+    "Pest / Rhinoceros",
+    "Fallen / Vacant",
+];
+
 const ROLE_RANK = {
     Harvester: 1,
     Supervisor: 2,
@@ -27,6 +36,22 @@ function normalizeRole(r) {
     if (s === "admin") return "Admin";
     if (s === "supervisor") return "Supervisor";
     return "Harvester";
+}
+
+function normalizeHealthStatus(h) {
+    const s = String(h || "").trim();
+    if (!s) return "Healthy";
+    const found = VALID_HEALTH_STATUSES.find((v) => v.toLowerCase() === s.toLowerCase());
+    return found || "Healthy";
+}
+
+function slugifyFilename(name, fallback = "Elaeis") {
+    const cleaned = String(name || "")
+        .trim()
+        .replace(/[^A-Za-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 48);
+    return cleaned || fallback;
 }
 
 const SCHEMA = [
@@ -60,7 +85,8 @@ const SCHEMA = [
     )`,
     `CREATE TABLE IF NOT EXISTS el_estates (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL
+        name TEXT NOT NULL,
+        location_region TEXT DEFAULT ''
     )`,
     `CREATE TABLE IF NOT EXISTS el_divisions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,6 +114,7 @@ const SCHEMA = [
         lng REAL,
         gps_acc REAL,
         status TEXT NOT NULL DEFAULT 'active',
+        health_status TEXT NOT NULL DEFAULT 'Healthy',
         mapped_by INTEGER,
         mapped_at TEXT,
         UNIQUE (block_id, tree_no)
@@ -104,6 +131,9 @@ const SCHEMA = [
         user_lat REAL,
         user_lng REAL,
         user_acc REAL,
+        health_status TEXT NOT NULL DEFAULT 'Healthy',
+        loose_fruit INTEGER NOT NULL DEFAULT 1,
+        remarks TEXT NOT NULL DEFAULT '',
         recorded_at TEXT NOT NULL,
         UNIQUE (tree_id, year_month, round_no)
     )`,
@@ -114,6 +144,7 @@ const SCHEMA = [
         year_month TEXT NOT NULL,
         round_no INTEGER NOT NULL,
         weight_kg REAL NOT NULL,
+        client_id TEXT,
         user_id INTEGER NOT NULL,
         recorded_at TEXT NOT NULL
     )`,
@@ -122,15 +153,26 @@ const SCHEMA = [
         value TEXT NOT NULL
     )`,
     `CREATE INDEX IF NOT EXISTS idx_el_trees_block ON el_trees (block_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_el_trees_coords ON el_trees (lat, lng)`,
     `CREATE INDEX IF NOT EXISTS idx_el_harvest_date ON el_harvest (harvest_date)`,
     `CREATE INDEX IF NOT EXISTS idx_el_harvest_tree ON el_harvest (tree_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_el_harvest_ym_round ON el_harvest (year_month, round_no)`,
     `CREATE INDEX IF NOT EXISTS idx_el_dispatch_date ON el_dispatch (dispatch_date)`,
     `CREATE INDEX IF NOT EXISTS idx_el_dispatch_div ON el_dispatch (division_id, year_month, round_no)`,
     `CREATE INDEX IF NOT EXISTS idx_el_sessions_user ON el_sessions (user_id)`,
 ];
 
+const ADDITIVE_MIGRATIONS = [
+    "ALTER TABLE el_estates ADD COLUMN location_region TEXT DEFAULT ''",
+    "ALTER TABLE el_trees ADD COLUMN health_status TEXT NOT NULL DEFAULT 'Healthy'",
+    "ALTER TABLE el_harvest ADD COLUMN health_status TEXT NOT NULL DEFAULT 'Healthy'",
+    "ALTER TABLE el_harvest ADD COLUMN loose_fruit INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE el_harvest ADD COLUMN remarks TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE el_dispatch ADD COLUMN client_id TEXT",
+];
+
 // ---------------------------------------------------------------------------
-// Utilities
+// Utilities & HTTP Helpers
 // ---------------------------------------------------------------------------
 class HttpError extends Error {
     constructor(status, message) {
@@ -139,12 +181,23 @@ class HttpError extends Error {
     }
 }
 
+const SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Expose-Headers": "Content-Disposition",
+};
+
 function json(data, status = 200, extraHeaders = {}) {
     return new Response(JSON.stringify(data), {
         status,
         headers: {
             "Content-Type": "application/json; charset=utf-8",
             "Cache-Control": "no-store",
+            ...SECURITY_HEADERS,
             ...extraHeaders,
         },
     });
@@ -155,9 +208,8 @@ const fail = (status, message) => {
 };
 
 const nowIso = () => new Date().toISOString();
-const addMinutes = (m) => new Date(Date.now() + m * 60000).toISOString();
-const normPhone = (s) => String(s || "").replace(/[\s\-()]/g, "");
 const toInt = (v) => {
+    if (v === null || v === undefined || v === "") return null;
     const n = Number(v);
     return Number.isFinite(n) ? Math.trunc(n) : null;
 };
@@ -218,11 +270,6 @@ function randomToken() {
     return hex(crypto.getRandomValues(new Uint8Array(32)));
 }
 
-function randomCode() {
-    const n = crypto.getRandomValues(new Uint32Array(1))[0] % 1000000;
-    return String(n).padStart(6, "0");
-}
-
 function validDate(s) {
     return /^\d{4}-\d{2}-\d{2}$/.test(s || "");
 }
@@ -245,56 +292,29 @@ function distanceM(lat1, lng1, lat2, lng2) {
     const a =
         Math.sin(dLat / 2) ** 2 +
         Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLng / 2) ** 2;
-    return 2 * R * Math.asin(Math.sqrt(a));
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-function computePalmCoordinates(blockId, treeNo) {
-    const bIdx = Math.max(0, (Number(blockId) || 1) - 1);
-    const fieldIdx = Math.floor(bIdx / 2);
-    const blockInField = bIdx % 2;
-
-    let fieldBaseLat = 6.142;
-    let fieldBaseLng = 80.365;
-    if (fieldIdx <= 5) {
-        const fCol = fieldIdx % 2;
-        const fRow = Math.floor(fieldIdx / 2);
-        fieldBaseLat = 6.142 + fRow * 0.00255;
-        fieldBaseLng = 80.365 + fCol * 0.00485;
-    } else if (fieldIdx <= 7) {
-        const fRow = fieldIdx - 6;
-        fieldBaseLat = 6.1452 + fRow * 0.00255;
-        fieldBaseLng = 80.3756;
-    } else if (fieldIdx <= 9) {
-        const fRow = fieldIdx - 8;
-        fieldBaseLat = 6.14175 - fRow * 0.00255;
-        fieldBaseLng = 80.3756;
-    } else {
-        const extra = fieldIdx - 10;
-        fieldBaseLat = 6.1392 - (Math.floor(extra / 2) + 1) * 0.00255;
-        fieldBaseLng = 80.365 + (extra % 2) * 0.00485;
+function validateImagePayload(val) {
+    const s = String(val || "").trim();
+    if (!s) return "";
+    if (s.startsWith("data:image/")) {
+        if (!/^data:image\/(jpeg|jpg|png|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i.test(s)) {
+            fail(400, "Unsupported image format. Use PNG, JPG, WEBP, or GIF.");
+        }
+        if (s.length > MAX_D1_IMAGE_CHARS) {
+            fail(400, "Image is too large. Please upload an image smaller than 500 KB.");
+        }
+        return s;
     }
-
-    const blockBaseLat = fieldBaseLat;
-    const blockBaseLng = fieldBaseLng + blockInField * 0.00235;
-    const cols = 23;
-    const idx = Math.max(0, (Number(treeNo) || 1) - 1);
-    const row = Math.floor(idx / cols);
-    const col = idx % cols;
-    const stagLng = row % 2 === 1 ? 0.00004 : 0.0;
-    const u = (col / 22.0) * Math.PI;
-    const v = (row / 24.0) * Math.PI;
-    const phase = bIdx * 0.65;
-    const curveLat = Math.sin(u + phase) * 0.00011 - Math.sin(phase) * 0.00011;
-    const curveLng = Math.sin(v + phase * 0.7) * 0.00011 - Math.sin(phase * 0.7) * 0.00011;
-    const archLat = Math.sin(u) * (blockInField === 0 ? 0.00008 : -0.00008);
-
-    const lat = Number((blockBaseLat + row * 0.000075 + curveLat + archLat).toFixed(6));
-    const lng = Number((blockBaseLng + col * 0.000078 + stagLng + curveLng).toFixed(6));
-    return { lat, lng };
+    if (s.startsWith("https://") || (s.startsWith("/uploads/") && !s.includes(".."))) {
+        return s.slice(0, 500);
+    }
+    fail(400, "Invalid image URL or upload format.");
 }
 
 function publicUser(u) {
-    const isMaster = Boolean(u.is_master) || String(u.username || "").toLowerCase() === "sandaru98j";
+    const isMaster = Boolean(u.is_master) || normalizeRole(u.role) === "Master Admin";
     const role = isMaster ? "Master Admin" : normalizeRole(u.role);
     return {
         id: u.id,
@@ -310,17 +330,8 @@ function publicUser(u) {
     };
 }
 
-function validateStrongPassword(pw) {
-    const s = String(pw || "");
-    if (s.length < 8) return "Password must be at least 8 characters.";
-    if (!/[A-Z]/.test(s)) return "Password must include at least 1 uppercase letter.";
-    if (!/[0-9]/.test(s)) return "Password must include at least 1 number.";
-    if (!/[^A-Za-z0-9]/.test(s)) return "Password must include at least 1 special character.";
-    return null;
-}
-
 // ---------------------------------------------------------------------------
-// Schema bootstrap + Uskvalley seed
+// Schema Bootstrap + Safe Additive Migrations
 // ---------------------------------------------------------------------------
 let schemaReady = false;
 
@@ -328,17 +339,28 @@ async function ensureSchema(env) {
     if (schemaReady) return;
     const db = env.DB;
     await db.batch(SCHEMA.map((s) => db.prepare(s)));
+
+    // Apply additive column migrations safely on existing D1 databases
+    for (const sql of ADDITIVE_MIGRATIONS) {
+        try {
+            await db.prepare(sql).run();
+        } catch (_) {
+            // Column already exists
+        }
+    }
+    try {
+        await db
+            .prepare(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_el_dispatch_client_id ON el_dispatch (client_id) WHERE client_id IS NOT NULL"
+            )
+            .run();
+    } catch (_) {}
+
     const lock = await db
         .prepare("INSERT OR IGNORE INTO el_settings (key, value) VALUES ('seeded_erp_v4', ?)")
         .bind(nowIso())
         .run();
     if (lock.meta && lock.meta.changes === 1) {
-        await db.batch([
-            db.prepare("DROP TABLE IF EXISTS el_sessions"),
-            db.prepare("DROP TABLE IF EXISTS el_users"),
-            db.prepare(SCHEMA[0]),
-            db.prepare(SCHEMA[1]),
-        ]);
         await seed(env);
     }
     schemaReady = true;
@@ -346,7 +368,9 @@ async function ensureSchema(env) {
 
 async function seed(env) {
     const db = env.DB;
-    const erpPass = env.ERP_INITIAL_PASSWORD || "Uskvalley2026!";
+    const erpPass = env.ERP_INITIAL_PASSWORD || "Elaeis2026!";
+    const defaultEstate = str(env.ELAEIS_ESTATE_NAME || "Primary Plantation Estate", 80);
+    const defaultRegion = str(env.ELAEIS_ESTATE_REGION || "", 120);
     const erpHash = await hashPassword(erpPass);
     const now = nowIso();
     const today = now.slice(0, 10);
@@ -354,7 +378,6 @@ async function seed(env) {
     const curRound = roundOf(today).round;
 
     const fields = [
-        // [id, division_id, name, year, ha]
         [1, 1, "Field 1", 2011, 11.0],
         [2, 1, "Field 2", 2011, 16.5],
         [3, 1, "Field 3", 2011, 28.0],
@@ -367,7 +390,7 @@ async function seed(env) {
         [10, 3, "Field 2", 2016, 12.5],
     ];
     const blockNames = [
-        ["Block A", "Valley stream boundary"],
+        ["Block A", "Stream boundary"],
         ["Block B", "Ridge road boundary"],
     ];
     const treeCounts = [285, 268, 312, 294, 320, 305, 290, 264, 248, 240, 308, 282, 274, 296, 265, 258, 301, 277, 289, 252];
@@ -387,17 +410,19 @@ async function seed(env) {
     const stmts = erpUsers.map(([id, uname, fname, role, isMaster]) =>
         db
             .prepare(
-                `INSERT OR REPLACE INTO el_users (id, username, email, phone, full_name, role, is_master, pass_hash, approved_by, approved_at)
+                `INSERT OR IGNORE INTO el_users (id, username, email, phone, full_name, role, is_master, pass_hash, approved_by, approved_at)
                  VALUES (?, ?, '', '', ?, ?, ?, ?, 1, ?)`
             )
             .bind(id, uname, fname, role, isMaster, erpHash, now)
     );
     stmts.push(
         db.prepare("INSERT OR IGNORE INTO el_settings (key, value) VALUES ('season_start_month', '4')"),
-        db.prepare("INSERT OR IGNORE INTO el_estates (id, name) VALUES (1, 'Uskvalley Estate')"),
-        db.prepare("INSERT OR IGNORE INTO el_divisions (id, estate_id, name) VALUES (1, 1, 'Uskvalley Division')"),
-        db.prepare("INSERT OR IGNORE INTO el_divisions (id, estate_id, name) VALUES (2, 1, 'Trafalgar Division')"),
-        db.prepare("INSERT OR IGNORE INTO el_divisions (id, estate_id, name) VALUES (3, 1, 'Morawaka Division')")
+        db
+            .prepare("INSERT OR IGNORE INTO el_estates (id, name, location_region) VALUES (1, ?, ?)")
+            .bind(defaultEstate, defaultRegion),
+        db.prepare("INSERT OR IGNORE INTO el_divisions (id, estate_id, name) VALUES (1, 1, 'Division 1')"),
+        db.prepare("INSERT OR IGNORE INTO el_divisions (id, estate_id, name) VALUES (2, 1, 'Division 2')"),
+        db.prepare("INSERT OR IGNORE INTO el_divisions (id, estate_id, name) VALUES (3, 1, 'Division 3')")
     );
 
     let blockId = 0;
@@ -420,7 +445,7 @@ async function seed(env) {
         }
     }
 
-    // Pre-map GPS coordinates on Block 1 (Trees 1..150)
+    // Pre-map GPS coordinates on Block 1 (Trees 1..150) as starter demonstration
     stmts.push(
         db
             .prepare(
@@ -435,23 +460,21 @@ async function seed(env) {
             .bind(now)
     );
 
-    // Seed sample harvest logs across Rounds 1, 2, 3 so Round-by-Round and Month-by-Month comparisons work out of the box
     const sampleHarvest = [
-        // [tree_no, date, ym, round, bunches, fronds, user_id, dLat, dLng, acc]
         [1, `${ym}-04`, ym, 1, 12, 8, 3, 0.00002, 0.00001, 4.1],
         [2, `${ym}-04`, ym, 1, 10, 7, 3, 0.00003, -0.00002, 3.9],
-        [3, `${ym}-05`, ym, 1, 14, 9, 3, 0.00042, 0.00035, 6.2],
+        [3, `${ym}-05`, ym, 1, 14, 9, 3, 0.00002, 0.00001, 4.2],
         [4, `${ym}-05`, ym, 1, 11, 8, 2, 0.00001, 0.00002, 3.5],
         [5, today, ym, curRound, 15, 10, 3, 0.00002, 0.00002, 4.0],
-        [6, today, ym, curRound, 9, 6, 3, 0.00075, -0.00048, 8.0],
+        [6, today, ym, curRound, 9, 6, 3, 0.00001, -0.00001, 4.0],
         [7, today, ym, curRound, 13, 8, 3, 0.00001, -0.00001, 3.7],
         [8, today, ym, curRound, 11, 7, 2, 0.00002, 0.00001, 4.2],
         [12, today, ym, curRound, 14, 9, 3, 0.00003, 0.00001, 4.4],
         [121, today, ym, curRound, 16, 10, 2, 0.00001, 0.00001, 3.2],
     ];
     for (const [tno, dt, ymo, rnd, b, f, uid, dLat, dLng, acc] of sampleHarvest) {
-        const baseLat = 6.1420 + Math.floor((tno - 1) / 10) * 0.00008;
-        const baseLng = 80.3650 + ((tno - 1) % 10) * 0.00008;
+        const baseLat = 6.142 + Math.floor((tno - 1) / 10) * 0.00008;
+        const baseLng = 80.365 + ((tno - 1) % 10) * 0.00008;
         stmts.push(
             db
                 .prepare(
@@ -464,20 +487,19 @@ async function seed(env) {
         );
     }
 
-    // Seed sample Mill Dispatch Crop Weight logs (in kg)
     const sampleDispatches = [
-        [1, `${ym}-05`, ym, 1, 895.0, 2, now],
-        [1, today, ym, curRound, 1480.0, 2, now],
-        [2, today, ym, curRound, 640.0, 2, now],
+        [1, `${ym}-05`, ym, 1, 895.0, "seed-disp-1", 2, now],
+        [1, today, ym, curRound, 1480.0, "seed-disp-2", 2, now],
+        [2, today, ym, curRound, 640.0, "seed-disp-3", 2, now],
     ];
-    for (const [divId, dt, ymo, rnd, wkg, uid, recAt] of sampleDispatches) {
+    for (const [divId, dt, ymo, rnd, wkg, cid, uid, recAt] of sampleDispatches) {
         stmts.push(
             db
                 .prepare(
-                    `INSERT INTO el_dispatch (division_id, dispatch_date, year_month, round_no, weight_kg, user_id, recorded_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)`
+                    `INSERT OR IGNORE INTO el_dispatch (division_id, dispatch_date, year_month, round_no, weight_kg, client_id, user_id, recorded_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
                 )
-                .bind(divId, dt, ymo, rnd, wkg, uid, recAt)
+                .bind(divId, dt, ymo, rnd, wkg, cid, uid, recAt)
         );
     }
 
@@ -495,7 +517,7 @@ function insertTreeRange(db, blockId, from, to) {
 
 async function getSettings(db) {
     const { results } = await db.prepare("SELECT key, value FROM el_settings").all();
-    const map = Object.fromEntries(results.map((r) => [r.key, r.value]));
+    const map = Object.fromEntries((results || []).map((r) => [r.key, r.value]));
     return {
         season_start_month: Number(map.season_start_month || 4),
     };
@@ -504,7 +526,7 @@ async function getSettings(db) {
 async function getMappedTrees(db) {
     const { results } = await db
         .prepare(
-            `SELECT id, block_id, tree_no, lat, lng, gps_acc
+            `SELECT id, block_id, tree_no, lat, lng, gps_acc, health_status
              FROM el_trees
              WHERE status = 'active' AND lat IS NOT NULL AND lng IS NOT NULL
              ORDER BY block_id ASC, tree_no ASC`
@@ -514,7 +536,7 @@ async function getMappedTrees(db) {
 }
 
 // ---------------------------------------------------------------------------
-// Auth (Strictly Email + Password Login, Clean Pending Sign-Up)
+// Auth & Sessions (Closed Corporate ERP: Username + Password)
 // ---------------------------------------------------------------------------
 async function currentUser(request, db, urlParams = {}) {
     const header = request.headers.get("Authorization") || "";
@@ -563,9 +585,14 @@ async function handleLogin(db, body) {
     if (!username) fail(400, "Enter your Username.");
     const user = await db
         .prepare(
-            `SELECT u.*, COALESCE(st.value, 'twitter') AS theme
+            `SELECT u.*,
+                    COALESCE(st.value, 'twitter') AS theme,
+                    COALESCE(sp.value, '') AS profile_pic,
+                    COALESCE(sc.value, '') AS cover_photo
              FROM el_users u
              LEFT JOIN el_settings st ON st.key = ('user_theme_' || u.id)
+             LEFT JOIN el_settings sp ON sp.key = ('user_pic_' || u.id)
+             LEFT JOIN el_settings sc ON sc.key = ('user_cover_' || u.id)
              WHERE LOWER(u.username) = ? LIMIT 1`
         )
         .bind(username)
@@ -591,28 +618,29 @@ async function handleChangePassword(db, user, body) {
 }
 
 // ---------------------------------------------------------------------------
-// Hierarchy & Block Data (Bunches & Fronds Only)
+// Hierarchy & Block Data
 // ---------------------------------------------------------------------------
 async function getHierarchy(db) {
     const [estates, divisions, fields, blocks] = await db.batch([
-        db.prepare("SELECT id, name FROM el_estates ORDER BY name"),
-        db.prepare("SELECT id, estate_id, name FROM el_divisions ORDER BY name"),
-        db.prepare("SELECT id, division_id, name, planting_year, area_ha FROM el_fields ORDER BY planting_year, name"),
+        db.prepare("SELECT id, name, COALESCE(location_region, '') AS location_region FROM el_estates ORDER BY id ASC, name ASC"),
+        db.prepare("SELECT id, estate_id, name FROM el_divisions ORDER BY id ASC, name ASC"),
+        db.prepare("SELECT id, division_id, name, planting_year, area_ha FROM el_fields ORDER BY planting_year, id ASC"),
         db.prepare(
             `SELECT b.id, b.field_id, b.name, b.boundary_note,
                     COUNT(t.id) AS tree_total,
                     SUM(CASE WHEN t.status = 'active' THEN 1 ELSE 0 END) AS tree_active,
-                    SUM(CASE WHEN t.lat IS NOT NULL THEN 1 ELSE 0 END) AS tree_mapped
+                    SUM(CASE WHEN t.lat IS NOT NULL AND t.lng IS NOT NULL THEN 1 ELSE 0 END) AS tree_mapped
              FROM el_blocks b LEFT JOIN el_trees t ON t.block_id = b.id
-             GROUP BY b.id ORDER BY b.name`
+             GROUP BY b.id ORDER BY b.id ASC`
         ),
     ]);
     return {
-        estates: estates.results,
-        divisions: divisions.results,
-        fields: fields.results,
-        blocks: blocks.results.map((b) => ({
+        estates: estates.results || [],
+        divisions: divisions.results || [],
+        fields: fields.results || [],
+        blocks: (blocks.results || []).map((b) => ({
             ...b,
+            tree_total: b.tree_total || 0,
             tree_active: b.tree_active || 0,
             tree_mapped: b.tree_mapped || 0,
         })),
@@ -627,7 +655,8 @@ async function getBlockData(db, params) {
 
     const { results: trees } = await db
         .prepare(
-            `SELECT id, tree_no, lat, lng, gps_acc, status, mapped_at
+            `SELECT id, block_id, tree_no, lat, lng, gps_acc, status,
+                    COALESCE(health_status, 'Healthy') AS health_status, mapped_at
              FROM el_trees WHERE block_id = ? ORDER BY tree_no`
         )
         .bind(blockId)
@@ -638,19 +667,22 @@ async function getBlockData(db, params) {
         const { yearMonth, round } = roundOf(date, params.round_no);
         const { results } = await db
             .prepare(
-                `SELECT h.tree_id, h.bunches, h.fronds, h.harvest_date, h.round_no
+                `SELECT h.tree_id, h.bunches, h.fronds, h.harvest_date, h.round_no,
+                        COALESCE(h.health_status, 'Healthy') AS health_status,
+                        COALESCE(h.loose_fruit, 1) AS loose_fruit,
+                        COALESCE(h.remarks, '') AS remarks
                  FROM el_harvest h JOIN el_trees t ON t.id = h.tree_id
                  WHERE t.block_id = ? AND h.year_month = ? AND h.round_no = ?`
             )
             .bind(blockId, yearMonth, round)
             .all();
-        results.forEach((r) => (records[r.tree_id] = r));
+        (results || []).forEach((r) => (records[r.tree_id] = r));
     }
 
     return {
         block_id: blockId,
         date,
-        trees: trees.map((t) => ({ ...t, rec: records[t.id] || null })),
+        trees: (trees || []).map((t) => ({ ...t, rec: records[t.id] || null })),
     };
 }
 
@@ -671,11 +703,6 @@ function readGps(body) {
     return { lat, lng, acc };
 }
 
-function distanceInfo(tree, gps) {
-    if (tree.lat === null || tree.lng === null || gps.lat === null) return null;
-    return Math.round(distanceM(tree.lat, tree.lng, gps.lat, gps.lng) * 10) / 10;
-}
-
 async function handleHarvest(db, user, body) {
     requireRole(user, "harvester");
     const tree = await requireTree(db, body.tree_id);
@@ -685,38 +712,62 @@ async function handleHarvest(db, user, body) {
     const fronds = toInt(body.fronds);
     if (bunches === null || bunches < 0 || bunches > 60) fail(400, "Bunches must be 0-60.");
     if (fronds === null || fronds < 0 || fronds > 60) fail(400, "Fronds must be 0-60.");
+
     const gps = readGps(body);
     const finalLat = gps.lat !== null ? gps.lat : (tree.lat ?? null);
     const finalLng = gps.lng !== null ? gps.lng : (tree.lng ?? null);
     const finalAcc = gps.acc !== null ? gps.acc : (tree.gps_acc ?? null);
 
-    await db
-        .prepare(
-            `INSERT INTO el_harvest
-               (tree_id, harvest_date, year_month, round_no, bunches, fronds, user_id, user_lat, user_lng, user_acc, recorded_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT (tree_id, year_month, round_no) DO UPDATE SET
-               harvest_date = excluded.harvest_date, bunches = excluded.bunches, fronds = excluded.fronds,
-               user_id = excluded.user_id, user_lat = excluded.user_lat, user_lng = excluded.user_lng,
-               user_acc = excluded.user_acc, recorded_at = excluded.recorded_at`
-        )
-        .bind(tree.id, date, yearMonth, round, bunches, fronds, user.id, finalLat, finalLng, finalAcc, nowIso())
-        .run();
+    const healthStatus = normalizeHealthStatus(body.health_status || tree.health_status || "Healthy");
+    const looseFruit = body.loose_fruit === false || body.loose_fruit === 0 || body.loose_fruit === "0" ? 0 : 1;
+    const remarks = str(body.remarks || "", 240);
 
-    return { ok: true, round, lat: finalLat, lng: finalLng };
+    const stmts = [
+        db
+            .prepare(
+                `INSERT INTO el_harvest
+                   (tree_id, harvest_date, year_month, round_no, bunches, fronds, user_id, user_lat, user_lng, user_acc,
+                    health_status, loose_fruit, remarks, recorded_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT (tree_id, year_month, round_no) DO UPDATE SET
+                   harvest_date = excluded.harvest_date, bunches = excluded.bunches, fronds = excluded.fronds,
+                   user_id = excluded.user_id, user_lat = excluded.user_lat, user_lng = excluded.user_lng,
+                   user_acc = excluded.user_acc, health_status = excluded.health_status,
+                   loose_fruit = excluded.loose_fruit, remarks = excluded.remarks,
+                   recorded_at = excluded.recorded_at`
+            )
+            .bind(
+                tree.id, date, yearMonth, round, bunches, fronds, user.id,
+                finalLat, finalLng, finalAcc, healthStatus, looseFruit, remarks, nowIso()
+            ),
+    ];
+
+    if (body.health_status) {
+        stmts.push(
+            db.prepare("UPDATE el_trees SET health_status = ? WHERE id = ?").bind(healthStatus, tree.id)
+        );
+    }
+
+    await db.batch(stmts);
+    return { ok: true, round, lat: finalLat, lng: finalLng, health_status: healthStatus, loose_fruit: looseFruit };
 }
 
 // ---------------------------------------------------------------------------
-// Dispatch Crop Weight Logger
+// Dispatch Crop Weight Logger (with client_id Idempotency for Offline Sync)
 // ---------------------------------------------------------------------------
 async function getDispatches(db, params) {
     const divId = toInt(params.division_id);
+    const estateId = toInt(params.estate_id);
     const roundNo = toInt(params.round_no);
     const where = [];
     const binds = [];
     if (divId) {
         where.push("x.division_id = ?");
         binds.push(divId);
+    }
+    if (estateId) {
+        where.push("d.estate_id = ?");
+        binds.push(estateId);
     }
     if (roundNo) {
         where.push("x.round_no = ?");
@@ -726,7 +777,7 @@ async function getDispatches(db, params) {
     const { results } = await db
         .prepare(
             `SELECT x.id, x.division_id, d.name AS division_name, x.dispatch_date, x.year_month,
-                    x.round_no, x.weight_kg, u.full_name AS recorded_by, x.recorded_at
+                    x.round_no, x.weight_kg, x.client_id, u.full_name AS recorded_by, x.recorded_at
              FROM el_dispatch x
              JOIN el_divisions d ON d.id = x.division_id
              LEFT JOIN el_users u ON u.id = x.user_id
@@ -735,7 +786,7 @@ async function getDispatches(db, params) {
         )
         .bind(...binds)
         .all();
-    return { dispatches: results };
+    return { dispatches: results || [] };
 }
 
 async function handleCreateDispatch(db, user, body) {
@@ -744,6 +795,7 @@ async function handleCreateDispatch(db, user, body) {
     const roundNo = toInt(body.round_no);
     const date = str(body.date, 10);
     const weightKg = toNum(body.weight_kg);
+    const clientId = str(body.client_id || "", 80) || null;
 
     if (!divisionId) fail(400, "Select a division.");
     const div = await db.prepare("SELECT id FROM el_divisions WHERE id = ?").bind(divisionId).first();
@@ -754,16 +806,26 @@ async function handleCreateDispatch(db, user, body) {
         fail(400, "Enter a valid dispatch crop weight in kg.");
     }
 
+    if (clientId) {
+        const existing = await db
+            .prepare("SELECT id FROM el_dispatch WHERE client_id = ?")
+            .bind(clientId)
+            .first();
+        if (existing) {
+            return { ok: true, id: existing.id, deduplicated: true };
+        }
+    }
+
     const yearMonth = date.slice(0, 7);
-    await db
+    const res = await db
         .prepare(
-            `INSERT INTO el_dispatch (division_id, dispatch_date, year_month, round_no, weight_kg, user_id, recorded_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO el_dispatch (division_id, dispatch_date, year_month, round_no, weight_kg, client_id, user_id, recorded_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
-        .bind(divisionId, date, yearMonth, roundNo, weightKg, user.id, nowIso())
+        .bind(divisionId, date, yearMonth, roundNo, weightKg, clientId, user.id, nowIso())
         .run();
 
-    return { ok: true };
+    return { ok: true, id: res.meta?.last_row_id || null };
 }
 
 async function handleDeleteDispatch(db, user, body) {
@@ -775,13 +837,70 @@ async function handleDeleteDispatch(db, user, body) {
 }
 
 // ---------------------------------------------------------------------------
-// Advanced Yield Analytics Engine (Bunches, Fronds, Dispatch Weight, ABW, YPH)
+// Offline-First Batch Sync Engine (/api/sync/batch)
+// ---------------------------------------------------------------------------
+async function handleSyncBatch(db, user, body) {
+    requireRole(user, "harvester");
+    const ops = Array.isArray(body.operations) ? body.operations : [];
+    if (ops.length > 200) fail(400, "Maximum 200 operations per sync batch.");
+
+    const results = [];
+    let synced = 0;
+    let failed = 0;
+
+    for (const op of ops) {
+        const cid = str(op?.client_id || "", 80);
+        const opType = str(op?.type || "", 30).toLowerCase();
+        const payload = op?.payload && typeof op.payload === "object" ? op.payload : {};
+
+        try {
+            let data = null;
+            if (opType === "harvest") {
+                data = await handleHarvest(db, user, payload);
+            } else if (opType === "dispatch") {
+                data = await handleCreateDispatch(db, user, {
+                    ...payload,
+                    client_id: payload.client_id || cid || undefined,
+                });
+            } else if (opType === "calibrate") {
+                data = await handleCalibrateTree(db, user, payload);
+            } else if (opType === "tree_save") {
+                requireRole(user, "Supervisor");
+                data = await adminSave(db, user, "tree", payload);
+            } else {
+                fail(400, `Unsupported sync operation type '${opType}'.`);
+            }
+            synced++;
+            results.push({ client_id: cid, type: opType, ok: true, status: 200, data });
+        } catch (err) {
+            failed++;
+            const status = err instanceof HttpError ? err.status : 500;
+            const message = err instanceof HttpError ? err.message : "Operation failed during sync.";
+            results.push({ client_id: cid, type: opType, ok: false, status, error: message });
+        }
+    }
+
+    return { ok: true, synced, failed, results };
+}
+
+// ---------------------------------------------------------------------------
+// Advanced Yield & Agronomy Analytics Engine
 // ---------------------------------------------------------------------------
 const JOINS = `JOIN el_trees t ON t.id = x.tree_id
     JOIN el_blocks b ON b.id = t.block_id
     JOIN el_fields f ON f.id = b.field_id
     JOIN el_divisions d ON d.id = f.division_id
     JOIN el_estates e ON e.id = d.estate_id`;
+
+async function resolveScopeEstateName(db, params) {
+    const estateId = toInt(params.estate_id);
+    if (estateId) {
+        const row = await db.prepare("SELECT name FROM el_estates WHERE id = ?").bind(estateId).first();
+        if (row?.name) return row.name;
+    }
+    const first = await db.prepare("SELECT name FROM el_estates ORDER BY id ASC LIMIT 1").first();
+    return first?.name || "Elaeis";
+}
 
 async function getReport(db, params) {
     const from = validDate(params.from) ? params.from : "1900-01-01";
@@ -794,7 +913,7 @@ async function getReport(db, params) {
     const blockId = toInt(params.block_id);
     const treeId = toInt(params.tree_id);
 
-    // 1. Determine Hectares (area_ha) for YPH calculation
+    // 1. Determine Hectares (area_ha) & Active Tree Stand for YPH & Coverage %
     let haSql = "SELECT COALESCE(SUM(f.area_ha), 0) AS total_ha FROM el_fields f JOIN el_divisions d ON d.id = f.division_id";
     const haBinds = [];
     if (fieldId) {
@@ -813,8 +932,25 @@ async function getReport(db, params) {
         haSql += " WHERE d.estate_id = ?";
         haBinds.push(estateId);
     }
-    const haRow = await db.prepare(haSql).bind(...haBinds).first();
-    const totalHa = Number(haRow?.total_ha || 0);
+
+    const tStandWhere = ["t.status = 'active'"];
+    const tStandBinds = [];
+    if (treeId) {
+        tStandWhere.push("t.id = ?");
+        tStandBinds.push(treeId);
+    } else if (blockId) {
+        tStandWhere.push("t.block_id = ?");
+        tStandBinds.push(blockId);
+    } else if (fieldId) {
+        tStandWhere.push("b.field_id = ?");
+        tStandBinds.push(fieldId);
+    } else if (divisionId) {
+        tStandWhere.push("f.division_id = ?");
+        tStandBinds.push(divisionId);
+    } else if (estateId) {
+        tStandWhere.push("d.estate_id = ?");
+        tStandBinds.push(estateId);
+    }
 
     // 2. Build Harvest filter clauses
     const hWhere = ["x.harvest_date BETWEEN ? AND ?"];
@@ -841,8 +977,7 @@ async function getReport(db, params) {
     }
     const hClause = `WHERE ${hWhere.join(" AND ")}`;
 
-    // 3. Build Dispatch filter clauses (Dispatch is logged at Division level)
-    // Resolve target division if field/block/tree is selected
+    // 3. Build Dispatch filter clauses
     let targetDivisionId = divisionId;
     if (!targetDivisionId && (fieldId || blockId || treeId)) {
         let divLookupSql = "SELECT f.division_id FROM el_fields f";
@@ -875,8 +1010,20 @@ async function getReport(db, params) {
     }
     const dClause = `WHERE ${dWhere.join(" AND ")}`;
 
-    // 4. Execute batch queries for the 5 Core KPIs + Recent Harvest Feed
-    const [hTot, dTot, rLogs] = await db.batch([
+    // 4. Execute batch queries
+    const [haRes, standRes, hTot, dTot, rLogs] = await db.batch([
+        db.prepare(haSql).bind(...haBinds),
+        db
+            .prepare(
+                `SELECT COUNT(t.id) AS active_trees,
+                        SUM(CASE WHEN COALESCE(t.health_status, 'Healthy') != 'Healthy' THEN 1 ELSE 0 END) AS flagged_trees
+                 FROM el_trees t
+                 JOIN el_blocks b ON b.id = t.block_id
+                 JOIN el_fields f ON f.id = b.field_id
+                 JOIN el_divisions d ON d.id = f.division_id
+                 WHERE ${tStandWhere.join(" AND ")}`
+            )
+            .bind(...tStandBinds),
         db
             .prepare(
                 `SELECT COALESCE(SUM(bunches), 0) AS bunches,
@@ -896,8 +1043,11 @@ async function getReport(db, params) {
         db
             .prepare(
                 `SELECT x.id, x.harvest_date, x.round_no, x.bunches, x.fronds,
+                        COALESCE(x.health_status, 'Healthy') AS health_status,
+                        COALESCE(x.loose_fruit, 1) AS loose_fruit,
+                        COALESCE(x.remarks, '') AS remarks,
                         t.tree_no, b.name AS block_name, f.name AS field_name, d.name AS division_name,
-                        u.full_name AS recorded_by
+                        e.name AS estate_name, u.full_name AS recorded_by
                  FROM el_harvest x ${JOINS} LEFT JOIN el_users u ON u.id = x.user_id
                  ${hClause}
                  ORDER BY x.harvest_date DESC, x.id DESC LIMIT 15`
@@ -905,24 +1055,33 @@ async function getReport(db, params) {
             .bind(...hBinds),
     ]);
 
+    const totalHa = Number(haRes.results[0]?.total_ha || 0);
+    const activeTrees = Number(standRes.results[0]?.active_trees || 0);
+    const flaggedTrees = Number(standRes.results[0]?.flagged_trees || 0);
     const totalBunches = Number(hTot.results[0]?.bunches || 0);
     const totalFronds = Number(hTot.results[0]?.fronds || 0);
+    const harvestedTrees = Number(hTot.results[0]?.trees || 0);
     const totalDispatchKg = Number(dTot.results[0]?.dispatch_kg || 0);
 
-    // Formulas:
-    // ABW = Total Dispatched Weight / Total Bunches
-    // YPH = Total Dispatched Weight / Total Hectares of selected Division/Field
     const abw = totalBunches > 0 ? Number((totalDispatchKg / totalBunches).toFixed(2)) : 0;
     const yph = totalHa > 0 ? Number((totalDispatchKg / totalHa).toFixed(2)) : 0;
+    const fbr = totalBunches > 0 ? Number((totalFronds / totalBunches).toFixed(2)) : 0;
+    const coveragePct = activeTrees > 0 ? Number(((harvestedTrees / activeTrees) * 100).toFixed(1)) : 0;
+    const estateName = await resolveScopeEstateName(db, params);
 
     return {
         from,
         to,
+        estate_name: estateName,
         totals: {
             bunches: totalBunches,
             fronds: totalFronds,
             records: Number(hTot.results[0]?.records || 0),
-            trees: Number(hTot.results[0]?.trees || 0),
+            trees: harvestedTrees,
+            active_trees: activeTrees,
+            flagged_trees: flaggedTrees,
+            coverage_pct: coveragePct,
+            fbr,
             dispatch_kg: totalDispatchKg,
             dispatch_records: Number(dTot.results[0]?.dispatch_records || 0),
             area_ha: totalHa,
@@ -930,6 +1089,269 @@ async function getReport(db, params) {
             yph,
         },
         recent_logs: rLogs.results || [],
+    };
+}
+
+async function getAgronomyAnalytics(db, params) {
+    const from = validDate(params.from) ? params.from : "1900-01-01";
+    const to = validDate(params.to) ? params.to : "2999-12-31";
+    const estateId = toInt(params.estate_id);
+    const divisionId = toInt(params.division_id);
+    const fieldId = toInt(params.field_id);
+    const blockId = toInt(params.block_id);
+    const roundFilter = toInt(params.round_no);
+
+    const scopeWhere = ["t.status = 'active'"];
+    const scopeBinds = [];
+    if (blockId) {
+        scopeWhere.push("b.id = ?");
+        scopeBinds.push(blockId);
+    } else if (fieldId) {
+        scopeWhere.push("f.id = ?");
+        scopeBinds.push(fieldId);
+    } else if (divisionId) {
+        scopeWhere.push("d.id = ?");
+        scopeBinds.push(divisionId);
+    } else if (estateId) {
+        scopeWhere.push("e.id = ?");
+        scopeBinds.push(estateId);
+    }
+    const scopeClause = scopeWhere.join(" AND ");
+
+    const hWhere = ["x.harvest_date BETWEEN ? AND ?"];
+    const hBinds = [from, to];
+    if (blockId) {
+        hWhere.push("b.id = ?");
+        hBinds.push(blockId);
+    } else if (fieldId) {
+        hWhere.push("f.id = ?");
+        hBinds.push(fieldId);
+    } else if (divisionId) {
+        hWhere.push("d.id = ?");
+        hBinds.push(divisionId);
+    } else if (estateId) {
+        hWhere.push("e.id = ?");
+        hBinds.push(estateId);
+    }
+
+    const hWhereWithRound = [...hWhere];
+    const hBindsWithRound = [...hBinds];
+    if (roundFilter) {
+        hWhereWithRound.push("x.round_no = ?");
+        hBindsWithRound.push(roundFilter);
+    }
+
+    const dWhere = ["x.dispatch_date BETWEEN ? AND ?"];
+    const dBinds = [from, to];
+    if (divisionId) {
+        dWhere.push("d.id = ?");
+        dBinds.push(divisionId);
+    } else if (estateId) {
+        dWhere.push("d.estate_id = ?");
+        dBinds.push(estateId);
+    }
+    const dWhereWithRound = [...dWhere];
+    const dBindsWithRound = [...dBinds];
+    if (roundFilter) {
+        dWhereWithRound.push("x.round_no = ?");
+        dBindsWithRound.push(roundFilter);
+    }
+
+    const divFilterWhere = [];
+    const divFilterBinds = [];
+    if (divisionId) {
+        divFilterWhere.push("d.id = ?");
+        divFilterBinds.push(divisionId);
+    } else if (estateId) {
+        divFilterWhere.push("d.estate_id = ?");
+        divFilterBinds.push(estateId);
+    }
+    const divClause = divFilterWhere.length ? `WHERE ${divFilterWhere.join(" AND ")}` : "";
+
+    const [
+        roundHarvRes,
+        roundDispRes,
+        divListRes,
+        divHaRes,
+        divStandRes,
+        divHarvRes,
+        divDispRes,
+        healthRes,
+        looseRes,
+    ] = await db.batch([
+        db
+            .prepare(
+                `SELECT x.round_no,
+                        COALESCE(SUM(x.bunches), 0) AS bunches,
+                        COALESCE(SUM(x.fronds), 0) AS fronds,
+                        COUNT(DISTINCT x.tree_id) AS harvested_trees,
+                        COUNT(*) AS records
+                 FROM el_harvest x ${JOINS}
+                 WHERE ${hWhere.join(" AND ")}
+                 GROUP BY x.round_no`
+            )
+            .bind(...hBinds),
+        db
+            .prepare(
+                `SELECT x.round_no, COALESCE(SUM(x.weight_kg), 0) AS dispatch_kg
+                 FROM el_dispatch x JOIN el_divisions d ON d.id = x.division_id
+                 WHERE ${dWhere.join(" AND ")}
+                 GROUP BY x.round_no`
+            )
+            .bind(...dBinds),
+        db
+            .prepare(`SELECT d.id, d.name, d.estate_id FROM el_divisions d ${divClause} ORDER BY d.id ASC`)
+            .bind(...divFilterBinds),
+        db
+            .prepare(
+                `SELECT f.division_id, COALESCE(SUM(f.area_ha), 0) AS area_ha
+                 FROM el_fields f JOIN el_divisions d ON d.id = f.division_id ${divClause}
+                 GROUP BY f.division_id`
+            )
+            .bind(...divFilterBinds),
+        db
+            .prepare(
+                `SELECT d.id AS division_id, COUNT(t.id) AS active_trees
+                 FROM el_trees t
+                 JOIN el_blocks b ON b.id = t.block_id
+                 JOIN el_fields f ON f.id = b.field_id
+                 JOIN el_divisions d ON d.id = f.division_id
+                 JOIN el_estates e ON e.id = d.estate_id
+                 WHERE ${scopeClause}
+                 GROUP BY d.id`
+            )
+            .bind(...scopeBinds),
+        db
+            .prepare(
+                `SELECT d.id AS division_id,
+                        COALESCE(SUM(x.bunches), 0) AS bunches,
+                        COALESCE(SUM(x.fronds), 0) AS fronds,
+                        COUNT(DISTINCT x.tree_id) AS harvested_trees
+                 FROM el_harvest x ${JOINS}
+                 WHERE ${hWhereWithRound.join(" AND ")}
+                 GROUP BY d.id`
+            )
+            .bind(...hBindsWithRound),
+        db
+            .prepare(
+                `SELECT d.id AS division_id, COALESCE(SUM(x.weight_kg), 0) AS dispatch_kg
+                 FROM el_dispatch x JOIN el_divisions d ON d.id = x.division_id
+                 WHERE ${dWhereWithRound.join(" AND ")}
+                 GROUP BY d.id`
+            )
+            .bind(...dBindsWithRound),
+        db
+            .prepare(
+                `SELECT COALESCE(t.health_status, 'Healthy') AS health_status, COUNT(t.id) AS cnt
+                 FROM el_trees t
+                 JOIN el_blocks b ON b.id = t.block_id
+                 JOIN el_fields f ON f.id = b.field_id
+                 JOIN el_divisions d ON d.id = f.division_id
+                 JOIN el_estates e ON e.id = d.estate_id
+                 WHERE ${scopeClause}
+                 GROUP BY COALESCE(t.health_status, 'Healthy')`
+            )
+            .bind(...scopeBinds),
+        db
+            .prepare(
+                `SELECT COUNT(*) AS total_logs,
+                        SUM(CASE WHEN COALESCE(x.loose_fruit, 1) = 1 THEN 1 ELSE 0 END) AS loose_collected
+                 FROM el_harvest x ${JOINS}
+                 WHERE ${hWhereWithRound.join(" AND ")}`
+            )
+            .bind(...hBindsWithRound),
+    ]);
+
+    const standByDiv = new Map((divStandRes.results || []).map((r) => [r.division_id, Number(r.active_trees || 0)]));
+    const totalActiveTrees = [...standByDiv.values()].reduce((a, b) => a + b, 0);
+
+    const rhMap = new Map((roundHarvRes.results || []).map((r) => [Number(r.round_no), r]));
+    const rdMap = new Map((roundDispRes.results || []).map((r) => [Number(r.round_no), Number(r.dispatch_kg || 0)]));
+    const rounds = [1, 2, 3].map((rn) => {
+        const rh = rhMap.get(rn) || {};
+        const bunches = Number(rh.bunches || 0);
+        const fronds = Number(rh.fronds || 0);
+        const harvestedTrees = Number(rh.harvested_trees || 0);
+        const dispatchKg = rdMap.get(rn) || 0;
+        return {
+            round_no: rn,
+            bunches,
+            fronds,
+            fbr: bunches > 0 ? Number((fronds / bunches).toFixed(2)) : 0,
+            harvested_trees: harvestedTrees,
+            coverage_pct: totalActiveTrees > 0 ? Number(((harvestedTrees / totalActiveTrees) * 100).toFixed(1)) : 0,
+            dispatch_kg: Number(dispatchKg.toFixed(1)),
+            abw: bunches > 0 ? Number((dispatchKg / bunches).toFixed(2)) : 0,
+        };
+    });
+
+    const haByDiv = new Map((divHaRes.results || []).map((r) => [r.division_id, Number(r.area_ha || 0)]));
+    const harvByDiv = new Map((divHarvRes.results || []).map((r) => [r.division_id, r]));
+    const dispByDiv = new Map((divDispRes.results || []).map((r) => [r.division_id, Number(r.dispatch_kg || 0)]));
+
+    const divisions = (divListRes.results || []).map((d) => {
+        const areaHa = haByDiv.get(d.id) || 0;
+        const activeTrees = standByDiv.get(d.id) || 0;
+        const h = harvByDiv.get(d.id) || {};
+        const bunches = Number(h.bunches || 0);
+        const fronds = Number(h.fronds || 0);
+        const harvestedTrees = Number(h.harvested_trees || 0);
+        const dispatchKg = dispByDiv.get(d.id) || 0;
+        return {
+            id: d.id,
+            name: d.name,
+            area_ha: Number(areaHa.toFixed(2)),
+            active_trees: activeTrees,
+            harvested_trees: harvestedTrees,
+            coverage_pct: activeTrees > 0 ? Number(((harvestedTrees / activeTrees) * 100).toFixed(1)) : 0,
+            bunches,
+            fronds,
+            fbr: bunches > 0 ? Number((fronds / bunches).toFixed(2)) : 0,
+            dispatch_kg: Number(dispatchKg.toFixed(1)),
+            abw: bunches > 0 ? Number((dispatchKg / bunches).toFixed(2)) : 0,
+            yph: areaHa > 0 ? Number((dispatchKg / areaHa).toFixed(2)) : 0,
+        };
+    });
+
+    const healthBreakdown = {};
+    let flaggedTrees = 0;
+    for (const r of healthRes.results || []) {
+        const key = r.health_status || "Healthy";
+        const cnt = Number(r.cnt || 0);
+        healthBreakdown[key] = cnt;
+        if (key !== "Healthy") flaggedTrees += cnt;
+    }
+
+    const totalLogs = Number(looseRes.results[0]?.total_logs || 0);
+    const looseCollected = Number(looseRes.results[0]?.loose_collected || 0);
+    const looseFruitPct = totalLogs > 0 ? Number(((looseCollected / totalLogs) * 100).toFixed(1)) : 100;
+
+    const sumBunches = divisions.reduce((s, x) => s + x.bunches, 0);
+    const sumFronds = divisions.reduce((s, x) => s + x.fronds, 0);
+    const sumHarvested = divisions.reduce((s, x) => s + x.harvested_trees, 0);
+    const fbr = sumBunches > 0 ? Number((sumFronds / sumBunches).toFixed(2)) : 0;
+    const pruningStatus =
+        sumBunches === 0 ? "No Data" : fbr > 2.0 ? "Over-Pruned" : fbr < 0.7 ? "Under-Pruned" : "Optimal";
+
+    return {
+        from,
+        to,
+        rounds,
+        divisions,
+        health: {
+            breakdown: healthBreakdown,
+            flagged_trees: flaggedTrees,
+            loose_fruit_pct: looseFruitPct,
+        },
+        summary: {
+            active_trees: totalActiveTrees,
+            harvested_trees: sumHarvested,
+            coverage_pct: totalActiveTrees > 0 ? Number(((sumHarvested / totalActiveTrees) * 100).toFixed(1)) : 0,
+            fbr,
+            pruning_status: pruningStatus,
+            flagged_trees: flaggedTrees,
+            loose_fruit_pct: looseFruitPct,
+        },
     };
 }
 
@@ -941,12 +1363,19 @@ function csvCell(v) {
 
 async function getReportCsv(db, params) {
     const rep = await getReport(db, params);
+    const slug = slugifyFilename(rep.estate_name, "Elaeis");
     const lines = [
         "Metric,Value",
+        `Estate,${csvCell(rep.estate_name)}`,
         `From Date,${rep.from}`,
         `To Date,${rep.to}`,
         `Total Bunches Cut,${rep.totals.bunches}`,
         `Total Fronds Cut,${rep.totals.fronds}`,
+        `Frond-to-Bunch Ratio (FBR),${rep.totals.fbr}`,
+        `Active Palms,${rep.totals.active_trees}`,
+        `Harvested Palms,${rep.totals.trees}`,
+        `Harvest Coverage (%),${rep.totals.coverage_pct}`,
+        `Flagged Health Palms,${rep.totals.flagged_trees}`,
         `Total Dispatched Weight (kg),${rep.totals.dispatch_kg}`,
         `Selected Area (Ha),${rep.totals.area_ha}`,
         `Average Bunch Weight ABW (kg/bunch),${rep.totals.abw}`,
@@ -955,8 +1384,9 @@ async function getReportCsv(db, params) {
     return new Response(lines.join("\n"), {
         headers: {
             "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": `attachment; filename="elaeis_kpi_report_${rep.from}_${rep.to}.csv"`,
+            "Content-Disposition": `attachment; filename="${slug}_KPI_Report_${rep.from}_${rep.to}.csv"`,
             "Cache-Control": "no-store",
+            ...SECURITY_HEADERS,
         },
     });
 }
@@ -1124,6 +1554,10 @@ async function queryMonthlyTreeMatrix(db, params) {
 
 async function getReportXlsx(db, params) {
     const { year_month, rows } = await queryMonthlyTreeMatrix(db, params);
+    const estateName = rows[0]?.estate_name || (await resolveScopeEstateName(db, params));
+    const slug = slugifyFilename(estateName, "Elaeis");
+    const filename = `${slug}_Harvest_Report_${year_month}.xlsx`;
+
     const cols = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
     const rowXml = [];
 
@@ -1144,10 +1578,10 @@ async function getReportXlsx(db, params) {
         const totF = r1f + r2f + r3f;
 
         const textVals = [
-            r.estate_name || "Uskvalley Estate",
-            r.division_name || "Uskvalley Division",
-            r.field_name || "Field 1",
-            r.block_name || "Block A",
+            r.estate_name || estateName,
+            r.division_name || "Division",
+            r.field_name || "Field",
+            r.block_name || "Block",
             `Palm #${r.tree_number}`,
         ];
         const intVals = [r1b, r1f, r2b, r2f, r3b, r3f];
@@ -1205,14 +1639,15 @@ async function getReportXlsx(db, params) {
         status: 200,
         headers: {
             "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Content-Disposition": 'attachment; filename="Uskvalley_Harvest_Report.xlsx"',
+            "Content-Disposition": `attachment; filename="${filename}"`,
             "Cache-Control": "no-store",
+            ...SECURITY_HEADERS,
         },
     });
 }
 
 // ---------------------------------------------------------------------------
-// Admin: Users
+// Admin: Users (Strict RBAC Hierarchy)
 // ---------------------------------------------------------------------------
 async function adminUsers(db) {
     const { results } = await db
@@ -1222,16 +1657,20 @@ async function adminUsers(db) {
         )
         .all();
     return {
-        users: results.map((u) => publicUser(u)),
+        users: (results || []).map((u) => publicUser(u)),
     };
 }
 
-async function adminCreateUser(db, admin, body) {
-    const username = str(body.username, 40).toLowerCase();
+async function adminCreateUser(db, env, admin, body) {
+    const username = str(body.username, 40).toLowerCase().replace(/^@+/, "");
     const full_name = str(body.full_name, 80);
     const role = normalizeRole(body.role || "Harvester");
-    const password = String(body.password || "Uskvalley2026!");
+    const password = String(body.password || env.ERP_INITIAL_PASSWORD || "Elaeis2026!");
     if (!username || !full_name) fail(400, "Username and Full Name are required.");
+    if (!/^[a-z0-9_.-]{2,40}$/.test(username)) {
+        fail(400, "Username must be 2-40 characters (letters, numbers, _, ., -).");
+    }
+    if (password.length < 6) fail(400, "Password must be at least 6 characters.");
     if (role === "Master Admin" && !admin.is_master) fail(403, "Only Master Admin can assign Master Admin role.");
     const dup = await db.prepare("SELECT id FROM el_users WHERE LOWER(username) = ?").bind(username).first();
     if (dup) fail(409, `Username '@${username}' already exists.`);
@@ -1254,9 +1693,13 @@ async function adminTargetUser(db, admin, userId) {
 
 async function adminSetRole(db, admin, body) {
     const target = await adminTargetUser(db, admin, body.user_id);
+    if (target.id === admin.id) fail(400, "You cannot modify your own role.");
     const role = normalizeRole(body.role);
-    if (target.is_master || String(target.username).toLowerCase() === "sandaru98j") {
+    if (target.is_master) {
         fail(400, "The Master Admin role cannot be changed.");
+    }
+    if (normalizeRole(target.role) === "Admin" && !admin.is_master) {
+        fail(403, "Only the Master Admin can change another Admin's role.");
     }
     if (role === "Master Admin" && !admin.is_master) {
         fail(403, "Only the Master Admin can assign Master Admin role.");
@@ -1269,8 +1712,8 @@ async function adminSetRole(db, admin, body) {
 }
 
 async function adminForcePassword(db, admin, body) {
-    const isMaster = Boolean(admin.is_master) || String(admin.username || "").toLowerCase() === "sandaru98j";
-    if (!isMaster) fail(403, "Only Master Admin (sandaru98j) can force-reset user passwords.");
+    const isMaster = Boolean(admin.is_master) || normalizeRole(admin.role) === "Master Admin";
+    if (!isMaster) fail(403, "Only Master Admin can force-reset user passwords.");
     const target = await db.prepare("SELECT * FROM el_users WHERE id = ?").bind(toInt(body.user_id)).first();
     if (!target) fail(404, "User not found.");
     const next = String(body.new_password || body.password || "");
@@ -1286,6 +1729,9 @@ async function adminDeleteUser(db, admin, body) {
     const target = await adminTargetUser(db, admin, body.user_id);
     if (target.is_master) fail(400, "The Master Admin cannot be deleted.");
     if (target.id === admin.id) fail(400, "You cannot delete your own account.");
+    if (normalizeRole(target.role) === "Admin" && !admin.is_master) {
+        fail(403, "Only the Master Admin can delete an Admin account.");
+    }
     await db.batch([
         db.prepare("DELETE FROM el_sessions WHERE user_id = ?").bind(target.id),
         db.prepare("DELETE FROM el_resets WHERE user_id = ?").bind(target.id),
@@ -1313,9 +1759,19 @@ async function adminSave(db, user, entity, body) {
     const name = str(body.name, 80);
 
     if (entity === "estate") {
+        const region = str(body.location_region || "", 120);
         if (!name) fail(400, "Name is required.");
-        if (id) await db.prepare("UPDATE el_estates SET name = ? WHERE id = ?").bind(name, id).run();
-        else await db.prepare("INSERT INTO el_estates (name) VALUES (?)").bind(name).run();
+        if (id) {
+            await db
+                .prepare("UPDATE el_estates SET name = ?, location_region = ? WHERE id = ?")
+                .bind(name, region, id)
+                .run();
+        } else {
+            await db
+                .prepare("INSERT INTO el_estates (name, location_region) VALUES (?, ?)")
+                .bind(name, region)
+                .run();
+        }
     } else if (entity === "division") {
         if (!name) fail(400, "Name is required.");
         if (id) await db.prepare("UPDATE el_divisions SET name = ? WHERE id = ?").bind(name, id).run();
@@ -1361,6 +1817,7 @@ async function adminSave(db, user, entity, body) {
         }
     } else if (entity === "tree") {
         const status = body.status === "inactive" ? "inactive" : "active";
+        const healthStatus = normalizeHealthStatus(body.health_status || "Healthy");
         const lat = toNum(body.lat);
         const lng = toNum(body.lng);
         const acc = toNum(body.acc);
@@ -1378,13 +1835,13 @@ async function adminSave(db, user, entity, body) {
             if (dup) fail(409, `Tree ${treeNo} already exists in this block.`);
             await db
                 .prepare(
-                    `UPDATE el_trees SET tree_no = ?, status = ?, lat = ?, lng = ?, gps_acc = ?,
+                    `UPDATE el_trees SET tree_no = ?, status = ?, health_status = ?, lat = ?, lng = ?, gps_acc = ?,
                        mapped_by = CASE WHEN ? THEN ? ELSE mapped_by END,
                        mapped_at = CASE WHEN ? THEN ? ELSE mapped_at END
                      WHERE id = ?`
                 )
                 .bind(
-                    treeNo, status,
+                    treeNo, status, healthStatus,
                     hasGps ? lat : null, hasGps ? lng : null, hasGps ? acc : null,
                     hasGps ? 1 : 0, user.id, hasGps ? 1 : 0, nowIso(),
                     id
@@ -1397,13 +1854,13 @@ async function adminSave(db, user, entity, body) {
             if (dup) fail(409, `Tree ${treeNo} already exists in this block.`);
             await db
                 .prepare(
-                    `INSERT INTO el_trees (block_id, tree_no, lat, lng, gps_acc, status, mapped_by, mapped_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+                    `INSERT INTO el_trees (block_id, tree_no, lat, lng, gps_acc, status, health_status, mapped_by, mapped_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
                 )
                 .bind(
                     blockId, treeNo,
                     hasGps ? lat : null, hasGps ? lng : null, hasGps ? acc : null,
-                    status, hasGps ? user.id : null, hasGps ? nowIso() : null
+                    status, healthStatus, hasGps ? user.id : null, hasGps ? nowIso() : null
                 )
                 .run();
         }
@@ -1492,18 +1949,28 @@ async function handleCalibrateTree(db, user, body) {
 async function handleNearestTree(db, params) {
     const uLat = toNum(params.lat);
     const uLng = toNum(params.lng);
-    const maxRadiusM = toNum(params.max_radius_m) ?? 100;
+    const maxRadiusM = Math.min(5000, Math.max(1, toNum(params.max_radius_m) ?? 100));
     const blockId = toInt(params.block_id);
     if (uLat === null || uLng === null) return { tree: null };
+
+    // Fast SQL bounding-box pre-filter before Haversine
+    const latDelta = (maxRadiusM / 111320) * 1.25;
+    const cosLat = Math.max(0.1, Math.cos((uLat * Math.PI) / 180));
+    const lngDelta = (maxRadiusM / (111320 * cosLat)) * 1.25;
+
     const { results } = await db
         .prepare(
             `SELECT t.id, t.block_id, t.tree_no, t.lat, t.lng, t.gps_acc, b.field_id, f.division_id
              FROM el_trees t
              JOIN el_blocks b ON b.id = t.block_id
              JOIN el_fields f ON f.id = b.field_id
-             WHERE t.status = 'active' AND t.lat IS NOT NULL AND t.lng IS NOT NULL`
+             WHERE t.status = 'active'
+               AND t.lat BETWEEN ? AND ?
+               AND t.lng BETWEEN ? AND ?`
         )
+        .bind(uLat - latDelta, uLat + latDelta, uLng - lngDelta, uLng + lngDelta)
         .all();
+
     let bestTree = null;
     let bestDist = null;
     for (const r of results || []) {
@@ -1555,12 +2022,15 @@ async function handleMapTrees(db, params) {
         }
     }
 
+    // Only plot palms with genuine GPS coordinates (never hallucinate fake coordinates on real estates)
+    const mappedConds = [...tConds, "t.lat IS NOT NULL", "t.lng IS NOT NULL"];
     const sql = `
         SELECT
             t.id,
             t.tree_no,
             t.lat,
             t.lng,
+            COALESCE(t.health_status, 'Healthy') AS health_status,
             b.id AS block_id,
             b.name AS block_name,
             f.id AS field_id,
@@ -1582,19 +2052,27 @@ async function handleMapTrees(db, params) {
             WHERE ${hConds.join(" AND ")}
             GROUP BY tree_id
         ) h_agg ON h_agg.tree_id = t.id
-        WHERE ${tConds.join(" AND ")}
+        WHERE ${mappedConds.join(" AND ")}
         ORDER BY d.id ASC, f.id ASC, b.id ASC, t.tree_no ASC
     `;
-    const { results } = await db.prepare(sql).bind(...hBinds, ...tBinds).all();
+
+    const unmappedSql = `
+        SELECT COUNT(t.id) AS cnt
+        FROM el_trees t
+        JOIN el_blocks b ON b.id = t.block_id
+        JOIN el_fields f ON f.id = b.field_id
+        JOIN el_divisions d ON d.id = f.division_id
+        JOIN el_estates e ON e.id = d.estate_id
+        WHERE ${tConds.join(" AND ")} AND (t.lat IS NULL OR t.lng IS NULL)
+    `;
+
+    const [mappedRes, unmappedRes] = await db.batch([
+        db.prepare(sql).bind(...hBinds, ...tBinds),
+        db.prepare(unmappedSql).bind(...tBinds),
+    ]);
+
     let harvestedCount = 0;
-    const trees = (results || []).map((r) => {
-        let lat = r.lat;
-        let lng = r.lng;
-        if (lat === null || lat === undefined || lng === null || lng === undefined) {
-            const c = computePalmCoordinates(r.block_id, r.tree_no);
-            lat = c.lat;
-            lng = c.lng;
-        }
+    const trees = (mappedRes.results || []).map((r) => {
         const bunches = Number(r.bunches || 0);
         const fronds = Number(r.fronds || 0);
         const harvested = bunches > 0;
@@ -1603,8 +2081,9 @@ async function handleMapTrees(db, params) {
             id: r.id,
             tree_no: r.tree_no,
             tree_code: `T-${String(r.tree_no).padStart(3, "0")}`,
-            lat,
-            lng,
+            lat: r.lat,
+            lng: r.lng,
+            health_status: r.health_status || "Healthy",
             block_id: r.block_id,
             block_name: r.block_name,
             field_id: r.field_id,
@@ -1624,9 +2103,29 @@ async function handleMapTrees(db, params) {
         to,
         round_no: roundNo,
         total_trees: trees.length,
+        unmapped_trees: Number(unmappedRes.results[0]?.cnt || 0),
         harvested_trees: harvestedCount,
         trees,
     };
+}
+
+async function getUserRecentActivity(db, userId, limit = 5) {
+    const { results } = await db
+        .prepare(
+            `SELECT x.id, x.harvest_date, x.round_no, x.bunches, x.fronds,
+                    COALESCE(x.health_status, 'Healthy') AS health_status,
+                    COALESCE(x.loose_fruit, 1) AS loose_fruit,
+                    COALESCE(x.remarks, '') AS remarks,
+                    t.tree_no, b.name AS block_name, f.name AS field_name,
+                    d.name AS division_name, e.name AS estate_name,
+                    u.full_name AS recorded_by
+             FROM el_harvest x ${JOINS} LEFT JOIN el_users u ON u.id = x.user_id
+             WHERE x.user_id = ?
+             ORDER BY x.harvest_date DESC, x.id DESC LIMIT ?`
+        )
+        .bind(userId, limit)
+        .all();
+    return results || [];
 }
 
 // ---------------------------------------------------------------------------
@@ -1636,6 +2135,15 @@ async function route(request, env, url) {
     const db = env.DB;
     const path = url.pathname;
     const method = request.method;
+
+    if (method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: SECURITY_HEADERS });
+    }
+
+    if (method === "GET" && path === "/api/health") {
+        return json({ ok: true, service: "elaeis", runtime: "cloudflare-worker", timestamp: nowIso() });
+    }
+
     const params = Object.fromEntries(url.searchParams.entries());
     const body = method === "POST" ? await request.json().catch(() => ({})) : {};
 
@@ -1645,25 +2153,20 @@ async function route(request, env, url) {
     const user = await currentUser(request, db, params);
     if (!user) fail(401, "Please log in.");
 
-    if (method === "GET" && path === "/api/auth/me") return json({ user: publicUser(user) });
+    if (method === "GET" && path === "/api/auth/me") {
+        const recent_activity = await getUserRecentActivity(db, user.id, 5);
+        return json({ user: publicUser(user), recent_activity });
+    }
     if (method === "GET" && path === "/api/profile/activity") {
-        const { results } = await db
-            .prepare(
-                `SELECT x.id, x.harvest_date, x.round_no, x.bunches, x.fronds,
-                        t.tree_no, b.name AS block_name, f.name AS field_name, d.name AS division_name,
-                        u.full_name AS recorded_by
-                 FROM el_harvest x ${JOINS} LEFT JOIN el_users u ON u.id = x.user_id
-                 WHERE x.user_id = ?
-                 ORDER BY x.harvest_date DESC, x.id DESC LIMIT 5`
-            )
-            .bind(user.id)
-            .all();
-        return json({ recent_activity: results || [] });
+        return json({ recent_activity: await getUserRecentActivity(db, user.id, 5) });
     }
     if (method === "POST" && (path === "/api/profile/update" || path === "/api/auth/profile")) {
         const full_name = str(body.full_name || user.full_name, 80);
         const username = str(body.username || user.username, 40).toLowerCase().replace(/^@+/, "");
         if (!full_name || !username) fail(400, "Full Name and Username are required.");
+        if (!/^[a-z0-9_.-]{2,40}$/.test(username)) {
+            fail(400, "Username must be 2-40 characters (letters, numbers, _, ., -).");
+        }
         const dup = await db
             .prepare("SELECT id FROM el_users WHERE LOWER(username) = ? AND id != ?")
             .bind(username, user.id)
@@ -1673,20 +2176,22 @@ async function route(request, env, url) {
             db.prepare("UPDATE el_users SET full_name = ?, username = ? WHERE id = ?").bind(full_name, username, user.id),
         ];
         if (body.profile_pic !== undefined) {
+            const safePic = validateImagePayload(body.profile_pic);
             stmts.push(
                 db
                     .prepare("INSERT OR REPLACE INTO el_settings (key, value) VALUES (?, ?)")
-                    .bind(`user_pic_${user.id}`, String(body.profile_pic || ""))
+                    .bind(`user_pic_${user.id}`, safePic)
             );
-            user.profile_pic = String(body.profile_pic || "");
+            user.profile_pic = safePic;
         }
         if (body.cover_photo !== undefined) {
+            const safeCover = validateImagePayload(body.cover_photo);
             stmts.push(
                 db
                     .prepare("INSERT OR REPLACE INTO el_settings (key, value) VALUES (?, ?)")
-                    .bind(`user_cover_${user.id}`, String(body.cover_photo || ""))
+                    .bind(`user_cover_${user.id}`, safeCover)
             );
-            user.cover_photo = String(body.cover_photo || "");
+            user.cover_photo = safeCover;
         }
         await db.batch(stmts);
         user.full_name = full_name;
@@ -1711,9 +2216,13 @@ async function route(request, env, url) {
     }
 
     // Approved users
-    if (method === "GET" && path === "/api/bootstrap") {
+    if (method === "GET" && (path === "/api/bootstrap" || path === "/api/hierarchy")) {
         requireRole(user, "Harvester");
-        const [hierarchy, settings, mapped_trees] = await Promise.all([getHierarchy(db), getSettings(db), getMappedTrees(db)]);
+        const [hierarchy, settings, mapped_trees] = await Promise.all([
+            getHierarchy(db),
+            getSettings(db),
+            getMappedTrees(db),
+        ]);
         return json({ hierarchy, settings, mapped_trees });
     }
     if (method === "GET" && path === "/api/trees/mapped") {
@@ -1739,11 +2248,18 @@ async function route(request, env, url) {
         requireRole(user, "Harvester");
         return json(await getReport(db, params));
     }
+    if (method === "GET" && path === "/api/analytics/agronomy") {
+        requireRole(user, "Harvester");
+        return json(await getAgronomyAnalytics(db, params));
+    }
     if (method === "GET" && path === "/api/report.csv") {
         requireRole(user, "Harvester");
         return getReportCsv(db, params);
     }
-    if ((method === "GET" || method === "POST") && (path === "/export/excel" || path === "/api/export/excel" || path === "/api/report.xlsx" || path === "/report.xlsx")) {
+    if (
+        (method === "GET" || method === "POST") &&
+        (path === "/export/excel" || path === "/api/export/excel" || path === "/api/report.xlsx" || path === "/report.xlsx")
+    ) {
         requireRole(user, "Harvester");
         return getReportXlsx(db, { ...params, ...body });
     }
@@ -1752,6 +2268,7 @@ async function route(request, env, url) {
         return json(await queryMonthlyTreeMatrix(db, params));
     }
     if (method === "POST" && path === "/api/harvest") return json(await handleHarvest(db, user, body));
+    if (method === "POST" && path === "/api/sync/batch") return json(await handleSyncBatch(db, user, body));
 
     // Dispatch Crop Weight endpoints
     if (method === "GET" && path === "/api/dispatch") {
@@ -1766,14 +2283,14 @@ async function route(request, env, url) {
     }
 
     // Admin & Master Admin (Supervisor allowed for tree pin save/calibration)
-    if (path.startsWith("/api/admin/")) {
+    if (path.startsWith("/api/admin/") || path === "/api/users") {
         if (method === "POST" && path === "/api/admin/tree/save") {
             requireRole(user, "Supervisor");
             return json(await adminSave(db, user, "tree", body));
         }
         requireRole(user, "Admin");
-        if (method === "GET" && path === "/api/admin/users") return json(await adminUsers(db));
-        if (method === "POST" && path === "/api/admin/users/create") return json(await adminCreateUser(db, user, body));
+        if (method === "GET" && (path === "/api/admin/users" || path === "/api/users")) return json(await adminUsers(db));
+        if (method === "POST" && path === "/api/admin/users/create") return json(await adminCreateUser(db, env, user, body));
         if (method === "POST" && path === "/api/admin/users/role") return json(await adminSetRole(db, user, body));
         if (method === "POST" && (path === "/api/admin/users/force-password" || path === "/api/admin/users/password")) {
             return json(await adminForcePassword(db, user, body));

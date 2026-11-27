@@ -10,7 +10,9 @@ DB_DIR = os.environ.get("DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
 os.makedirs(DB_DIR, exist_ok=True)
 DB_PATH = os.environ.get("ELAEIS_DB_PATH", os.path.join(DB_DIR, "elaeis.db"))
 
-INITIAL_ERP_PASSWORD = "Uskvalley2026!"
+INITIAL_ERP_PASSWORD = os.environ.get("ERP_INITIAL_PASSWORD", "Elaeis2026!")
+DEFAULT_ESTATE_NAME = os.environ.get("ELAEIS_ESTATE_NAME", "Primary Plantation Estate")
+DEFAULT_ESTATE_REGION = os.environ.get("ELAEIS_ESTATE_REGION", "")
 
 ROLE_RANK = {
     "Harvester": 1,
@@ -253,6 +255,8 @@ def init_db(force_reseed_users: bool = False):
             latitude REAL,
             longitude REAL,
             gps_acc REAL DEFAULT 4.2,
+            health_status TEXT DEFAULT 'Healthy',
+            loose_fruit INTEGER DEFAULT 1,
             recorded_by_id INTEGER,
             recorded_by_name TEXT DEFAULT 'System',
             remarks TEXT DEFAULT '',
@@ -269,6 +273,7 @@ def init_db(force_reseed_users: bool = False):
             year_month TEXT NOT NULL,
             round_number INTEGER NOT NULL CHECK (round_number IN (1, 2, 3)),
             weight_kg REAL NOT NULL,
+            client_id TEXT,
             recorded_by_id INTEGER,
             recorded_by_name TEXT DEFAULT 'System',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -279,42 +284,47 @@ def init_db(force_reseed_users: bool = False):
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+
+        CREATE INDEX IF NOT EXISTS idx_trees_block ON trees (block_id);
+        CREATE INDEX IF NOT EXISTS idx_trees_coords ON trees (latitude, longitude);
+        CREATE INDEX IF NOT EXISTS idx_harvest_date ON harvest_logs (harvest_date);
+        CREATE INDEX IF NOT EXISTS idx_harvest_ym_round ON harvest_logs (year_month, round_number);
+        CREATE INDEX IF NOT EXISTS idx_dispatch_date ON dispatch_logs (dispatch_date);
         """
     )
 
     cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('season_start_month', '4')")
 
-    # Ensure theme, profile_pic, and cover_photo columns exist on existing SQLite databases
+    # Safe additive column migrations for existing SQLite databases
     for col_sql in (
         "ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'twitter'",
         "ALTER TABLE users ADD COLUMN profile_pic TEXT DEFAULT ''",
         "ALTER TABLE users ADD COLUMN cover_photo TEXT DEFAULT ''",
+        "ALTER TABLE trees ADD COLUMN health_status TEXT DEFAULT 'Healthy'",
+        "ALTER TABLE harvest_logs ADD COLUMN health_status TEXT DEFAULT 'Healthy'",
+        "ALTER TABLE harvest_logs ADD COLUMN loose_fruit INTEGER DEFAULT 1",
+        "ALTER TABLE dispatch_logs ADD COLUMN client_id TEXT",
     ):
         try:
             cur.execute(col_sql)
         except Exception:
             pass
 
-    # Seed or refresh ERP users if empty, if force_reseed_users is True, or if master admin sandaru98j is missing
-    cur.execute("SELECT COUNT(*) as cnt FROM users WHERE LOWER(username) = 'sandaru98j'")
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_client_id ON dispatch_logs (client_id) WHERE client_id IS NOT NULL"
+    )
+
+    # Seed initial ERP users only if no Master Admin exists or force_reseed_users is True
+    cur.execute("SELECT COUNT(*) as cnt FROM users WHERE is_master = 1")
     has_master = cur.fetchone()["cnt"] > 0
     if force_reseed_users or not has_master:
         seed_erp_users(cur)
 
-    # Seed Uskvalley Estate 5-tier hierarchy if empty or still using old demo estate name
-    cur.execute("SELECT name FROM estates WHERE id = 1")
-    est_row = cur.fetchone()
-    if not est_row or "Uskvalley" not in est_row["name"]:
-        cur.execute("DELETE FROM harvest_logs")
-        cur.execute("DELETE FROM dispatch_logs")
-        cur.execute("DELETE FROM trees")
-        cur.execute("DELETE FROM blocks")
-        cur.execute("DELETE FROM fields")
-        cur.execute("DELETE FROM divisions")
-        cur.execute("DELETE FROM estates")
+    # Seed starter 5-tier plantation hierarchy ONLY if no estates exist yet (never wipe renamed real estates!)
+    cur.execute("SELECT COUNT(*) AS cnt FROM estates")
+    has_estates = cur.fetchone()["cnt"] > 0
+    if not has_estates:
         seed_plantation_data(cur)
-    else:
-        ensure_full_estate_gis_trees(cur)
 
     conn.commit()
     conn.close()
@@ -535,19 +545,20 @@ def seed_sample_estate_harvests(cur, today_str: str, ym: str, cur_round: int):
 
 
 def seed_plantation_data(cur):
-    # Level 1: Estate
+    # Level 1: Estate (configurable via ELAEIS_ESTATE_NAME for real estate rollouts)
     cur.execute(
         """
         INSERT INTO estates (id, code, name, crop_type, location_region, total_area_ha)
-        VALUES (1, 'EST-USK', 'Uskvalley Estate', 'Oil Palm (Elaeis guineensis)', 'Baduraliya, Sri Lanka', 147.25)
-        """
+        VALUES (1, 'EST-01', ?, 'Oil Palm (Elaeis guineensis)', ?, 147.25)
+        """,
+        (DEFAULT_ESTATE_NAME, DEFAULT_ESTATE_REGION),
     )
 
     # Level 2: Divisions
     divisions = [
-        (1, 1, "DIV-USK", "Uskvalley Division", "Raveendra"),
-        (2, 1, "DIV-TRF", "Trafalgar Division", "Pasindu"),
-        (3, 1, "DIV-MRW", "Morawaka Division", "Kavindu"),
+        (1, 1, "DIV-01", "Division 1", "Raveendra"),
+        (2, 1, "DIV-02", "Division 2", "Pasindu"),
+        (3, 1, "DIV-03", "Division 3", "Kavindu"),
     ]
     cur.executemany(
         "INSERT INTO divisions (id, estate_id, code, name, supervisor_name) VALUES (?, ?, ?, ?, ?)",

@@ -9,7 +9,7 @@ import zipfile
 import secrets
 import sqlite3
 from xml.sax.saxutils import escape as xml_escape
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -20,8 +20,32 @@ from database import (
     verify_password,
     compute_harvest_round,
     compute_palm_coordinates,
+    INITIAL_ERP_PASSWORD,
     ROLE_RANK,
 )
+
+VALID_HEALTH_STATUSES = [
+    "Healthy",
+    "Ganoderma / Disease",
+    "Nutrient Deficient",
+    "Pest / Rhinoceros",
+    "Fallen / Vacant",
+]
+
+
+def normalize_health_status(val: str) -> str:
+    s = str(val or "").strip()
+    if not s:
+        return "Healthy"
+    for candidate in VALID_HEALTH_STATUSES:
+        if candidate.lower() == s.lower():
+            return candidate
+    return "Healthy"
+
+
+def slugify_filename(name: str, fallback: str = "Elaeis") -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9]+", "_", str(name or "").strip()).strip("_")[:48]
+    return cleaned or fallback
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 UPLOADS_DIR = os.path.join(STATIC_DIR, "uploads")
@@ -98,7 +122,7 @@ def distance_m(lat1, lng1, lat2, lng2):
 def format_user(row) -> dict:
     d = dict(row)
     role = normalize_role(d.get("role"))
-    is_master = bool(d.get("is_master")) or d.get("username", "").lower() == "sandaru98j" or role == "Master Admin"
+    is_master = bool(d.get("is_master")) or role == "Master Admin"
     if is_master:
         role = "Master Admin"
     return {
@@ -163,6 +187,9 @@ def get_user_recent_activity(conn, user: dict, limit: int = 5) -> list:
         """
         SELECT h.id, h.harvest_date, h.year_month, h.round_number AS round_no,
                h.bunches_cut AS bunches, h.fronds_cut AS fronds,
+               COALESCE(h.health_status, 'Healthy') AS health_status,
+               COALESCE(h.loose_fruit, 1) AS loose_fruit,
+               COALESCE(h.remarks, '') AS remarks,
                h.recorded_by_name AS recorded_by, h.created_at,
                t.tree_number AS tree_no, b.name AS block_name,
                f.name AS field_name, d.name AS division_name, e.name AS estate_name
@@ -179,6 +206,19 @@ def get_user_recent_activity(conn, user: dict, limit: int = 5) -> list:
         (user["id"], user["full_name"], limit),
     )
     return [dict(r) for r in cur.fetchall()]
+
+
+def resolve_scope_estate_name(conn, params: dict) -> str:
+    cur = conn.cursor()
+    estate_id = safe_int(params.get("estate_id"), min_val=1)
+    if estate_id:
+        cur.execute("SELECT name FROM estates WHERE id = ?", (estate_id,))
+        row = cur.fetchone()
+        if row and row["name"]:
+            return str(row["name"])
+    cur.execute("SELECT name FROM estates ORDER BY id ASC LIMIT 1")
+    row = cur.fetchone()
+    return str(row["name"]) if (row and row["name"]) else "Elaeis"
 
 
 EXCEL_MATRIX_HEADERS = [
@@ -273,10 +313,12 @@ def generate_monthly_tree_matrix_xlsx(conn, params: dict) -> tuple[bytes, str]:
     """
     Generates the Monthly Tree-by-Tree 3-Round Matrix Excel (.xlsx) report using openpyxl
     (with a standards-compliant OpenXML .xlsx fallback if openpyxl is unavailable).
-    Returns (xlsx_bytes, "Uskvalley_Harvest_Report.xlsx").
+    Returns (xlsx_bytes, "<Estate>_Harvest_Report_<YYYY-MM>.xlsx").
     """
     year_month, rows = query_monthly_tree_matrix(conn, params)
-    filename = "Uskvalley_Harvest_Report.xlsx"
+    estate_name = (rows[0]["estate_name"] if rows else None) or resolve_scope_estate_name(conn, params)
+    slug = slugify_filename(estate_name, "Elaeis")
+    filename = f"{slug}_Harvest_Report_{year_month}.xlsx"
 
     try:
         from openpyxl import Workbook
@@ -523,13 +565,14 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/csv; charset=utf-8")
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Access-Control-Expose-Headers", "Content-Disposition")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self._send_security_headers()
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_xlsx(self, xlsx_bytes: bytes, filename: str = "Uskvalley_Harvest_Report.xlsx"):
+    def _send_xlsx(self, xlsx_bytes: bytes, filename: str = "Elaeis_Harvest_Report.xlsx"):
         self.send_response(200)
         self.send_header(
             "Content-Type",
@@ -562,7 +605,7 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             token = str(params.get("token") or "").strip()
         if not token:
             return None
-        now_iso = datetime.utcnow().isoformat()
+        now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         cur = conn.cursor()
         cur.execute(
             """
@@ -644,6 +687,7 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             ".css": "text/css; charset=utf-8",
             ".js": "application/javascript; charset=utf-8",
             ".json": "application/json; charset=utf-8",
+            ".webmanifest": "application/manifest+json; charset=utf-8",
             ".svg": "image/svg+xml",
             ".png": "image/png",
             ".jpg": "image/jpeg",
@@ -691,6 +735,16 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
     # -------------------------------------------------------------------------
     def handle_api_get(self, path, params, conn):
         cur = conn.cursor()
+
+        if path == "/api/health":
+            return self._send_json(
+                {
+                    "ok": True,
+                    "service": "elaeis",
+                    "runtime": "python-sqlite",
+                    "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                }
+            )
 
         if path == "/api/auth/me":
             user = self._get_current_user(conn, params=params)
@@ -810,6 +864,10 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             if u_lat is None or u_lng is None:
                 return self._send_json({"tree": None})
 
+            lat_delta = (max_radius_m / 111320.0) * 1.25
+            cos_lat = max(0.1, math.cos(math.radians(u_lat)))
+            lng_delta = (max_radius_m / (111320.0 * cos_lat)) * 1.25
+
             cur.execute(
                 """
                 SELECT t.id, t.block_id, t.tree_number AS tree_no, t.latitude AS lat, t.longitude AS lng,
@@ -817,8 +875,11 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                 FROM trees t
                 JOIN blocks b ON b.id = t.block_id
                 JOIN fields f ON f.id = b.field_id
-                WHERE t.status = 'active' AND t.latitude IS NOT NULL AND t.longitude IS NOT NULL
-                """
+                WHERE t.status = 'active'
+                  AND t.latitude BETWEEN ? AND ?
+                  AND t.longitude BETWEEN ? AND ?
+                """,
+                (u_lat - lat_delta, u_lat + lat_delta, u_lng - lng_delta, u_lng + lng_delta),
             )
             best_tree = None
             best_dist = None
@@ -869,6 +930,7 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                     t_conds.append("d.id = ?")
                     t_args.append(division_id)
 
+            mapped_conds = t_conds + ["t.latitude IS NOT NULL", "t.longitude IS NOT NULL"]
             sql = f"""
                 SELECT
                     t.id,
@@ -876,6 +938,7 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                     t.tree_code,
                     t.latitude AS lat,
                     t.longitude AS lng,
+                    COALESCE(t.health_status, 'Healthy') AS health_status,
                     b.id AS block_id,
                     b.name AS block_name,
                     f.id AS field_id,
@@ -899,7 +962,7 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                     WHERE {' AND '.join(h_conds)}
                     GROUP BY tree_id
                 ) h_agg ON h_agg.tree_id = t.id
-                WHERE {' AND '.join(t_conds)}
+                WHERE {' AND '.join(mapped_conds)}
                 ORDER BY d.id ASC, f.id ASC, b.id ASC, t.tree_number ASC
             """
             cur.execute(sql, h_args + t_args)
@@ -907,10 +970,6 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             trees_out = []
             harvested_count = 0
             for r in cur.fetchall():
-                lat = r["lat"]
-                lng = r["lng"]
-                if lat is None or lng is None:
-                    lat, lng = compute_palm_coordinates(r["block_id"], r["tree_no"])
                 bunches = int(r["bunches"] or 0)
                 fronds = int(r["fronds"] or 0)
                 is_harv = bunches > 0
@@ -921,8 +980,9 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                         "id": r["id"],
                         "tree_no": r["tree_no"],
                         "tree_code": r["tree_code"] or f"T-{int(r['tree_no']):03d}",
-                        "lat": lat,
-                        "lng": lng,
+                        "lat": r["lat"],
+                        "lng": r["lng"],
+                        "health_status": r["health_status"] or "Healthy",
                         "block_id": r["block_id"],
                         "block_name": r["block_name"],
                         "field_id": r["field_id"],
@@ -937,12 +997,27 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                     }
                 )
 
+            cur.execute(
+                f"""
+                SELECT COUNT(t.id) AS cnt
+                FROM trees t
+                JOIN blocks b ON b.id = t.block_id
+                JOIN fields f ON f.id = b.field_id
+                JOIN divisions d ON d.id = f.division_id
+                JOIN estates e ON e.id = d.estate_id
+                WHERE {' AND '.join(t_conds)} AND (t.latitude IS NULL OR t.longitude IS NULL)
+                """,
+                t_args,
+            )
+            unmapped_count = int(cur.fetchone()["cnt"] or 0)
+
             return self._send_json(
                 {
                     "from": from_d,
                     "to": to_d,
                     "round_no": round_no,
                     "total_trees": len(trees_out),
+                    "unmapped_trees": unmapped_count,
                     "harvested_trees": harvested_count,
                     "trees": trees_out,
                 }
@@ -961,7 +1036,7 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             cur.execute(
                 """
                 SELECT id, block_id, tree_number AS tree_no, latitude AS lat, longitude AS lng,
-                       gps_acc, status, mapped_at
+                       gps_acc, status, COALESCE(health_status, 'Healthy') AS health_status, mapped_at
                 FROM trees
                 WHERE block_id = ?
                 ORDER BY tree_number ASC
@@ -975,7 +1050,10 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                 cur.execute(
                     """
                     SELECT tree_id, bunches_cut AS bunches, fronds_cut AS fronds,
-                           harvest_date, round_number AS round_no
+                           harvest_date, round_number AS round_no,
+                           COALESCE(health_status, 'Healthy') AS health_status,
+                           COALESCE(loose_fruit, 1) AS loose_fruit,
+                           COALESCE(remarks, '') AS remarks
                     FROM harvest_logs
                     WHERE block_id = ? AND year_month = ? AND round_number = ?
                     """,
@@ -996,19 +1074,318 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             user = self._require_role(conn, "Harvester")
             if not user:
                 return
+            div_id = safe_int(params.get("division_id"), min_val=1)
+            estate_id = safe_int(params.get("estate_id"), min_val=1)
+            round_no = safe_int(params.get("round_no"), min_val=1, max_val=3)
+            where_d = []
+            args_d = []
+            if div_id:
+                where_d.append("d.division_id = ?")
+                args_d.append(div_id)
+            if estate_id:
+                where_d.append("dv.estate_id = ?")
+                args_d.append(estate_id)
+            if round_no:
+                where_d.append("d.round_number = ?")
+                args_d.append(round_no)
+            clause = f"WHERE {' AND '.join(where_d)}" if where_d else ""
             cur.execute(
-                """
+                f"""
                 SELECT d.id, d.division_id, d.dispatch_date, d.year_month,
-                       d.round_number AS round_no, d.weight_kg,
+                       d.round_number AS round_no, d.weight_kg, d.client_id,
                        d.recorded_by_name AS recorded_by, d.created_at AS recorded_at,
                        dv.name AS division_name
                 FROM dispatch_logs d
                 JOIN divisions dv ON dv.id = d.division_id
+                {clause}
                 ORDER BY d.dispatch_date DESC, d.id DESC
                 LIMIT 200
-                """
+                """,
+                args_d,
             )
             return self._send_json({"dispatches": [dict(r) for r in cur.fetchall()]})
+
+        if path == "/api/analytics/agronomy":
+            user = self._require_role(conn, "Harvester", params=params)
+            if not user:
+                return
+            from_d = params.get("from") or "1900-01-01"
+            to_d = params.get("to") or "2999-12-31"
+            estate_id = safe_int(params.get("estate_id"), min_val=1)
+            division_id = safe_int(params.get("division_id"), min_val=1)
+            field_id = safe_int(params.get("field_id"), min_val=1)
+            block_id = safe_int(params.get("block_id"), min_val=1)
+            round_no = safe_int(params.get("round_no"), min_val=1, max_val=3)
+
+            scope_where = ["t.status = 'active'"]
+            scope_args = []
+            if block_id:
+                scope_where.append("b.id = ?")
+                scope_args.append(block_id)
+            elif field_id:
+                scope_where.append("f.id = ?")
+                scope_args.append(field_id)
+            elif division_id:
+                scope_where.append("d.id = ?")
+                scope_args.append(division_id)
+            elif estate_id:
+                scope_where.append("e.id = ?")
+                scope_args.append(estate_id)
+            scope_sql = " AND ".join(scope_where)
+
+            h_where = ["h.harvest_date >= ?", "h.harvest_date <= ?"]
+            h_args = [from_d, to_d]
+            if block_id:
+                h_where.append("b.id = ?")
+                h_args.append(block_id)
+            elif field_id:
+                h_where.append("f.id = ?")
+                h_args.append(field_id)
+            elif division_id:
+                h_where.append("d.id = ?")
+                h_args.append(division_id)
+            elif estate_id:
+                h_where.append("e.id = ?")
+                h_args.append(estate_id)
+
+            h_where_rnd = list(h_where)
+            h_args_rnd = list(h_args)
+            if round_no:
+                h_where_rnd.append("h.round_number = ?")
+                h_args_rnd.append(round_no)
+
+            d_where = ["x.dispatch_date >= ?", "x.dispatch_date <= ?"]
+            d_args = [from_d, to_d]
+            if division_id:
+                d_where.append("d.id = ?")
+                d_args.append(division_id)
+            elif estate_id:
+                d_where.append("d.estate_id = ?")
+                d_args.append(estate_id)
+
+            d_where_rnd = list(d_where)
+            d_args_rnd = list(d_args)
+            if round_no:
+                d_where_rnd.append("x.round_number = ?")
+                d_args_rnd.append(round_no)
+
+            div_where = []
+            div_args = []
+            if division_id:
+                div_where.append("d.id = ?")
+                div_args.append(division_id)
+            elif estate_id:
+                div_where.append("d.estate_id = ?")
+                div_args.append(estate_id)
+            div_clause = f"WHERE {' AND '.join(div_where)}" if div_where else ""
+
+            cur.execute(
+                f"""
+                SELECT d.id AS division_id, COUNT(t.id) AS active_trees
+                FROM trees t
+                JOIN blocks b ON b.id = t.block_id
+                JOIN fields f ON f.id = b.field_id
+                JOIN divisions d ON d.id = f.division_id
+                JOIN estates e ON e.id = d.estate_id
+                WHERE {scope_sql}
+                GROUP BY d.id
+                """,
+                scope_args,
+            )
+            stand_by_div = {r["division_id"]: int(r["active_trees"] or 0) for r in cur.fetchall()}
+            total_active = sum(stand_by_div.values())
+
+            cur.execute(
+                f"""
+                SELECT h.round_number AS round_no,
+                       COALESCE(SUM(h.bunches_cut), 0) AS bunches,
+                       COALESCE(SUM(h.fronds_cut), 0) AS fronds,
+                       COUNT(DISTINCT h.tree_id) AS harvested_trees
+                FROM harvest_logs h
+                JOIN trees t ON t.id = h.tree_id
+                JOIN blocks b ON b.id = t.block_id
+                JOIN fields f ON f.id = b.field_id
+                JOIN divisions d ON d.id = f.division_id
+                JOIN estates e ON e.id = d.estate_id
+                WHERE {' AND '.join(h_where)}
+                GROUP BY h.round_number
+                """,
+                h_args,
+            )
+            rh_map = {int(r["round_no"]): dict(r) for r in cur.fetchall()}
+
+            cur.execute(
+                f"""
+                SELECT x.round_number AS round_no, COALESCE(SUM(x.weight_kg), 0) AS dispatch_kg
+                FROM dispatch_logs x JOIN divisions d ON d.id = x.division_id
+                WHERE {' AND '.join(d_where)}
+                GROUP BY x.round_number
+                """,
+                d_args,
+            )
+            rd_map = {int(r["round_no"]): float(r["dispatch_kg"] or 0.0) for r in cur.fetchall()}
+
+            rounds = []
+            for rn in (1, 2, 3):
+                rh = rh_map.get(rn, {})
+                b_cnt = int(rh.get("bunches") or 0)
+                f_cnt = int(rh.get("fronds") or 0)
+                h_trees = int(rh.get("harvested_trees") or 0)
+                d_kg = rd_map.get(rn, 0.0)
+                rounds.append(
+                    {
+                        "round_no": rn,
+                        "bunches": b_cnt,
+                        "fronds": f_cnt,
+                        "fbr": round(f_cnt / b_cnt, 2) if b_cnt > 0 else 0.0,
+                        "harvested_trees": h_trees,
+                        "coverage_pct": round((h_trees / total_active) * 100.0, 1) if total_active > 0 else 0.0,
+                        "dispatch_kg": round(d_kg, 1),
+                        "abw": round(d_kg / b_cnt, 2) if b_cnt > 0 else 0.0,
+                    }
+                )
+
+            cur.execute(f"SELECT d.id, d.name, d.estate_id FROM divisions d {div_clause} ORDER BY d.id ASC", div_args)
+            div_rows = [dict(r) for r in cur.fetchall()]
+
+            cur.execute(
+                f"""
+                SELECT f.division_id, COALESCE(SUM(f.area_ha), 0) AS area_ha
+                FROM fields f JOIN divisions d ON d.id = f.division_id {div_clause}
+                GROUP BY f.division_id
+                """,
+                div_args,
+            )
+            ha_by_div = {r["division_id"]: float(r["area_ha"] or 0.0) for r in cur.fetchall()}
+
+            cur.execute(
+                f"""
+                SELECT d.id AS division_id,
+                       COALESCE(SUM(h.bunches_cut), 0) AS bunches,
+                       COALESCE(SUM(h.fronds_cut), 0) AS fronds,
+                       COUNT(DISTINCT h.tree_id) AS harvested_trees
+                FROM harvest_logs h
+                JOIN trees t ON t.id = h.tree_id
+                JOIN blocks b ON b.id = t.block_id
+                JOIN fields f ON f.id = b.field_id
+                JOIN divisions d ON d.id = f.division_id
+                JOIN estates e ON e.id = d.estate_id
+                WHERE {' AND '.join(h_where_rnd)}
+                GROUP BY d.id
+                """,
+                h_args_rnd,
+            )
+            harv_by_div = {r["division_id"]: dict(r) for r in cur.fetchall()}
+
+            cur.execute(
+                f"""
+                SELECT d.id AS division_id, COALESCE(SUM(x.weight_kg), 0) AS dispatch_kg
+                FROM dispatch_logs x JOIN divisions d ON d.id = x.division_id
+                WHERE {' AND '.join(d_where_rnd)}
+                GROUP BY d.id
+                """,
+                d_args_rnd,
+            )
+            disp_by_div = {r["division_id"]: float(r["dispatch_kg"] or 0.0) for r in cur.fetchall()}
+
+            divisions_out = []
+            for dv in div_rows:
+                did = dv["id"]
+                area_ha = ha_by_div.get(did, 0.0)
+                active_t = stand_by_div.get(did, 0)
+                hv = harv_by_div.get(did, {})
+                b_cnt = int(hv.get("bunches") or 0)
+                f_cnt = int(hv.get("fronds") or 0)
+                h_trees = int(hv.get("harvested_trees") or 0)
+                d_kg = disp_by_div.get(did, 0.0)
+                divisions_out.append(
+                    {
+                        "id": did,
+                        "name": dv["name"],
+                        "area_ha": round(area_ha, 2),
+                        "active_trees": active_t,
+                        "harvested_trees": h_trees,
+                        "coverage_pct": round((h_trees / active_t) * 100.0, 1) if active_t > 0 else 0.0,
+                        "bunches": b_cnt,
+                        "fronds": f_cnt,
+                        "fbr": round(f_cnt / b_cnt, 2) if b_cnt > 0 else 0.0,
+                        "dispatch_kg": round(d_kg, 1),
+                        "abw": round(d_kg / b_cnt, 2) if b_cnt > 0 else 0.0,
+                        "yph": round(d_kg / area_ha, 2) if area_ha > 0 else 0.0,
+                    }
+                )
+
+            cur.execute(
+                f"""
+                SELECT COALESCE(t.health_status, 'Healthy') AS health_status, COUNT(t.id) AS cnt
+                FROM trees t
+                JOIN blocks b ON b.id = t.block_id
+                JOIN fields f ON f.id = b.field_id
+                JOIN divisions d ON d.id = f.division_id
+                JOIN estates e ON e.id = d.estate_id
+                WHERE {scope_sql}
+                GROUP BY COALESCE(t.health_status, 'Healthy')
+                """,
+                scope_args,
+            )
+            health_breakdown = {}
+            flagged_trees = 0
+            for r in cur.fetchall():
+                k = r["health_status"] or "Healthy"
+                c = int(r["cnt"] or 0)
+                health_breakdown[k] = c
+                if k != "Healthy":
+                    flagged_trees += c
+
+            cur.execute(
+                f"""
+                SELECT COUNT(h.id) AS total_logs,
+                       SUM(CASE WHEN COALESCE(h.loose_fruit, 1) = 1 THEN 1 ELSE 0 END) AS loose_collected
+                FROM harvest_logs h
+                JOIN trees t ON t.id = h.tree_id
+                JOIN blocks b ON b.id = t.block_id
+                JOIN fields f ON f.id = b.field_id
+                JOIN divisions d ON d.id = f.division_id
+                JOIN estates e ON e.id = d.estate_id
+                WHERE {' AND '.join(h_where_rnd)}
+                """,
+                h_args_rnd,
+            )
+            l_row = cur.fetchone()
+            total_logs = int(l_row["total_logs"] or 0)
+            loose_col = int(l_row["loose_collected"] or 0)
+            loose_pct = round((loose_col / total_logs) * 100.0, 1) if total_logs > 0 else 100.0
+
+            sum_b = sum(x["bunches"] for x in divisions_out)
+            sum_f = sum(x["fronds"] for x in divisions_out)
+            sum_ht = sum(x["harvested_trees"] for x in divisions_out)
+            fbr = round(sum_f / sum_b, 2) if sum_b > 0 else 0.0
+            pruning_status = (
+                "No Data" if sum_b == 0 else ("Over-Pruned" if fbr > 2.0 else ("Under-Pruned" if fbr < 0.7 else "Optimal"))
+            )
+
+            return self._send_json(
+                {
+                    "from": from_d,
+                    "to": to_d,
+                    "rounds": rounds,
+                    "divisions": divisions_out,
+                    "health": {
+                        "breakdown": health_breakdown,
+                        "flagged_trees": flagged_trees,
+                        "loose_fruit_pct": loose_pct,
+                    },
+                    "summary": {
+                        "active_trees": total_active,
+                        "harvested_trees": sum_ht,
+                        "coverage_pct": round((sum_ht / total_active) * 100.0, 1) if total_active > 0 else 0.0,
+                        "fbr": fbr,
+                        "pruning_status": pruning_status,
+                        "flagged_trees": flagged_trees,
+                        "loose_fruit_pct": loose_pct,
+                    },
+                }
+            )
 
         if path in ("/api/report", "/api/report.csv"):
             user = self._require_role(conn, "Harvester")
@@ -1016,12 +1393,12 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                 return
             from_d = params.get("from") or "1900-01-01"
             to_d = params.get("to") or "2999-12-31"
-            round_no = int(params["round_no"]) if params.get("round_no") else None
-            estate_id = int(params["estate_id"]) if params.get("estate_id") else None
-            division_id = int(params["division_id"]) if params.get("division_id") else None
-            field_id = int(params["field_id"]) if params.get("field_id") else None
-            block_id = int(params["block_id"]) if params.get("block_id") else None
-            tree_id = int(params["tree_id"]) if params.get("tree_id") else None
+            round_no = safe_int(params.get("round_no"), min_val=1, max_val=3)
+            estate_id = safe_int(params.get("estate_id"), min_val=1)
+            division_id = safe_int(params.get("division_id"), min_val=1)
+            field_id = safe_int(params.get("field_id"), min_val=1)
+            block_id = safe_int(params.get("block_id"), min_val=1)
+            tree_id = safe_int(params.get("tree_id"), min_val=1)
 
             # Calculate active Hectare extent & target division
             target_div_id = division_id
@@ -1062,9 +1439,48 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             elif target_div_id:
                 cur.execute("SELECT COALESCE(SUM(area_ha), 0) AS ha FROM fields WHERE division_id = ?", (target_div_id,))
                 total_ha = float(cur.fetchone()["ha"] or 0.0)
+            elif estate_id:
+                cur.execute(
+                    "SELECT COALESCE(SUM(f.area_ha), 0) AS ha FROM fields f JOIN divisions d ON d.id = f.division_id WHERE d.estate_id = ?",
+                    (estate_id,),
+                )
+                total_ha = float(cur.fetchone()["ha"] or 0.0)
             else:
                 cur.execute("SELECT COALESCE(SUM(area_ha), 0) AS ha FROM fields")
                 total_ha = float(cur.fetchone()["ha"] or 0.0)
+
+            stand_where = ["t.status = 'active'"]
+            stand_args = []
+            if tree_id:
+                stand_where.append("t.id = ?")
+                stand_args.append(tree_id)
+            elif block_id:
+                stand_where.append("b.id = ?")
+                stand_args.append(block_id)
+            elif field_id:
+                stand_where.append("f.id = ?")
+                stand_args.append(field_id)
+            elif division_id:
+                stand_where.append("d.id = ?")
+                stand_args.append(division_id)
+            elif estate_id:
+                stand_where.append("d.estate_id = ?")
+                stand_args.append(estate_id)
+            cur.execute(
+                f"""
+                SELECT COUNT(t.id) AS active_trees,
+                       SUM(CASE WHEN COALESCE(t.health_status, 'Healthy') != 'Healthy' THEN 1 ELSE 0 END) AS flagged_trees
+                FROM trees t
+                JOIN blocks b ON b.id = t.block_id
+                JOIN fields f ON f.id = b.field_id
+                JOIN divisions d ON d.id = f.division_id
+                WHERE {' AND '.join(stand_where)}
+                """,
+                stand_args,
+            )
+            st_row = cur.fetchone()
+            active_trees = int(st_row["active_trees"] or 0)
+            flagged_trees = int(st_row["flagged_trees"] or 0)
 
             where_h = ["h.harvest_date >= ?", "h.harvest_date <= ?"]
             args_h = [from_d, to_d]
@@ -1105,20 +1521,24 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             )
             h_tot = dict(cur.fetchone())
 
-            where_d = ["dispatch_date >= ?", "dispatch_date <= ?"]
+            where_d = ["x.dispatch_date >= ?", "x.dispatch_date <= ?"]
             args_d = [from_d, to_d]
             if round_no in (1, 2, 3):
-                where_d.append("round_number = ?")
+                where_d.append("x.round_number = ?")
                 args_d.append(round_no)
             if target_div_id:
-                where_d.append("division_id = ?")
+                where_d.append("x.division_id = ?")
                 args_d.append(target_div_id)
+            elif estate_id:
+                where_d.append("d.estate_id = ?")
+                args_d.append(estate_id)
 
             cur.execute(
                 f"""
-                SELECT COALESCE(SUM(weight_kg), 0) AS dispatch_kg,
-                       COUNT(id) AS dispatch_records
-                FROM dispatch_logs
+                SELECT COALESCE(SUM(x.weight_kg), 0) AS dispatch_kg,
+                       COUNT(x.id) AS dispatch_records
+                FROM dispatch_logs x
+                JOIN divisions d ON d.id = x.division_id
                 WHERE {' AND '.join(where_d)}
                 """,
                 args_d,
@@ -1127,22 +1547,30 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
 
             bunches = int(h_tot["bunches"] or 0)
             fronds = int(h_tot["fronds"] or 0)
+            harvested_trees = int(h_tot["trees"] or 0)
             dispatch_kg = float(d_tot["dispatch_kg"] or 0.0)
             abw = round(dispatch_kg / bunches, 2) if bunches > 0 else 0.0
             yph = round(dispatch_kg / total_ha, 2) if total_ha > 0 else 0.0
+            fbr = round(fronds / bunches, 2) if bunches > 0 else 0.0
+            coverage_pct = round((harvested_trees / active_trees) * 100.0, 1) if active_trees > 0 else 0.0
+            estate_name = resolve_scope_estate_name(conn, params)
 
             cur.execute(
                 f"""
                 SELECT h.id, h.harvest_date, h.round_number AS round_no,
                        h.bunches_cut AS bunches, h.fronds_cut AS fronds,
+                       COALESCE(h.health_status, 'Healthy') AS health_status,
+                       COALESCE(h.loose_fruit, 1) AS loose_fruit,
+                       COALESCE(h.remarks, '') AS remarks,
                        h.recorded_by_name AS recorded_by,
                        t.tree_number AS tree_no, b.name AS block_name,
-                       f.name AS field_name, d.name AS division_name
+                       f.name AS field_name, d.name AS division_name, e.name AS estate_name
                 FROM harvest_logs h
                 JOIN trees t ON t.id = h.tree_id
                 JOIN blocks b ON b.id = t.block_id
                 JOIN fields f ON f.id = b.field_id
                 JOIN divisions d ON d.id = f.division_id
+                JOIN estates e ON e.id = d.estate_id
                 WHERE {where_sql}
                 ORDER BY h.harvest_date DESC, h.id DESC
                 LIMIT 15
@@ -1152,32 +1580,40 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             recent_logs = [dict(r) for r in cur.fetchall()]
 
             if path == "/api/report.csv":
+                slug = slugify_filename(estate_name, "Elaeis")
                 out = io.StringIO()
                 writer = csv.writer(out)
-                writer.writerow(
-                    [
-                        "Period From",
-                        "Period To",
-                        "Total Bunches Cut",
-                        "Total Fronds Cut",
-                        "Dispatched Weight (kg)",
-                        "Extent (Ha)",
-                        "ABW (kg/bunch)",
-                        "YPH (kg/Ha)",
-                    ]
-                )
-                writer.writerow([from_d, to_d, bunches, fronds, dispatch_kg, total_ha, abw, yph])
-                return self._send_csv(out.getvalue(), f"elaes_erp_report_{date.today().isoformat()}.csv")
+                writer.writerow(["Metric", "Value"])
+                writer.writerow(["Estate", estate_name])
+                writer.writerow(["From Date", from_d])
+                writer.writerow(["To Date", to_d])
+                writer.writerow(["Total Bunches Cut", bunches])
+                writer.writerow(["Total Fronds Cut", fronds])
+                writer.writerow(["Frond-to-Bunch Ratio (FBR)", fbr])
+                writer.writerow(["Active Palms", active_trees])
+                writer.writerow(["Harvested Palms", harvested_trees])
+                writer.writerow(["Harvest Coverage (%)", coverage_pct])
+                writer.writerow(["Flagged Health Palms", flagged_trees])
+                writer.writerow(["Total Dispatched Weight (kg)", dispatch_kg])
+                writer.writerow(["Selected Area (Ha)", total_ha])
+                writer.writerow(["Average Bunch Weight ABW (kg/bunch)", abw])
+                writer.writerow(["Yield Per Hectare YPH (kg/Ha)", yph])
+                return self._send_csv(out.getvalue(), f"{slug}_KPI_Report_{from_d}_{to_d}.csv")
 
             return self._send_json(
                 {
                     "from": from_d,
                     "to": to_d,
+                    "estate_name": estate_name,
                     "totals": {
                         "bunches": bunches,
                         "fronds": fronds,
                         "records": int(h_tot["records"] or 0),
-                        "trees": int(h_tot["trees"] or 0),
+                        "trees": harvested_trees,
+                        "active_trees": active_trees,
+                        "flagged_trees": flagged_trees,
+                        "coverage_pct": coverage_pct,
+                        "fbr": fbr,
                         "dispatch_kg": dispatch_kg,
                         "dispatch_records": int(d_tot["dispatch_records"] or 0),
                         "area_ha": total_ha,
@@ -1216,8 +1652,8 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             if not user_row or not verify_password(password, user_row["password_hash"]):
                 return self._send_json({"error": "Invalid username or password."}, status=401)
 
-            now_iso = datetime.utcnow().isoformat()
-            expires_iso = (datetime.utcnow() + timedelta(days=SESSION_TTL_DAYS)).isoformat()
+            now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+            expires_iso = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=SESSION_TTL_DAYS)).isoformat()
             cur.execute("DELETE FROM sessions WHERE expires_at IS NOT NULL AND expires_at <= ?", (now_iso,))
             token = secrets.token_hex(32)
             cur.execute(
@@ -1319,93 +1755,67 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             conn.commit()
             return self._send_json({"ok": True, "theme": theme})
 
-        # 4. Log Tree Harvest (No GPS compliance blocking; fallback to tree's saved coordinates when device GPS is weak/unavailable)
+        # 4. Log Tree Harvest (Supports Agronomy Telemetry + Offline Sync)
         if path == "/api/harvest":
             user = self._require_role(conn, "Harvester")
             if not user:
                 return
-            tree_id = int(data.get("tree_id") or 0)
-            date_str = str(data.get("date") or date.today().strftime("%Y-%m-%d"))
-            round_no = int(data.get("round_no") or compute_harvest_round(date_str)["round_number"])
-            bunches = max(0, int(data.get("bunches") or 0))
-            fronds = max(0, int(data.get("fronds") or 0))
-            lat = safe_float(data.get("lat"))
-            lng = safe_float(data.get("lng"))
-            acc = safe_float(data.get("acc"))
-
-            cur.execute("SELECT * FROM trees WHERE id = ?", (tree_id,))
-            tree = cur.fetchone()
-            if not tree:
-                return self._send_json({"error": "Palm tree not found."}, status=404)
-
-            if lat is None or lng is None or abs(lat) > 90 or abs(lng) > 180:
-                lat = tree["latitude"]
-                lng = tree["longitude"]
-                if acc is None:
-                    acc = tree["gps_acc"]
-
-            r_info = compute_harvest_round(date_str, round_no)
-            cur.execute(
-                """
-                INSERT INTO harvest_logs (
-                    tree_id, block_id, harvest_date, year_month, day_of_month, round_number,
-                    bunches_cut, fronds_cut, bunch_weight_kg, latitude, longitude, gps_acc,
-                    recorded_by_id, recorded_by_name
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(tree_id, year_month, round_number) DO UPDATE SET
-                    harvest_date = excluded.harvest_date,
-                    day_of_month = excluded.day_of_month,
-                    bunches_cut = excluded.bunches_cut,
-                    fronds_cut = excluded.fronds_cut,
-                    bunch_weight_kg = excluded.bunch_weight_kg,
-                    latitude = excluded.latitude,
-                    longitude = excluded.longitude,
-                    gps_acc = excluded.gps_acc,
-                    recorded_by_id = excluded.recorded_by_id,
-                    recorded_by_name = excluded.recorded_by_name
-                """,
-                (
-                    tree_id,
-                    tree["block_id"],
-                    r_info["date"],
-                    r_info["year_month"],
-                    r_info["day_of_month"],
-                    r_info["round_number"],
-                    bunches,
-                    fronds,
-                    round(bunches * 18.5, 1),
-                    lat,
-                    lng,
-                    acc,
-                    user["id"],
-                    user["full_name"],
-                ),
-            )
+            res = self._apply_harvest_op(conn, user, data)
             conn.commit()
-            return self._send_json({"ok": True, "round": r_info["round_number"], "lat": lat, "lng": lng})
+            return self._send_json(res)
 
-        # 5. Mill Dispatch Weight Logging
+        # 4b. Offline-First Batch Sync Endpoint (/api/sync/batch)
+        if path == "/api/sync/batch":
+            user = self._require_role(conn, "Harvester")
+            if not user:
+                return
+            ops = data.get("operations") if isinstance(data.get("operations"), list) else []
+            if len(ops) > 200:
+                return self._send_json({"error": "Maximum 200 operations per sync batch."}, status=400)
+            results = []
+            synced = 0
+            failed = 0
+            for op in ops:
+                cid = str((op or {}).get("client_id") or "")[:80]
+                op_type = str((op or {}).get("type") or "").strip().lower()
+                payload = (op or {}).get("payload") if isinstance((op or {}).get("payload"), dict) else {}
+                try:
+                    if op_type == "harvest":
+                        out_data = self._apply_harvest_op(conn, user, payload)
+                    elif op_type == "dispatch":
+                        merged = {**payload, "client_id": payload.get("client_id") or cid or None}
+                        out_data = self._apply_dispatch_op(conn, user, merged)
+                    elif op_type == "calibrate":
+                        if role_rank(user["role"]) < role_rank("Supervisor"):
+                            raise ErpHttpError("Supervisor role required to calibrate tree GPS.", status=403)
+                        out_data = self._apply_calibrate_op(conn, user, payload)
+                    elif op_type == "tree_save":
+                        if role_rank(user["role"]) < role_rank("Supervisor"):
+                            raise ErpHttpError("Supervisor role required to save tree pin.", status=403)
+                        out_data = self._apply_tree_save_op(conn, user, payload)
+                    else:
+                        raise ErpHttpError(f"Unsupported sync operation type '{op_type}'.", status=400)
+                    conn.commit()
+                    synced += 1
+                    results.append({"client_id": cid, "type": op_type, "ok": True, "status": 200, "data": out_data})
+                except ErpHttpError as e:
+                    conn.rollback()
+                    failed += 1
+                    results.append({"client_id": cid, "type": op_type, "ok": False, "status": e.status, "error": e.message})
+                except Exception:
+                    conn.rollback()
+                    failed += 1
+                    results.append({"client_id": cid, "type": op_type, "ok": False, "status": 500, "error": "Operation failed during sync."})
+            return self._send_json({"ok": True, "synced": synced, "failed": failed, "results": results})
+
+        # 5. Mill Dispatch Weight Logging (Idempotent via client_id)
         if path == "/api/dispatch":
             user = self._require_role(conn, "Harvester")
             if not user:
                 return
-            division_id = int(data.get("division_id") or 1)
-            date_str = str(data.get("date") or date.today().strftime("%Y-%m-%d"))
-            round_no = int(data.get("round_no") or compute_harvest_round(date_str)["round_number"])
-            weight_kg = float(data.get("weight_kg") or 0.0)
-            if weight_kg <= 0:
-                return self._send_json({"error": "Enter a valid dispatch weight in kg."}, status=400)
-
-            cur.execute(
-                """
-                INSERT INTO dispatch_logs (
-                    division_id, dispatch_date, year_month, round_number, weight_kg, recorded_by_id, recorded_by_name
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (division_id, date_str, date_str[:7], round_no, weight_kg, user["id"], user["full_name"]),
-            )
+            res = self._apply_dispatch_op(conn, user, data)
             conn.commit()
-            return self._send_json({"ok": True})
+            return self._send_json(res)
 
         if path == "/api/dispatch/delete":
             user = self._require_role(conn, "Supervisor")
@@ -1420,13 +1830,20 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             user = self._require_role(conn, "Admin")
             if not user:
                 return
-            username = str(data.get("username") or "").strip().lower()
+            username = str(data.get("username") or "").strip().lower().lstrip("@")
             full_name = str(data.get("full_name") or "").strip()
             role = normalize_role(data.get("role") or "Harvester")
-            password = str(data.get("password") or "Uskvalley2026!")
+            password = str(data.get("password") or INITIAL_ERP_PASSWORD)
 
             if not username or not full_name:
                 return self._send_json({"error": "Username and Full Name are required."}, status=400)
+            if not re.match(r"^[a-z0-9_.-]{2,40}$", username):
+                return self._send_json(
+                    {"error": "Username must be 2-40 characters (letters, numbers, _, ., -)."},
+                    status=400,
+                )
+            if len(password) < 6:
+                return self._send_json({"error": "Password must be at least 6 characters."}, status=400)
             if role == "Master Admin" and not user["is_master"]:
                 return self._send_json({"error": "Only the Master Admin can assign Master Admin role."}, status=403)
 
@@ -1458,7 +1875,7 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             target = cur.fetchone()
             if not target:
                 return self._send_json({"error": "User not found."}, status=404)
-            if target["is_master"] or target["username"].lower() == "sandaru98j":
+            if target["is_master"]:
                 return self._send_json({"error": "Cannot modify the Master Admin role."}, status=400)
             if normalize_role(target["role"]) == "Admin" and not user["is_master"]:
                 return self._send_json({"error": "Only the Master Admin can change another Admin's role."}, status=403)
@@ -1469,16 +1886,18 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             conn.commit()
             return self._send_json({"ok": True})
 
-        if path == "/api/admin/users/force-password":
-            # Strictly Master Admin (sandaru98j) ultimate control feature
+        if path in ("/api/admin/users/force-password", "/api/admin/users/password"):
+            # Strictly Master Admin ultimate control feature
             user = self._require_role(conn, "Master Admin")
-            if not user or not user["is_master"]:
+            if not user:
+                return
+            if not user["is_master"]:
                 return self._send_json(
-                    {"error": "Only Master Admin (sandaru98j) can force-reset user passwords."},
+                    {"error": "Only Master Admin can force-reset user passwords."},
                     status=403,
                 )
             target_id = safe_int(data.get("user_id"), default=0)
-            new_password = str(data.get("new_password") or "")
+            new_password = str(data.get("new_password") or data.get("password") or "")
             if len(new_password) < 6:
                 return self._send_json({"error": "New password must be at least 6 characters."}, status=400)
 
@@ -1508,7 +1927,7 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             target = cur.fetchone()
             if not target:
                 return self._send_json({"error": "User not found."}, status=404)
-            if target["is_master"] or target["username"].lower() == "sandaru98j":
+            if target["is_master"]:
                 return self._send_json({"error": "Cannot delete the Master Admin account."}, status=400)
             if normalize_role(target["role"]) == "Admin" and not user["is_master"]:
                 return self._send_json({"error": "Only the Master Admin can delete an Admin account."}, status=403)
@@ -1532,25 +1951,9 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
             user = self._require_role(conn, "Supervisor")
             if not user:
                 return
-            tree_id = safe_int(data.get("id") or data.get("tree_id"), default=0)
-            lat = safe_float(data.get("lat"))
-            lng = safe_float(data.get("lng"))
-            acc = safe_float(data.get("acc"), default=4.0)
-            if not tree_id:
-                return self._send_json({"error": "Select a valid tree to calibrate."}, status=400)
-            if lat is None or lng is None or abs(lat) > 90 or abs(lng) > 180:
-                return self._send_json({"error": "Enter valid Latitude and Longitude coordinates."}, status=400)
-            now_s = datetime.utcnow().isoformat()
-            cur.execute(
-                """
-                UPDATE trees
-                SET latitude = ?, longitude = ?, gps_acc = ?, mapped_by = ?, mapped_at = ?
-                WHERE id = ?
-                """,
-                (round(lat, 6), round(lng, 6), acc, user["id"], now_s, tree_id),
-            )
+            res = self._apply_calibrate_op(conn, user, data)
             conn.commit()
-            return self._send_json({"ok": True, "lat": round(lat, 6), "lng": round(lng, 6)})
+            return self._send_json(res)
 
         if path == "/api/admin/trees/batch":
             user = self._require_role(conn, "Admin")
@@ -1558,17 +1961,16 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                 return
             block_id = int(data.get("block_id") or 0)
             count = int(data.get("count") or 0)
-            if block_id <= 0 or count <= 0:
-                return self._send_json({"error": "Select a valid block and palm count."}, status=400)
+            if block_id <= 0 or count <= 0 or count > 3000:
+                return self._send_json({"error": "Select a valid block and palm count (1-3000)."}, status=400)
             cur.execute("SELECT COALESCE(MAX(tree_number), 0) AS mx FROM trees WHERE block_id = ?", (block_id,))
             start_no = int(cur.fetchone()["mx"] or 0) + 1
-            now_s = datetime.utcnow().isoformat()
-            rows = []
-            for n in range(start_no, start_no + count):
-                lat, lng = compute_palm_coordinates(block_id, n)
-                rows.append((block_id, n, f"T-{n:03d}", ((n - 1) // 23) + 1, lat, lng, 3.8, "active", now_s))
+            rows = [
+                (block_id, n, f"T-{n:03d}", ((n - 1) // 23) + 1, "active")
+                for n in range(start_no, start_no + count)
+            ]
             cur.executemany(
-                "INSERT OR IGNORE INTO trees (block_id, tree_number, tree_code, row_number, latitude, longitude, gps_acc, status, mapped_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO trees (block_id, tree_number, tree_code, row_number, status) VALUES (?, ?, ?, ?, ?)",
                 rows,
             )
             conn.commit()
@@ -1601,11 +2003,14 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
 
             if entity == "estate":
                 name = str(data.get("name") or "").strip()
+                region = str(data.get("location_region") or "").strip()[:120]
+                if not name:
+                    return self._send_json({"error": "Estate name is required."}, status=400)
                 if item_id:
-                    cur.execute("UPDATE estates SET name = ? WHERE id = ?", (name, item_id))
+                    cur.execute("UPDATE estates SET name = ?, location_region = ? WHERE id = ?", (name, region, item_id))
                 else:
                     code = f"EST-{secrets.token_hex(2).upper()}"
-                    cur.execute("INSERT INTO estates (code, name) VALUES (?, ?)", (code, name))
+                    cur.execute("INSERT INTO estates (code, name, location_region) VALUES (?, ?, ?)", (code, name, region))
             elif entity == "division":
                 name = str(data.get("name") or "").strip()
                 estate_id = int(data.get("estate_id") or 1)
@@ -1660,39 +2065,200 @@ class ElaeisErpHandler(BaseHTTPRequestHandler):
                             rows,
                         )
             elif entity == "tree":
-                block_id = int(data.get("block_id") or 1)
-                tree_no = int(data.get("tree_no") or 1)
-                lat = data.get("lat")
-                lng = data.get("lng")
-                acc = data.get("acc") or 4.0
-                now_s = datetime.utcnow().isoformat()
-                if item_id:
-                    cur.execute(
-                        """
-                        UPDATE trees
-                        SET tree_number = ?, latitude = ?, longitude = ?, gps_acc = ?, mapped_by = ?, mapped_at = ?
-                        WHERE id = ?
-                        """,
-                        (tree_no, lat, lng, acc, user["id"], now_s, item_id),
-                    )
-                else:
-                    cur.execute(
-                        """
-                        INSERT INTO trees (block_id, tree_number, tree_code, row_number, latitude, longitude, gps_acc, status, mapped_by, mapped_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
-                        ON CONFLICT(block_id, tree_number) DO UPDATE SET
-                            latitude = excluded.latitude,
-                            longitude = excluded.longitude,
-                            gps_acc = excluded.gps_acc,
-                            mapped_by = excluded.mapped_by,
-                            mapped_at = excluded.mapped_at
-                        """,
-                        (block_id, tree_no, f"T-{tree_no:03d}", ((tree_no - 1) // 10) + 1, lat, lng, acc, user["id"], now_s),
-                    )
+                self._apply_tree_save_op(conn, user, data)
             conn.commit()
             return self._send_json({"ok": True})
 
         return self._send_json({"error": f"Unknown endpoint {path}"}, status=404)
+
+    def _apply_harvest_op(self, conn, user: dict, data: dict) -> dict:
+        cur = conn.cursor()
+        tree_id = safe_int(data.get("tree_id"), default=0)
+        date_str = str(data.get("date") or date.today().strftime("%Y-%m-%d"))[:10]
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
+            raise ErpHttpError("Invalid date.", status=400)
+        explicit_round = safe_int(data.get("round_no"), min_val=1, max_val=3)
+        bunches = safe_int(data.get("bunches"), default=None)
+        fronds = safe_int(data.get("fronds"), default=None)
+        if bunches is None or bunches < 0 or bunches > 60:
+            raise ErpHttpError("Bunches must be 0-60.", status=400)
+        if fronds is None or fronds < 0 or fronds > 60:
+            raise ErpHttpError("Fronds must be 0-60.", status=400)
+        lat = safe_float(data.get("lat"))
+        lng = safe_float(data.get("lng"))
+        acc = safe_float(data.get("acc"))
+
+        cur.execute("SELECT * FROM trees WHERE id = ?", (tree_id,))
+        tree = cur.fetchone()
+        if not tree:
+            raise ErpHttpError("Palm tree not found.", status=404)
+        if tree["status"] != "active":
+            raise ErpHttpError("This tree is marked inactive.", status=400)
+
+        if lat is None or lng is None or abs(lat) > 90 or abs(lng) > 180:
+            lat = tree["latitude"]
+            lng = tree["longitude"]
+            if acc is None:
+                acc = tree["gps_acc"]
+
+        health_status = normalize_health_status(data.get("health_status") or tree["health_status"] or "Healthy")
+        loose_raw = data.get("loose_fruit", 1)
+        loose_fruit = 0 if loose_raw in (False, 0, "0", "false", "False") else 1
+        remarks = str(data.get("remarks") or "").strip()[:240]
+
+        r_info = compute_harvest_round(date_str, explicit_round)
+        cur.execute(
+            """
+            INSERT INTO harvest_logs (
+                tree_id, block_id, harvest_date, year_month, day_of_month, round_number,
+                bunches_cut, fronds_cut, bunch_weight_kg, latitude, longitude, gps_acc,
+                health_status, loose_fruit, remarks, recorded_by_id, recorded_by_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tree_id, year_month, round_number) DO UPDATE SET
+                harvest_date = excluded.harvest_date,
+                day_of_month = excluded.day_of_month,
+                bunches_cut = excluded.bunches_cut,
+                fronds_cut = excluded.fronds_cut,
+                bunch_weight_kg = excluded.bunch_weight_kg,
+                latitude = excluded.latitude,
+                longitude = excluded.longitude,
+                gps_acc = excluded.gps_acc,
+                health_status = excluded.health_status,
+                loose_fruit = excluded.loose_fruit,
+                remarks = excluded.remarks,
+                recorded_by_id = excluded.recorded_by_id,
+                recorded_by_name = excluded.recorded_by_name
+            """,
+            (
+                tree_id,
+                tree["block_id"],
+                r_info["date"],
+                r_info["year_month"],
+                r_info["day_of_month"],
+                r_info["round_number"],
+                bunches,
+                fronds,
+                round(bunches * 18.5, 1),
+                lat,
+                lng,
+                acc,
+                health_status,
+                loose_fruit,
+                remarks,
+                user["id"],
+                user["full_name"],
+            ),
+        )
+        if data.get("health_status"):
+            cur.execute("UPDATE trees SET health_status = ? WHERE id = ?", (health_status, tree_id))
+        return {
+            "ok": True,
+            "round": r_info["round_number"],
+            "lat": lat,
+            "lng": lng,
+            "health_status": health_status,
+            "loose_fruit": loose_fruit,
+        }
+
+    def _apply_dispatch_op(self, conn, user: dict, data: dict) -> dict:
+        cur = conn.cursor()
+        division_id = safe_int(data.get("division_id"), min_val=1)
+        date_str = str(data.get("date") or date.today().strftime("%Y-%m-%d"))[:10]
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
+            raise ErpHttpError("Select a valid date.", status=400)
+        round_no = safe_int(data.get("round_no"))
+        if round_no not in (1, 2, 3):
+            raise ErpHttpError("Select Round 1, 2, or 3.", status=400)
+        weight_kg = safe_float(data.get("weight_kg"))
+        if weight_kg is None or weight_kg <= 0 or weight_kg > 500000:
+            raise ErpHttpError("Enter a valid dispatch weight in kg.", status=400)
+        if not division_id:
+            raise ErpHttpError("Select a division.", status=400)
+        cur.execute("SELECT id FROM divisions WHERE id = ?", (division_id,))
+        if not cur.fetchone():
+            raise ErpHttpError("Division not found.", status=404)
+
+        client_id = str(data.get("client_id") or "").strip()[:80] or None
+        if client_id:
+            cur.execute("SELECT id FROM dispatch_logs WHERE client_id = ?", (client_id,))
+            existing = cur.fetchone()
+            if existing:
+                return {"ok": True, "id": existing["id"], "deduplicated": True}
+
+        cur.execute(
+            """
+            INSERT INTO dispatch_logs (
+                division_id, dispatch_date, year_month, round_number, weight_kg, client_id, recorded_by_id, recorded_by_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (division_id, date_str, date_str[:7], round_no, weight_kg, client_id, user["id"], user["full_name"]),
+        )
+        return {"ok": True, "id": cur.lastrowid}
+
+    def _apply_calibrate_op(self, conn, user: dict, data: dict) -> dict:
+        cur = conn.cursor()
+        tree_id = safe_int(data.get("id") or data.get("tree_id"), default=0)
+        lat = safe_float(data.get("lat"))
+        lng = safe_float(data.get("lng"))
+        acc = safe_float(data.get("acc"), default=4.0)
+        if not tree_id:
+            raise ErpHttpError("Select a valid tree to calibrate.", status=400)
+        if lat is None or lng is None or abs(lat) > 90 or abs(lng) > 180:
+            raise ErpHttpError("Enter valid Latitude and Longitude coordinates.", status=400)
+        now_s = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        cur.execute(
+            """
+            UPDATE trees
+            SET latitude = ?, longitude = ?, gps_acc = ?, mapped_by = ?, mapped_at = ?
+            WHERE id = ?
+            """,
+            (round(lat, 6), round(lng, 6), acc, user["id"], now_s, tree_id),
+        )
+        return {"ok": True, "lat": round(lat, 6), "lng": round(lng, 6)}
+
+    def _apply_tree_save_op(self, conn, user: dict, data: dict) -> dict:
+        cur = conn.cursor()
+        item_id = safe_int(data.get("id"), default=0)
+        block_id = safe_int(data.get("block_id"), default=0)
+        tree_no = safe_int(data.get("tree_no"), default=0)
+        if tree_no < 1:
+            raise ErpHttpError("Enter a valid tree number.", status=400)
+        lat = safe_float(data.get("lat"))
+        lng = safe_float(data.get("lng"))
+        acc = safe_float(data.get("acc"), default=4.0)
+        status = "inactive" if data.get("status") == "inactive" else "active"
+        health_status = normalize_health_status(data.get("health_status") or "Healthy")
+        if (lat is not None and abs(lat) > 90) or (lng is not None and abs(lng) > 180):
+            raise ErpHttpError("Invalid coordinates.", status=400)
+        now_s = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        if item_id:
+            cur.execute(
+                """
+                UPDATE trees
+                SET tree_number = ?, status = ?, health_status = ?, latitude = ?, longitude = ?, gps_acc = ?, mapped_by = ?, mapped_at = ?
+                WHERE id = ?
+                """,
+                (tree_no, status, health_status, lat, lng, acc, user["id"], now_s, item_id),
+            )
+        else:
+            if not block_id:
+                raise ErpHttpError("Unknown block.", status=400)
+            cur.execute(
+                """
+                INSERT INTO trees (block_id, tree_number, tree_code, row_number, latitude, longitude, gps_acc, status, health_status, mapped_by, mapped_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(block_id, tree_number) DO UPDATE SET
+                    status = excluded.status,
+                    health_status = excluded.health_status,
+                    latitude = excluded.latitude,
+                    longitude = excluded.longitude,
+                    gps_acc = excluded.gps_acc,
+                    mapped_by = excluded.mapped_by,
+                    mapped_at = excluded.mapped_at
+                """,
+                (block_id, tree_no, f"T-{tree_no:03d}", ((tree_no - 1) // 10) + 1, lat, lng, acc, status, health_status, user["id"], now_s),
+            )
+        return {"ok": True}
 
 
 def run_server(port=None, host=None):

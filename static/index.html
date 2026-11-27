@@ -2,8 +2,13 @@
 <html lang="en" data-theme="twitter">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f1419" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Elaeis</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 
     <!-- Early Theme Initialization (Prevents Flash of Unstyled Theme) -->
     <script>
@@ -171,10 +176,10 @@
                                 <span id="rail-user-avatar-initials">SG</span>
                             </div>
                             <div class="hidden lg:block min-w-0">
-                                <div id="rail-user-name" class="text-xs font-extrabold text-[#0f1419] truncate">Sandaruwan Gunathilaka</div>
+                                <div id="rail-user-name" class="text-xs font-extrabold text-[#0f1419] truncate">Staff Member</div>
                                 <div class="flex items-center gap-1.5">
-                                    <span id="rail-user-handle" class="text-[11px] font-mono-code text-[#536471] truncate">@sandaru98j</span>
-                                    <span id="rail-user-role" class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#eff3f4] text-[#0f1419] truncate">Master Admin</span>
+                                    <span id="rail-user-handle" class="text-[11px] font-mono-code text-[#536471] truncate">@user</span>
+                                    <span id="rail-user-role" class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#eff3f4] text-[#0f1419] truncate">Role</span>
                                 </div>
                             </div>
                         </button>
@@ -222,27 +227,33 @@
                         </div>
                     </div>
 
-                    <!-- ROW 2: Telemetry / Status Strip (Round Badge, Live Clock, GPS Coordinates) -->
+                    <!-- ROW 2: Telemetry / Status Strip (Round Badge, Live Clock, GPS Coordinates, Offline Sync) -->
                     <div class="x-header-row-2 px-3 sm:px-5 py-1.5 w-full max-w-full box-border">
                         <span id="hdr-round-pill" class="x-status-pill x-status-pill-round font-mono-code">
-                            R2 (Days 11-20)
+                            R1
                         </span>
 
                         <div id="hdr-clock-pill" class="x-status-pill live-clock-pill" title="Live Estate Telemetry Clock">
                             <span class="live-clock-dot"></span>
-                            <span id="hdr-clock" class="font-mono-code">Nov 19 &bull; 04:28 AM</span>
+                            <span id="hdr-clock" class="font-mono-code">--:--</span>
                         </div>
 
                         <button type="button" id="btn-gps-ping" title="Capture Live Device GPS" class="x-status-pill x-status-pill-gps">
-                            <span id="gps-dot" class="w-2 h-2 rounded-full bg-[#00ba7c] shrink-0"></span>
+                            <span id="gps-dot" class="w-2 h-2 rounded-full bg-[#536471] shrink-0"></span>
                             <i data-lucide="locate-fixed" class="w-3 h-3 shrink-0"></i>
-                            <span id="gps-label" class="font-mono-code">6.142, 80.365</span>
+                            <span id="gps-label" class="font-mono-code">GPS Standby</span>
+                        </button>
+
+                        <button type="button" id="btn-sync-pill" title="Offline Sync & Field Preload" class="x-status-pill x-status-pill-gps">
+                            <span id="sync-dot" class="w-2 h-2 rounded-full bg-[#00ba7c] shrink-0"></span>
+                            <i data-lucide="cloud" class="w-3 h-3 shrink-0"></i>
+                            <span id="sync-label" class="font-mono-code">Online</span>
                         </button>
                     </div>
                 </header>
 
                 <!-- ============================================================
-                     VIEW 1: OVERVIEW (Unified Filters + 5 Core KPIs + Activity Feed)
+                     VIEW 1: OVERVIEW (Unified Filters + 5 Core KPIs + Agronomy + Feed)
                      ============================================================ -->
                 <section id="page-overview" class="page-view divide-y divide-[#eff3f4]">
                     <!-- Unified Cascading Filters -->
@@ -252,7 +263,7 @@
                             <div class="space-y-2 min-w-0 flex-1">
                                 <div class="flex items-center gap-2.5 min-w-0">
                                     <h1 id="dash-estate-heading" class="text-xl sm:text-2xl font-extrabold tracking-tight text-[#0f1419] truncate">
-                                        Uskvalley Estate
+                                        Plantation Overview
                                     </h1>
                                     <button type="button" id="btn-dash-reset" title="Reset Overview Filters" aria-label="Reset Overview Filters" class="erp-icon-reset-btn no-print shrink-0">
                                         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -262,9 +273,9 @@
                                     </button>
                                 </div>
                                 <div id="dash-breadcrumb" class="flex flex-wrap items-center gap-1.5 min-w-0">
-                                    <span id="badge-season" class="erp-meta-badge erp-meta-badge-accent">Season 2026/27</span>
+                                    <span id="badge-season" class="erp-meta-badge erp-meta-badge-accent">Season</span>
                                     <span class="text-[#536471] text-xs font-bold select-none">&bull;</span>
-                                    <span id="badge-period" class="erp-meta-badge font-mono-code">YTD: Apr 1 - Nov 18</span>
+                                    <span id="badge-period" class="erp-meta-badge font-mono-code">YTD</span>
                                     <span class="text-[#536471] text-xs font-bold select-none">&bull;</span>
                                     <span id="badge-filter-round" class="erp-meta-badge">Filter: Entire Month</span>
                                     <span id="badge-scope-sep" class="hidden text-[#536471] text-xs font-bold select-none">&bull;</span>
@@ -275,7 +286,11 @@
                             <div class="flex flex-wrap items-center gap-2 no-print shrink-0 self-start">
                                 <button type="button" id="btn-export-excel" class="x-btn-outline !py-2 !px-3.5" title="Download Monthly Tree-by-Tree 3-Round Excel Matrix (.xlsx)">
                                     <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
-                                    <span>Export Excel (.xlsx)</span>
+                                    <span>Excel (.xlsx)</span>
+                                </button>
+                                <button type="button" id="btn-export-csv" class="x-btn-outline !py-2 !px-3" title="Download KPI Summary CSV">
+                                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                                    <span>CSV</span>
                                 </button>
                                 <button type="button" id="btn-export-pdf" class="x-btn-primary !py-2 !px-4 !text-xs">
                                     <i data-lucide="printer" class="w-3.5 h-3.5"></i>
@@ -284,15 +299,12 @@
                             </div>
                         </div>
 
-                        <!-- A. Hierarchy Filters -->
+                        <!-- A. Hierarchy Filters (Dynamic Multi-Estate Support) -->
                         <div class="no-print">
                             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
                                 <div class="min-w-0">
-                                    <label class="text-[10px] font-bold text-[#536471] block mb-1">Estate</label>
-                                    <div class="x-input bg-[#f7f9f9] flex items-center justify-between cursor-not-allowed">
-                                        <span id="flt-estate-fixed" class="truncate">Uskvalley Estate</span>
-                                        <i data-lucide="lock" class="w-3.5 h-3.5 text-[#536471] shrink-0"></i>
-                                    </div>
+                                    <label for="flt-estate" class="text-[10px] font-bold text-[#536471] block mb-1">Estate</label>
+                                    <select id="flt-estate" class="x-input"></select>
                                 </div>
                                 <div class="min-w-0">
                                     <label class="text-[10px] font-bold text-[#536471] block mb-1">Division</label>
@@ -318,11 +330,7 @@
                             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-end">
                                 <div class="min-w-0">
                                     <label class="text-[10px] font-bold text-[#536471] block mb-1">Season</label>
-                                    <select id="flt-season-year" class="x-input font-mono-code">
-                                        <option value="2026">2026/27 Season</option>
-                                        <option value="2025">2025/26 Season</option>
-                                        <option value="2024">2024/25 Season</option>
-                                    </select>
+                                    <select id="flt-season-year" class="x-input font-mono-code"></select>
                                 </div>
                                 <div class="min-w-0">
                                     <label class="text-[10px] font-bold text-[#536471] block mb-1">Period</label>
@@ -416,7 +424,72 @@
                                     <i data-lucide="trending-up" class="w-4 h-4 text-[#0f1419] shrink-0"></i>
                                 </div>
                                 <div id="kpi-yph" class="text-xl sm:text-2xl font-mono-code font-extrabold text-[#0f1419] mt-2 truncate">0.00 kg/Ha</div>
-                                <div id="kpi-area-ha" class="text-[11px] font-mono-code text-[#536471] mt-1 truncate">Extent: 147.25 Ha</div>
+                                <div id="kpi-area-ha" class="text-[11px] font-mono-code text-[#536471] mt-1 truncate">Extent: 0.00 Ha</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Agronomy & Round Performance Analytics -->
+                    <div class="p-4 sm:p-6 space-y-5 w-full max-w-full box-border">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <h3 class="text-sm sm:text-base font-extrabold text-[#0f1419] flex items-center gap-2">
+                                <i data-lucide="sprout" class="w-4 h-4"></i>
+                                <span>Agronomy &amp; Round Performance</span>
+                            </h3>
+                            <span id="agro-pruning-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#eff3f4] text-[#536471]">No Data</span>
+                        </div>
+
+                        <!-- 4 Agronomy Indicators -->
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div class="erp-card !p-3.5 space-y-1.5">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-[#536471]">Harvest Coverage</div>
+                                <div id="agro-coverage-pct" class="text-lg font-mono-code font-extrabold text-[#0f1419]">0.0%</div>
+                                <div class="w-full h-1.5 rounded-full bg-[#eff3f4] overflow-hidden">
+                                    <div id="agro-coverage-bar" class="h-full bg-[#00ba7c] transition-all" style="width: 0%"></div>
+                                </div>
+                                <div id="agro-coverage-sub" class="text-[10px] font-mono-code text-[#536471] truncate">0 / 0 palms</div>
+                            </div>
+                            <div class="erp-card !p-3.5 space-y-1.5">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-[#536471]">Frond:Bunch Ratio</div>
+                                <div id="agro-fbr" class="text-lg font-mono-code font-extrabold text-[#0f1419]">0.00</div>
+                                <div class="text-[10px] text-[#536471]">Ideal pruning: 0.70 – 2.00</div>
+                            </div>
+                            <div class="erp-card !p-3.5 space-y-1.5">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-[#536471]">Loose Fruit Collection</div>
+                                <div id="agro-loose-pct" class="text-lg font-mono-code font-extrabold text-[#0f1419]">100.0%</div>
+                                <div class="text-[10px] text-[#536471]">Harvested palms compliant</div>
+                            </div>
+                            <div class="erp-card !p-3.5 space-y-1.5">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-[#536471]">Health Alerts</div>
+                                <div id="agro-flagged-cnt" class="text-lg font-mono-code font-extrabold text-[#0f1419]">0</div>
+                                <div class="text-[10px] text-[#536471]">Flagged disease / pest palms</div>
+                            </div>
+                        </div>
+
+                        <!-- 10-Day Round-by-Round Comparison -->
+                        <div class="space-y-2">
+                            <div class="text-[11px] font-extrabold uppercase tracking-wider text-[#536471]">10-Day Round Comparison</div>
+                            <div id="agro-rounds-grid" class="grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
+                        </div>
+
+                        <!-- Division Yield Leaderboard -->
+                        <div class="space-y-2">
+                            <div class="text-[11px] font-extrabold uppercase tracking-wider text-[#536471]">Division Yield Breakdown</div>
+                            <div class="table-responsive-wrap rounded-2xl border border-[#eff3f4]">
+                                <table class="w-full min-w-[560px] text-left border-collapse text-xs">
+                                    <thead>
+                                        <tr class="border-b border-[#eff3f4] text-[10px] font-extrabold uppercase text-[#536471] bg-[#f7f9f9]">
+                                            <th class="py-2.5 px-3 whitespace-nowrap">Division</th>
+                                            <th class="py-2.5 px-3 whitespace-nowrap">Extent</th>
+                                            <th class="py-2.5 px-3 whitespace-nowrap">Coverage</th>
+                                            <th class="py-2.5 px-3 whitespace-nowrap">Bunches</th>
+                                            <th class="py-2.5 px-3 whitespace-nowrap">FBR</th>
+                                            <th class="py-2.5 px-3 whitespace-nowrap">ABW</th>
+                                            <th class="py-2.5 px-3 text-right whitespace-nowrap">YPH</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="agro-division-tbody" class="divide-y divide-[#eff3f4]"></tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
@@ -673,17 +746,9 @@
                                     <option value="custom">Custom Range</option>
                                 </select>
 
-                                <select id="mapview-season" class="hidden x-input !w-auto !py-1.5 !px-2.5 text-xs font-mono-code">
-                                    <option value="2026">Season 2026/27</option>
-                                    <option value="2025">Season 2025/26</option>
-                                    <option value="2024">Season 2024/25</option>
-                                </select>
+                                <select id="mapview-season" class="hidden x-input !w-auto !py-1.5 !px-2.5 text-xs font-mono-code"></select>
 
-                                <select id="mapview-year" class="hidden x-input !w-auto !py-1.5 !px-2.5 text-xs font-mono-code">
-                                    <option value="2026">Year 2026</option>
-                                    <option value="2025">Year 2025</option>
-                                    <option value="2024">Year 2024</option>
-                                </select>
+                                <select id="mapview-year" class="hidden x-input !w-auto !py-1.5 !px-2.5 text-xs font-mono-code"></select>
 
                                 <input id="mapview-month" type="month" class="x-input !w-auto !py-1.5 !px-2.5 text-xs font-mono-code" />
 
@@ -710,6 +775,13 @@
                     <!-- Full-Height Satellite & 60fps Canvas Map Viewport -->
                     <div class="gis-map-viewport">
                         <div id="gis-map-canvas"></div>
+
+                        <!-- Empty GIS Notice for Newly Rolled-Out Unmapped Estates -->
+                        <div id="gis-empty-notice" class="hidden absolute inset-x-4 top-4 z-20 flex justify-center pointer-events-none">
+                            <div class="pointer-events-auto px-4 py-2.5 rounded-2xl bg-black/80 text-white border border-white/25 text-xs font-bold shadow-lg text-center">
+                                No GPS-mapped palms in this selection yet. Use Estates &rarr; GPS Mapper to pin palm coordinates.
+                            </div>
+                        </div>
 
                         <!-- Minimal 2-Color Floating Legend -->
                         <div class="gis-legend-overlay no-print">
@@ -876,8 +948,8 @@
 
                             <!-- User Name & Handle Only -->
                             <div class="space-y-0.5">
-                                <h3 id="prof-fullname" class="text-xl sm:text-2xl font-extrabold text-[#0f1419] leading-tight">Sandaruwan Gunathilaka</h3>
-                                <div id="prof-username" class="text-sm font-mono-code text-[#536471]">@sandaru98j</div>
+                                <h3 id="prof-fullname" class="text-xl sm:text-2xl font-extrabold text-[#0f1419] leading-tight">Staff Member</h3>
+                                <div id="prof-username" class="text-sm font-mono-code text-[#536471]">@user</div>
                             </div>
                         </div>
                     </div>
@@ -1057,22 +1129,26 @@
             <aside class="hidden xl:block sticky top-0 h-screen overflow-y-auto px-5 py-3 space-y-4 no-print box-border">
                 <!-- Widget 1: Operational Pulse -->
                 <div class="x-widget space-y-3">
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between gap-2">
                         <h3 class="text-sm font-extrabold text-[#0f1419]">Pulse</h3>
-                        <span class="inline-flex items-center gap-1 text-[11px] font-mono-code font-bold text-[#00ba7c]">
+                        <span id="right-online-badge" class="inline-flex items-center gap-1 text-[11px] font-mono-code font-bold text-[#00ba7c]">
                             <span class="w-2 h-2 rounded-full bg-[#00ba7c]"></span> Online
                         </span>
                     </div>
                     <div class="space-y-2 text-xs">
                         <div class="flex items-center justify-between py-1 border-b border-[#eff3f4]">
                             <span class="text-[#536471]">Extent</span>
-                            <span id="right-extent-ha" class="font-mono-code font-bold text-[#0f1419]">147.25 Ha</span>
+                            <span id="right-extent-ha" class="font-mono-code font-bold text-[#0f1419]">0.00 Ha</span>
                         </div>
                         <div class="flex items-center justify-between py-1">
                             <span class="text-[#536471]">Active Cycle</span>
-                            <span id="right-active-round" class="font-mono-code font-bold text-[#0f1419]">Round 2</span>
+                            <span id="right-active-round" class="font-mono-code font-bold text-[#0f1419]">Round 1</span>
                         </div>
                     </div>
+                    <button type="button" id="btn-right-sync-open" class="x-btn-outline w-full !py-2 !text-xs">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                        <span>Field Offline &amp; Sync</span>
+                    </button>
                 </div>
 
                 <!-- Widget 2: Live Yield Snapshot -->
@@ -1161,8 +1237,8 @@
                 <div class="pt-4 border-t border-[#eff3f4] space-y-3">
                     <div class="flex items-center justify-between gap-2">
                         <div class="min-w-0">
-                            <div id="drawer-user-name" class="text-xs font-extrabold text-[#0f1419] truncate">Sandaruwan Gunathilaka</div>
-                            <div id="drawer-user-handle" class="text-[11px] font-mono-code text-[#536471] truncate">@sandaru98j</div>
+                            <div id="drawer-user-name" class="text-xs font-extrabold text-[#0f1419] truncate">Staff Member</div>
+                            <div id="drawer-user-handle" class="text-[11px] font-mono-code text-[#536471] truncate">@user</div>
                         </div>
                         <button type="button" id="btn-logout-drawer" class="x-btn-outline !py-1.5 !px-3 !text-xs text-[#f4212e]">
                             <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
@@ -1359,6 +1435,33 @@
                 </div>
             </div>
 
+            <!-- Compact Field Agronomy Telemetry (Optional Health, Loose Fruit & Remarks) -->
+            <div class="p-3 rounded-2xl bg-[#f7f9f9] border border-[#eff3f4] space-y-2.5">
+                <div class="flex items-center justify-between gap-2">
+                    <span class="text-[10px] font-extrabold uppercase tracking-wider text-[#536471]">Agronomy Check</span>
+                    <label class="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#0f1419] cursor-pointer select-none">
+                        <input id="mh-loose-fruit" type="checkbox" checked class="accent-[#0f1419] w-3.5 h-3.5 rounded cursor-pointer" />
+                        <span>Loose Fruit Collected</span>
+                    </label>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                        <label for="mh-health" class="text-[10px] font-bold text-[#536471] block mb-0.5">Palm Health</label>
+                        <select id="mh-health" class="x-input !py-1.5 text-xs">
+                            <option value="Healthy">Healthy</option>
+                            <option value="Ganoderma / Disease">Ganoderma / Disease</option>
+                            <option value="Nutrient Deficient">Nutrient Deficient</option>
+                            <option value="Pest / Rhinoceros">Pest / Rhinoceros</option>
+                            <option value="Fallen / Vacant">Fallen / Vacant</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="mh-remarks" class="text-[10px] font-bold text-[#536471] block mb-0.5">Field Note</label>
+                        <input id="mh-remarks" type="text" maxlength="200" placeholder="Optional note..." class="x-input !py-1.5 text-xs" />
+                    </div>
+                </div>
+            </div>
+
             <!-- Optional Pin Calibration (Supervisor / Admin Only) -->
             <div id="mh-calibration-section" class="hidden p-3 rounded-2xl bg-[#f7f9f9] border border-[#eff3f4] space-y-2.5">
                 <div class="flex items-center justify-between gap-2">
@@ -1507,9 +1610,51 @@
         </div>
     </div>
 
+    <!-- OFFLINE SYNC QUEUE & FIELD PRELOAD MODAL -->
+    <div id="modal-offline-sync" class="hidden fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="modal-sheet w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl border p-5 space-y-4 max-h-[90vh] overflow-y-auto box-border">
+            <div class="flex items-center justify-between gap-2">
+                <div>
+                    <div class="text-sm font-extrabold text-[#0f1419]">Field Offline &amp; Sync Center</div>
+                    <div id="sync-modal-status" class="text-xs font-mono-code text-[#536471]">Connected • 0 queued</div>
+                </div>
+                <button type="button" data-close-modal="modal-offline-sync" class="p-1.5 rounded-full text-[#536471] hover:bg-[#f7f9f9]">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div id="sync-modal-meta" class="text-[11px] text-[#536471]">
+                Preload blocks at the office before heading to zero-signal areas.
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+                <button type="button" id="btn-offline-preload" class="x-btn-outline !py-2.5 !text-xs">
+                    <i data-lucide="download-cloud" class="w-4 h-4"></i>
+                    <span>Preload Blocks</span>
+                </button>
+                <button type="button" id="btn-sync-now" class="x-btn-primary !py-2.5 !text-xs">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    <span>Sync Now</span>
+                </button>
+            </div>
+
+            <div id="sync-preload-status" class="hidden text-[11px] font-mono-code font-bold text-[#0f1419] px-3 py-2 rounded-xl bg-[#f7f9f9] border border-[#eff3f4]"></div>
+
+            <div id="sync-queue-list" class="space-y-2 max-h-64 overflow-y-auto"></div>
+        </div>
+    </div>
+
     <!-- TOAST NOTIFICATIONS -->
     <div id="toast-container" class="fixed bottom-20 md:bottom-6 right-4 z-50 space-y-2 pointer-events-none max-w-[90vw]"></div>
 
-    <script src="/app.js"></script>
+    <!-- Modular Frontend Bundle (Zero Build Step — Works on Cloudflare Pages/Workers & Python) -->
+    <script src="/js/core.js"></script>
+    <script src="/js/offline.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/dashboard.js"></script>
+    <script src="/js/harvest.js"></script>
+    <script src="/js/gis-map.js"></script>
+    <script src="/js/admin.js"></script>
+    <script src="/js/main.js"></script>
 </body>
 </html>
